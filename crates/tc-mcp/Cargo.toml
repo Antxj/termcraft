@@ -1,0 +1,17 @@
+[package]
+name = "tc-mcp"
+description = "MCP server exposing the TermCraft command registry to AI agents"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+tc-commands.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tc-core.workspace = true
+
+[lints]
+workspace = true

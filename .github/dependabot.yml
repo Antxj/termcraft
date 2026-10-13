@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # egui and eframe must move together or the build breaks.
+      egui:
+        patterns: ["egui*", "eframe", "epaint*", "emath", "ecolor"]
+      # Crypto stack: review together.
+      crypto:
+        patterns: ["ed25519-*", "sha2", "digest", "curve25519-*", "russh*", "rustls*", "ring"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+        exclude-patterns: ["egui*", "eframe", "ed25519-*", "sha2", "russh*", "rustls*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

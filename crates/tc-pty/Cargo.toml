@@ -1,0 +1,15 @@
+[package]
+name = "tc-pty"
+description = "Local shell sessions over a pseudo-terminal (ConPTY on Windows, PTY on Unix)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+portable-pty.workspace = true
+crossbeam-channel.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true

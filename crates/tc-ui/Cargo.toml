@@ -1,0 +1,27 @@
+[package]
+name = "tc-ui"
+description = "TermCraft desktop app (thin egui layer over the command registry)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "termcraft"
+path = "src/main.rs"
+
+[dependencies]
+tc-core.workspace = true
+tc-commands.workspace = true
+tc-term.workspace = true
+tc-pty.workspace = true
+tc-update.workspace = true
+eframe.workspace = true
+egui.workspace = true
+serde_json.workspace = true
+crossbeam-channel.workspace = true
+anyhow.workspace = true
+egui-phosphor = "0.14"
+
+[lints]
+workspace = true
