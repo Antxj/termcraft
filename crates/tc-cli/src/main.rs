@@ -54,6 +54,7 @@ struct FileHost {
     paths: Paths,
     store: SessionStore,
     settings: Settings,
+    vault: tc_vault::Vault,
 }
 
 impl FileHost {
@@ -61,10 +62,13 @@ impl FileHost {
         let paths = Paths::resolve();
         let store = SessionStore::load(&paths.sessions_file())?;
         let settings = Settings::load(&paths.settings_file())?;
+        let vault =
+            tc_vault::Vault::open(paths.passwords_index_file(), Box::new(tc_vault::OsKeychain));
         Ok(Self {
             paths,
             store,
             settings,
+            vault,
         })
     }
 
@@ -82,6 +86,10 @@ impl Host for FileHost {
         self.store
             .save(&self.paths.sessions_file())
             .map_err(|e| CommandError::Failed(e.to_string()))
+    }
+
+    fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
+        Ok(&self.vault)
     }
 
     fn update_check(&mut self) -> Result<Value, CommandError> {

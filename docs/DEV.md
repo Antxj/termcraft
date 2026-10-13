@@ -2,8 +2,10 @@
 
 ## Toolchain
 
-On Windows, use the MSVC toolchain (`rustup default stable-msvc`). The GNU
-toolchain needs `dlltool`. The SSH stack uses `ring` instead of `aws-lc-rs`,
+On Windows, use the MSVC toolchain. The GNU toolchain fails with
+`error calling dlltool 'dlltool.exe': program not found`. To switch only
+this project, run `rustup override set stable-msvc` in the repository root.
+To switch every project, run `rustup default stable-msvc`. The SSH stack uses `ring` instead of `aws-lc-rs`,
 so NASM is not required.
 
 ## Local SSH test server

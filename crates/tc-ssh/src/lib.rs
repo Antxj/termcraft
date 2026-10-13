@@ -52,6 +52,7 @@ pub enum SshEvent {
     /// passphrase); answer with `Reply::Secret`.
     SecretNeeded {
         prompt: String,
+        kind: SecretKind,
     },
     Connected,
     Error(String),
@@ -59,6 +60,17 @@ pub enum SshEvent {
         exit_status: Option<u32>,
     },
     Sftp(SftpEvent),
+}
+
+/// What a `SecretNeeded` prompt is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretKind {
+    /// Login password ("password" auth method). Can be saved and auto-filled.
+    Password,
+    /// Passphrase of a private key file.
+    KeyPassphrase,
+    /// A keyboard-interactive (PAM / OTP) prompt.
+    Challenge,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,8 +186,13 @@ async fn next_reply(replies: &Replies) -> Reply {
     replies.lock().await.recv().await.unwrap_or(Reply::Cancel)
 }
 
-async fn ask_secret(events: &Events, replies: &Replies, prompt: String) -> Option<String> {
-    events.send(SshEvent::SecretNeeded { prompt });
+async fn ask_secret(
+    events: &Events,
+    replies: &Replies,
+    prompt: String,
+    kind: SecretKind,
+) -> Option<String> {
+    events.send(SshEvent::SecretNeeded { prompt, kind });
     loop {
         match next_reply(replies).await {
             Reply::Secret(s) => return Some(s),
@@ -380,7 +397,7 @@ async fn authenticate(
             Ok(k) => Some(k),
             Err(keys::Error::KeyIsEncrypted) => {
                 let prompt = format!("Passphrase for key {}:", path.display());
-                match ask_secret(events, replies, prompt).await {
+                match ask_secret(events, replies, prompt, SecretKind::KeyPassphrase).await {
                     Some(pass) => keys::load_secret_key(path, Some(&pass))
                         .map_err(|e| format!("cannot load key {}: {e}", path.display()))
                         .map(Some)?,
@@ -417,7 +434,7 @@ async fn authenticate(
 
     for _attempt in 0..3 {
         let prompt = format!("{}@{}'s password:", user, params.host);
-        let Some(password) = ask_secret(events, replies, prompt).await else {
+        let Some(password) = ask_secret(events, replies, prompt, SecretKind::Password).await else {
             return Err("cancelled".into());
         };
         match session
@@ -464,7 +481,14 @@ async fn keyboard_interactive(
                 for p in prompts {
                     let answer = match (p.echo, password.take()) {
                         (false, Some(pw)) => pw,
-                        _ => match ask_secret(events, replies, p.prompt.clone()).await {
+                        _ => match ask_secret(
+                            events,
+                            replies,
+                            p.prompt.clone(),
+                            SecretKind::Challenge,
+                        )
+                        .await
+                        {
                             Some(s) => s,
                             None => return Err("cancelled".into()),
                         },

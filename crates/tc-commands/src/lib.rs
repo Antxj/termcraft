@@ -65,6 +65,11 @@ pub enum Command {
         tab: Option<u64>,
         title: String,
     },
+    PasswordList {},
+    PasswordForget {
+        target: tc_vault::Target,
+    },
+    PasswordForgetAll {},
     UpdateCheck {},
 }
 
@@ -94,6 +99,9 @@ impl Command {
             Self::TabClose { .. } => "tab_close",
             Self::TabDuplicate { .. } => "tab_duplicate",
             Self::TabRename { .. } => "tab_rename",
+            Self::PasswordList {} => "password_list",
+            Self::PasswordForget { .. } => "password_forget",
+            Self::PasswordForgetAll {} => "password_forget_all",
             Self::UpdateCheck {} => "update_check",
         }
     }
@@ -142,6 +150,10 @@ pub trait Host {
     }
     fn tab_rename(&mut self, _tab: Option<u64>, _title: &str) -> Result<(), CommandError> {
         Err(CommandError::Unsupported("tabs require the GUI"))
+    }
+    /// Saved-password store; secrets are never returned through commands.
+    fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
+        Err(CommandError::Unsupported("no credential store"))
     }
     fn update_check(&mut self) -> Result<Value, CommandError> {
         Err(CommandError::Unsupported("updater not wired"))
@@ -291,6 +303,19 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         }
         Command::TabSend { tab, text } => {
             host.tab_send(tab, &text)?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::PasswordList {} => to_json(&host.vault()?.list()),
+        Command::PasswordForget { target } => {
+            host.vault()?
+                .forget(&target)
+                .map_err(|e| CommandError::Failed(e.to_string()))?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::PasswordForgetAll {} => {
+            host.vault()?
+                .forget_all()
+                .map_err(|e| CommandError::Failed(e.to_string()))?;
             Ok(json!({ "ok": true }))
         }
         Command::UpdateCheck {} => host.update_check(),
@@ -523,6 +548,37 @@ mod tests {
         assert_eq!(ssh("@host"), None);
         assert_eq!(ssh("host:notaport"), None);
         assert_eq!(ssh("two words"), None);
+    }
+
+    #[test]
+    fn password_commands_never_expose_secrets() {
+        struct VaultHost(SessionStore, tc_vault::Vault);
+        impl Host for VaultHost {
+            fn store(&mut self) -> &mut SessionStore {
+                &mut self.0
+            }
+            fn persist(&mut self) -> Result<(), CommandError> {
+                Ok(())
+            }
+            fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
+                Ok(&self.1)
+            }
+        }
+        let dir = std::env::temp_dir().join(format!("tc-vault-test-{}", std::process::id()));
+        let vault = tc_vault::Vault::open(
+            dir.join("i.toml"),
+            Box::new(tc_vault::MemoryStore::default()),
+        );
+        let t = tc_vault::Target::ssh("root", "h", 22);
+        vault.save(&t, "hunter2").unwrap();
+        let mut host = VaultHost(SessionStore::default(), vault);
+
+        let list = execute(&mut host, Command::PasswordList {}).unwrap();
+        assert!(!list.to_string().contains("hunter2"));
+        assert_eq!(list[0]["server"], "h:22");
+        execute(&mut host, Command::PasswordForget { target: t }).unwrap();
+        assert!(host.1.list().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

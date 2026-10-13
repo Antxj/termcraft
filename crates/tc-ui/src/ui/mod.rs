@@ -26,6 +26,7 @@ pub enum Action {
     Minimize,
     ToggleFullscreen,
     About,
+    PasswordsSettings,
     CheckUpdates,
     ImportDialog,
     NewSession,

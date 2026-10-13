@@ -17,6 +17,7 @@ tc-term.workspace = true
 tc-pty.workspace = true
 tc-update.workspace = true
 tc-ssh.workspace = true
+tc-vault.workspace = true
 eframe.workspace = true
 egui.workspace = true
 serde_json.workspace = true
@@ -27,3 +28,8 @@ rfd = "0.17"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tc-devserver.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tempfile.workspace = true

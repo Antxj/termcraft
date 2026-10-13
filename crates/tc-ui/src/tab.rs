@@ -1,16 +1,22 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tc_core::settings::SavePasswords;
 use tc_core::{Session, SessionKind, schema};
 use tc_pty::{PtyEvent, PtySession};
-use tc_ssh::{ConnectParams, RemoteEntry, Reply, SftpEvent, SftpRequest, SshEvent, SshSession};
+use tc_ssh::{
+    ConnectParams, RemoteEntry, Reply, SecretKind, SftpEvent, SftpRequest, SshEvent, SshSession,
+};
 use tc_term::Terminal;
+use tc_vault::{Target, Vault};
 
 /// What every tab needs from the app.
 pub struct TabEnv {
     pub scrollback: usize,
     pub known_hosts: PathBuf,
     pub repaint: Arc<dyn Fn() + Send + Sync>,
+    pub vault: Arc<Vault>,
+    pub save_passwords: SavePasswords,
 }
 
 enum Backend {
@@ -40,6 +46,10 @@ pub struct SftpView {
     /// Transfers: id → (label, bytes done, total).
     pub transfers: HashMap<u64, (String, u64, Option<u64>)>,
     pub prompt: Option<BrowserPrompt>,
+    /// "Follow terminal folder": browse to directories the shell reports.
+    pub follow: bool,
+    /// The shell has reported its folder at least once (OSC 7).
+    pub reports_seen: bool,
     listing: Option<u64>,
 }
 
@@ -61,7 +71,18 @@ pub enum SftpStatus {
 /// "login as:" and password prompts).
 enum LineInput {
     Login(String),
-    Secret(String),
+    Secret(String, SecretKind),
+}
+
+/// Saved-password handling for one SSH connection.
+struct Credentials {
+    vault: Arc<Vault>,
+    mode: SavePasswords,
+    target: Option<Target>,
+    /// The saved password was already offered once on this connection.
+    tried_saved: bool,
+    /// Password the user typed; offered for saving after a successful login.
+    typed: Option<String>,
 }
 
 pub struct Tab {
@@ -79,7 +100,21 @@ pub struct Tab {
     line: Option<LineInput>,
     known_hosts: PathBuf,
     repaint: Arc<dyn Fn() + Send + Sync>,
+    credentials: Credentials,
+    /// "Do you want to save this password?" waiting for an answer.
+    pub offer_save: Option<(Target, String)>,
 }
+
+/// Prompt hook for bash and zsh that reports `$PWD` with OSC 7. Typed into
+/// the shell only when the user asks; the leading space keeps it out of
+/// bash history when `HISTCONTROL` ignores spaces.
+pub const FOLDER_TRACKING_HOOK: &str = concat!(
+    r#" if [ -n "$ZSH_VERSION" ]; then _tc_osc7() { printf '\033]7;file://%s%s\007' "$HOST" "$PWD"; };"#,
+    r#" precmd_functions+=(_tc_osc7);"#,
+    r#" elif [ -n "$BASH_VERSION" ]; then"#,
+    r#" PROMPT_COMMAND='printf "\033]7;file://%s%s\007" "$HOSTNAME" "$PWD"'"${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi"#,
+    "\r",
+);
 
 const INITIAL_ROWS: u16 = 24;
 const INITIAL_COLS: u16 = 80;
@@ -102,6 +137,14 @@ impl Tab {
             line: None,
             known_hosts: env.known_hosts.clone(),
             repaint: env.repaint.clone(),
+            credentials: Credentials {
+                vault: env.vault.clone(),
+                mode: env.save_passwords,
+                target: None,
+                tried_saved: false,
+                typed: None,
+            },
+            offer_save: None,
         };
         match tab.session.as_ref().map(|s| s.kind.clone()) {
             None => tab.spawn_local(None),
@@ -162,6 +205,9 @@ impl Tab {
         // Schema ids: 3_7 Compression, 3_8 Execute command.
         let opt = |id: &str| options.get(id).map(String::as_str);
         let (rows, cols) = self.term.size();
+        self.credentials.target = Some(Target::ssh(&user, host, *port));
+        self.credentials.tried_saved = false;
+        self.credentials.typed = None;
         let params = ConnectParams {
             host: host.clone(),
             port: *port,
@@ -237,6 +283,9 @@ impl Tab {
                     {
                         ssh.write(&reply);
                     }
+                    if let Some(dir) = self.term.take_cwd_report() {
+                        self.on_cwd_report(dir);
+                    }
                 }
                 SshEvent::Info(text) => self.message(&format!("\x1b[90m{text}\x1b[0m")),
                 SshEvent::UnknownHostKey {
@@ -256,11 +305,11 @@ impl Tab {
                         fingerprint,
                     });
                 }
-                SshEvent::SecretNeeded { prompt } => {
-                    self.term.feed(format!("{prompt} ").as_bytes());
-                    self.line = Some(LineInput::Secret(String::new()));
+                SshEvent::SecretNeeded { prompt, kind } => self.on_secret_needed(prompt, kind),
+                SshEvent::Connected => {
+                    self.status = None;
+                    self.after_login();
                 }
-                SshEvent::Connected => self.status = None,
                 SshEvent::Error(e) => self.message(&format!("\x1b[31m{e}\x1b[0m")),
                 SshEvent::Sftp(e) => self.on_sftp(e),
                 SshEvent::Closed { exit_status } => {
@@ -280,12 +329,61 @@ impl Tab {
         changed
     }
 
+    /// Auto-fill a saved password once per connection; otherwise prompt in
+    /// the terminal like PuTTY.
+    fn on_secret_needed(&mut self, prompt: String, kind: SecretKind) {
+        let c = &mut self.credentials;
+        if kind == SecretKind::Password && c.mode != SavePasswords::Never {
+            if !c.tried_saved {
+                c.tried_saved = true;
+                let saved = c
+                    .target
+                    .as_ref()
+                    .and_then(|t| c.vault.get(t).ok().flatten());
+                if let (Some(password), Backend::Ssh(ssh)) = (saved, &self.backend) {
+                    ssh.reply(Reply::Secret(password));
+                    self.message("\x1b[90mUsing saved password\x1b[0m");
+                    return;
+                }
+            } else if c.typed.is_none() {
+                self.message("\x1b[33mThe saved password was rejected.\x1b[0m");
+            }
+        }
+        self.term.feed(format!("{prompt} ").as_bytes());
+        self.line = Some(LineInput::Secret(String::new(), kind));
+    }
+
+    /// After a successful login with a typed password, save it (Always) or
+    /// ask the user (Ask).
+    fn after_login(&mut self) {
+        let c = &mut self.credentials;
+        let (Some(password), Some(target)) = (c.typed.take(), c.target.clone()) else {
+            return;
+        };
+        match c.mode {
+            SavePasswords::Always => {
+                if let Err(e) = c.vault.save(&target, &password) {
+                    self.message(&format!("\x1b[31mcould not save password: {e}\x1b[0m"));
+                }
+            }
+            SavePasswords::Ask => self.offer_save = Some((target, password)),
+            SavePasswords::Never => {}
+        }
+    }
+
     fn on_sftp(&mut self, event: SftpEvent) {
         match event {
             SftpEvent::Ready { home } => {
+                // 3_18 "Try to follow SSH path in browser" (default on).
+                let follow = self
+                    .session
+                    .as_ref()
+                    .and_then(|s| s.options.get("3_18"))
+                    .is_none_or(|v| schema::is_true(v));
                 self.sftp = SftpStatus::Ready(Box::new(SftpView {
                     cwd: home.clone(),
                     path_input: home.clone(),
+                    follow,
                     ..SftpView::default()
                 }));
                 self.sftp_just_ready = true;
@@ -333,6 +431,23 @@ impl Tab {
                     });
                 }
             }
+        }
+    }
+
+    fn on_cwd_report(&mut self, dir: String) {
+        let SftpStatus::Ready(v) = &mut self.sftp else {
+            return;
+        };
+        v.reports_seen = true;
+        if v.follow && dir != v.cwd {
+            self.sftp_list(&dir);
+        }
+    }
+
+    /// Type the OSC 7 prompt hook into the remote shell.
+    pub fn install_folder_tracking(&mut self) {
+        if let Backend::Ssh(ssh) = &self.backend {
+            ssh.write(FOLDER_TRACKING_HOOK.as_bytes());
         }
     }
 
@@ -392,7 +507,7 @@ impl Tab {
             let Some(line) = &mut self.line else { return };
             let (buffer, echo) = match line {
                 LineInput::Login(b) => (b, true),
-                LineInput::Secret(b) => (b, false),
+                LineInput::Secret(b, _) => (b, false),
             };
             match ch {
                 '\r' | '\n' => {
@@ -403,7 +518,10 @@ impl Tab {
                             self.term.feed(b"login as: ");
                             self.line = Some(LineInput::Login(String::new()));
                         }
-                        Some(LineInput::Secret(secret)) => {
+                        Some(LineInput::Secret(secret, kind)) => {
+                            if kind == SecretKind::Password {
+                                self.credentials.typed = Some(secret.clone());
+                            }
                             if let Backend::Ssh(ssh) = &self.backend {
                                 ssh.reply(Reply::Secret(secret));
                             }
@@ -453,5 +571,111 @@ impl Tab {
 
     pub fn is_alive(&self) -> bool {
         !matches!(self.backend, Backend::None) || self.line.is_some()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Pump a tab until `done` holds (answering the host key prompt), or panic.
+    fn pump_until(tab: &mut Tab, mut done: impl FnMut(&mut Tab) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            tab.pump();
+            if tab.host_key.is_some() {
+                tab.answer_host_key(true, false);
+            }
+            if done(tab) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("timeout; screen:\n{}", tab.term.contents());
+    }
+
+    fn dev_session(port: u16) -> Session {
+        let mut s = Session::new(
+            "dev",
+            SessionKind::Ssh {
+                host: "127.0.0.1".into(),
+                port,
+                user: Some(tc_devserver::DEV_USER.into()),
+                private_key: None,
+                x11_forwarding: false,
+            },
+        );
+        s.options
+            .insert("3_8".into(), "echo saved-password-test".into());
+        s.options.insert("3_26".into(), "0".into());
+        s
+    }
+
+    #[test]
+    fn saved_password_offer_and_autofill() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (addr, fut) = rt
+            .block_on(tc_devserver::bind(0, tc_devserver::DevConfig::default()))
+            .unwrap();
+        rt.spawn(fut);
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Arc::new(Vault::open(
+            dir.path().join("index.toml"),
+            Box::new(tc_vault::MemoryStore::default()),
+        ));
+        let env = TabEnv {
+            scrollback: 100,
+            known_hosts: dir.path().join("known_hosts"),
+            repaint: Arc::new(|| {}),
+            vault: vault.clone(),
+            save_passwords: SavePasswords::Ask,
+        };
+
+        // 1st connection: no saved password -> prompt in the terminal.
+        let mut tab = Tab::open(1, Some(dev_session(addr.port())), &env);
+        pump_until(&mut tab, |t| t.term.contents().contains("password:"));
+        tab.send(format!("{}\r", tc_devserver::DEV_PASSWORD).as_bytes());
+        pump_until(&mut tab, |t| t.offer_save.is_some());
+        let (target, password) = tab.offer_save.take().unwrap();
+        assert_eq!(
+            target,
+            Target::ssh(tc_devserver::DEV_USER, "127.0.0.1", addr.port())
+        );
+        vault.save(&target, &password).unwrap();
+        pump_until(&mut tab, |t| !t.is_alive());
+        assert!(tab.term.contents().contains("saved-password-test"));
+
+        // 2nd connection: the saved password is used, nothing is typed.
+        let mut tab = Tab::open(2, Some(dev_session(addr.port())), &env);
+        pump_until(&mut tab, |t| !t.is_alive());
+        let screen = tab.term.contents();
+        assert!(screen.contains("Using saved password"), "{screen}");
+        assert!(!screen.contains("password: "), "{screen}");
+        assert!(screen.contains("saved-password-test"), "{screen}");
+        assert!(tab.offer_save.is_none());
+    }
+
+    /// Run the hook in a real bash (skipped when bash is not installed) and
+    /// check that the prompt command emits an OSC 7 report for `$PWD`.
+    #[test]
+    fn folder_tracking_hook_reports_pwd_in_bash() {
+        let hook = FOLDER_TRACKING_HOOK.trim_end_matches('\r');
+        let script = format!("{hook}\ncd /tmp && eval \"$PROMPT_COMMAND\"");
+        let Ok(out) = std::process::Command::new("bash")
+            .args(["--norc", "--noprofile", "-c", &script])
+            .output()
+        else {
+            eprintln!("bash not available; skipping");
+            return;
+        };
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{stdout} {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(stdout.starts_with("\x1b]7;file://"), "{stdout:?}");
+        assert!(stdout.ends_with("/tmp\x07"), "{stdout:?}");
     }
 }

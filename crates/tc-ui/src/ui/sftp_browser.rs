@@ -50,11 +50,7 @@ pub fn show(ui: &mut egui::Ui, tab: Option<&mut Tab>) {
         let list_rect = file_list(ui, view, &mut actions);
         dropped_files(ui, list_rect, view, &mut actions);
         ui.separator();
-        ui.add_enabled(
-            false,
-            egui::Checkbox::new(&mut false, "Follow terminal folder"),
-        )
-        .on_disabled_hover_text(NOT_YET);
+        follow_folder(ui, view, &mut actions);
     }
     for action in actions {
         apply(tab, action);
@@ -65,6 +61,7 @@ enum BrowserAction {
     Cd(String),
     Request(SftpRequest),
     TypeInTerminal(String),
+    InstallFolderTracking,
 }
 
 fn apply(tab: &mut Tab, action: BrowserAction) {
@@ -72,6 +69,24 @@ fn apply(tab: &mut Tab, action: BrowserAction) {
         BrowserAction::Cd(path) => tab.sftp_list(&path),
         BrowserAction::Request(r) => tab.sftp_op(r),
         BrowserAction::TypeInTerminal(text) => tab.send(text.as_bytes()),
+        BrowserAction::InstallFolderTracking => tab.install_folder_tracking(),
+    }
+}
+
+/// "Follow terminal folder": follows OSC 7 reports from the shell. If the
+/// shell has not reported anything yet, offer to install the prompt hook.
+fn follow_folder(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) {
+    ui.checkbox(&mut view.follow, "Follow terminal folder")
+        .on_hover_text("Automatically browse to SSH current folder");
+    if view.follow && !view.reports_seen {
+        let install = ui
+            .small_button("Enable for this shell")
+            .on_hover_text(
+                "Your shell does not report its folder yet. This types a one-line                  prompt hook (bash / zsh) into the terminal so the browser can follow                  `cd`. Nothing is changed on the server permanently.",
+            );
+        if install.clicked() {
+            out.push(BrowserAction::InstallFolderTracking);
+        }
     }
 }
 

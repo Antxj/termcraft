@@ -5,6 +5,7 @@
 //! `alacritty_terminal` later without touching renderers.
 
 mod input;
+mod osc7;
 mod palette;
 
 pub use input::{Key, Modifiers, encode_key};
@@ -12,6 +13,9 @@ pub use palette::{DEFAULT_BG, DEFAULT_FG, Rgb, color_to_rgb};
 
 pub struct Terminal {
     parser: vt100::Parser,
+    osc7: osc7::Osc7,
+    /// Latest directory reported via OSC 7, not yet taken.
+    cwd_report: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +34,8 @@ impl Terminal {
     pub fn new(rows: u16, cols: u16, scrollback: usize) -> Self {
         Self {
             parser: vt100::Parser::new(rows.max(1), cols.max(1), scrollback),
+            osc7: osc7::Osc7::default(),
+            cwd_report: None,
         }
     }
 
@@ -37,6 +43,9 @@ impl Terminal {
     /// back (answers to terminal queries such as cursor-position reports).
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<u8> {
         self.parser.process(bytes);
+        if let Some(dir) = self.osc7.scan(bytes) {
+            self.cwd_report = Some(dir);
+        }
         self.query_replies(bytes)
     }
 
@@ -59,6 +68,11 @@ impl Terminal {
             out.extend_from_slice(b"\x1b[?62;22c");
         }
         out
+    }
+
+    /// Directory the shell reported (OSC 7) since the last call.
+    pub fn take_cwd_report(&mut self) -> Option<String> {
+        self.cwd_report.take()
     }
 
     pub fn resize(&mut self, rows: u16, cols: u16) {

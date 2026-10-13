@@ -53,4 +53,9 @@ impl Paths {
     pub fn known_hosts_file(&self) -> PathBuf {
         self.data_dir.join("known_hosts")
     }
+
+    /// Names of saved passwords (the secrets live in the OS keychain).
+    pub fn passwords_index_file(&self) -> PathBuf {
+        self.data_dir.join("saved_passwords.toml")
+    }
 }

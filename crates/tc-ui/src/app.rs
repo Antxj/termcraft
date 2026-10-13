@@ -18,6 +18,7 @@ struct Core {
     active: Option<u64>,
     next_tab_id: u64,
     repaint: Arc<dyn Fn() + Send + Sync>,
+    vault: Arc<tc_vault::Vault>,
 }
 
 impl Core {
@@ -68,6 +69,8 @@ impl Host for Core {
             scrollback: self.settings.terminal.scrollback_lines,
             known_hosts: self.paths.known_hosts_file(),
             repaint: self.repaint.clone(),
+            vault: self.vault.clone(),
+            save_passwords: self.settings.passwords.save,
         };
         self.tabs.push(Tab::open(id, session, &env));
         self.active = Some(id);
@@ -100,6 +103,10 @@ impl Host for Core {
         self.tab_open(session)
     }
 
+    fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
+        Ok(&self.vault)
+    }
+
     fn tab_rename(&mut self, tab: Option<u64>, title: &str) -> Result<(), CommandError> {
         let i = self.tab_index(tab)?;
         let title = title.trim();
@@ -124,6 +131,10 @@ pub struct TermCraftApp {
     import_path: String,
     show_import: bool,
     show_about: bool,
+    show_passwords: bool,
+    /// Selected rows in the Passwords settings list.
+    password_selection: std::collections::BTreeSet<tc_vault::Target>,
+    dont_ask_again: bool,
     rename: Option<(Rename, String)>,
     confirm_delete: Option<SessionId>,
     editor: Option<SessionEditor>,
@@ -143,6 +154,10 @@ impl TermCraftApp {
             SessionStore::default()
         });
         let settings = Settings::load(&paths.settings_file()).unwrap_or_default();
+        let vault = Arc::new(tc_vault::Vault::open(
+            paths.passwords_index_file(),
+            Box::new(tc_vault::OsKeychain),
+        ));
         apply_theme(&cc.egui_ctx, settings.view.theme);
         let ctx = cc.egui_ctx.clone();
         let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(move || ctx.request_repaint());
@@ -165,6 +180,7 @@ impl TermCraftApp {
                 active: None,
                 next_tab_id: 1,
                 repaint,
+                vault,
             },
             updates,
             quick_connect: String::new(),
@@ -172,6 +188,9 @@ impl TermCraftApp {
             import_path: String::new(),
             show_import: false,
             show_about: false,
+            show_passwords: false,
+            password_selection: Default::default(),
+            dont_ask_again: false,
             rename: None,
             confirm_delete: None,
             editor: None,
@@ -209,6 +228,7 @@ impl TermCraftApp {
                 return ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
             Action::About => return self.show_about = true,
+            Action::PasswordsSettings => return self.show_passwords = true,
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
             Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
@@ -269,6 +289,8 @@ impl TermCraftApp {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
+        self.save_password_dialog(ctx);
+        self.passwords_window(ctx, out);
         self.host_key_dialog(ctx);
         if let Some(editor) = &mut self.editor
             && !editor.show(ctx, out)
@@ -375,6 +397,142 @@ impl TermCraftApp {
                 if yes {
                     out.push(Action::Run(Command::SessionRemove { id }));
                 }
+            }
+        }
+    }
+
+    /// Reference `TFORMSTOREPASSWORDS`: "Do you want to save this password?"
+    fn save_password_dialog(&mut self, ctx: &egui::Context) {
+        let active = self.core.active;
+        let Some(tab) = self.core.tabs.iter_mut().find(|t| Some(t.id) == active) else {
+            return;
+        };
+        let Some((target, _)) = &tab.offer_save else {
+            return;
+        };
+        let mut answer = None;
+        egui::Window::new("Save password")
+            .id(egui::Id::new(("save-password", tab.id)))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(ui::icon::KEY).size(36.0));
+                    ui.vertical(|ui| {
+                        ui.strong("Do you want to save this password?");
+                        ui.label(format!("{}@{}", target.username, target.server));
+                    });
+                });
+                ui.weak(
+                    "TermCraft stores passwords in your system keychain \
+                     (Windows Credential Manager, macOS Keychain or Secret Service).",
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Yes").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("No").clicked() {
+                        answer = Some(false);
+                    }
+                });
+                ui.checkbox(&mut self.dont_ask_again, "Do not show this message again");
+            });
+        let Some(yes) = answer else { return };
+        let (target, password) = tab.offer_save.take().expect("checked above");
+        if yes && let Err(e) = self.core.vault.save(&target, &password) {
+            self.status = format!("could not save password: {e}");
+        }
+        if self.dont_ask_again {
+            self.core.settings.passwords.save = if yes {
+                tc_core::settings::SavePasswords::Always
+            } else {
+                tc_core::settings::SavePasswords::Never
+            };
+            if let Err(e) = self.core.save_settings() {
+                self.status = format!("could not save settings: {e}");
+            }
+        }
+    }
+
+    /// Reference `TFORMMANAGEPASSWORDS` (without "Show passwords": secrets
+    /// stay in the keychain).
+    fn passwords_window(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
+        if !self.show_passwords {
+            return;
+        }
+        use tc_core::settings::SavePasswords as S;
+        let mut open = true;
+        let mut mode = self.core.settings.passwords.save;
+        let saved = self.core.vault.list();
+        egui::Window::new("TermCraft passwords settings")
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(640.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Save sessions passwords");
+                    ui.radio_value(&mut mode, S::Always, "Always");
+                    ui.radio_value(&mut mode, S::Never, "Never");
+                    ui.radio_value(&mut mode, S::Ask, "Ask");
+                });
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .max_height(180.0)
+                    .show(ui, |ui| {
+                        egui::Grid::new("saved-passwords")
+                            .num_columns(3)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.strong("Protocol");
+                                ui.strong("Username");
+                                ui.strong("Servername");
+                                ui.end_row();
+                                for t in &saved {
+                                    let selected = self.password_selection.contains(t);
+                                    if ui.selectable_label(selected, &t.protocol).clicked() {
+                                        if selected {
+                                            self.password_selection.remove(t);
+                                        } else {
+                                            self.password_selection.insert(t.clone());
+                                        }
+                                    }
+                                    ui.label(&t.username);
+                                    ui.label(&t.server);
+                                    ui.end_row();
+                                }
+                            });
+                        if saved.is_empty() {
+                            ui.weak("No saved passwords.");
+                        }
+                    });
+                ui.horizontal(|ui| {
+                    let any = !self.password_selection.is_empty();
+                    if ui
+                        .add_enabled(any, egui::Button::new("Delete selected"))
+                        .clicked()
+                    {
+                        for target in std::mem::take(&mut self.password_selection) {
+                            out.push(Action::Run(Command::PasswordForget { target }));
+                        }
+                    }
+                    if ui
+                        .add_enabled(!saved.is_empty(), egui::Button::new("Delete all"))
+                        .clicked()
+                    {
+                        self.password_selection.clear();
+                        out.push(Action::Run(Command::PasswordForgetAll {}));
+                    }
+                });
+                ui.weak(
+                    "Passwords are kept in the system keychain; this list only holds their names.",
+                );
+            });
+        self.show_passwords = open;
+        if mode != self.core.settings.passwords.save {
+            self.core.settings.passwords.save = mode;
+            if let Err(e) = self.core.save_settings() {
+                self.status = format!("could not save settings: {e}");
             }
         }
     }

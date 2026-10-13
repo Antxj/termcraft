@@ -6,6 +6,23 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub update: UpdateSettings,
     pub view: ViewSettings,
+    pub passwords: PasswordSettings,
+}
+
+/// "Save sessions passwords" (Passwords settings dialog).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SavePasswords {
+    Always,
+    Never,
+    #[default]
+    Ask,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PasswordSettings {
+    pub save: SavePasswords,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

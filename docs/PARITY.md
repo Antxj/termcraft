@@ -92,7 +92,7 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [x] | SSH-browser (SFTP) in the sidebar, opened automatically on SSH login; same toolbar / columns as the reference | `tc-ssh` + `tc-ui` |
 | P0 | [~] | Upload (button or drop files from the OS) / download (save dialog); dragging files *out* to the OS pending | `tc-ssh` + `tc-ui` |
-| P1 | [ ] | "Follow terminal folder" (track remote `cwd`) | `tc-sftp` |
+| P1 | [x] | "Follow terminal folder": follows OSC 7 reports; one-click bash/zsh prompt hook when the shell reports nothing | `tc-term` + `tc-ui` |
 | P1 | [x] | Transfers run in parallel with progress bars | `tc-ssh` |
 | P1 | [ ] | Open remote file in local editor, upload on save | `tc-sftp` |
 | P2 | [ ] | SCP mode (fast / legacy) when SFTP is unavailable | `tc-sftp` |
@@ -119,7 +119,8 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P0 | [ ] | Save passwords in OS keychain (`keyring`) | `tc-vault` |
+| P0 | [x] | Save passwords in the OS keychain; "Do you want to save this password?"; Always / Never / Ask; auto-fill once per connection | `tc-vault` |
+| P1 | [x] | Passwords settings: list (Protocol / Username / Servername), delete selected / all; secrets never shown or returned by commands | `tc-ui` + `tc-commands` |
 | P1 | [ ] | Master password (encrypted vault, Argon2id + XChaCha20) | `tc-vault` |
 | P1 | [ ] | Key generator (ed25519 / RSA, OpenSSH + PPK formats) | `tc-vault` |
 | P1 | [x] | Host key validation dialog, known_hosts (OpenSSH format), changed-key refusal | `tc-ssh` |

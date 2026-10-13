@@ -32,6 +32,12 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
             item(ui, "Export configuration", None, out);
             item(ui, "Reset configuration", None, out);
             ui.separator();
+            item(
+                ui,
+                "Passwords settings",
+                Some(Action::PasswordsSettings),
+                out,
+            );
             item(ui, "Manage shared sessions", None, out);
             ui.separator();
             item(ui, "Edit session presets", None, out);
