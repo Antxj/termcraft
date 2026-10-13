@@ -260,6 +260,69 @@ impl russh::server::Handler for Conn {
         Ok(())
     }
 
+    /// `direct-tcpip`: local forwards, SOCKS and jump hosts.
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        channel: Channel<Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: russh::server::ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let target = (host_to_connect.to_string(), to_u16(port_to_connect));
+        match tokio::net::TcpStream::connect((target.0.as_str(), target.1)).await {
+            Ok(mut tcp) => {
+                reply.accept().await;
+                tokio::spawn(async move {
+                    let mut stream = channel.into_stream();
+                    let _ = tokio::io::copy_bidirectional(&mut tcp, &mut stream).await;
+                });
+            }
+            Err(_) => {
+                reply.reject(russh::ChannelOpenFailure::ConnectFailed).await;
+            }
+        }
+        Ok(())
+    }
+
+    /// `tcpip-forward`: listen on the (loopback) address and open a
+    /// `forwarded-tcpip` channel back to the client per connection.
+    async fn tcpip_forward(
+        &mut self,
+        address: &str,
+        port: &mut u32,
+        session: &mut Session,
+    ) -> Result<bool, Self::Error> {
+        // Never expose the dev server beyond loopback, whatever was asked.
+        let listener = TcpListener::bind(("127.0.0.1", u16::try_from(*port).unwrap_or(0))).await?;
+        *port = u32::from(listener.local_addr()?.port());
+        let (address, bound) = (address.to_string(), *port);
+        let handle = session.handle();
+        tokio::spawn(async move {
+            while let Ok((mut tcp, peer)) = listener.accept().await {
+                let handle = handle.clone();
+                let address = address.clone();
+                tokio::spawn(async move {
+                    let opened = handle
+                        .channel_open_forwarded_tcpip(
+                            address,
+                            bound,
+                            peer.ip().to_string(),
+                            u32::from(peer.port()),
+                        )
+                        .await;
+                    if let Ok(channel) = opened {
+                        let mut stream = channel.into_stream();
+                        let _ = tokio::io::copy_bidirectional(&mut tcp, &mut stream).await;
+                    }
+                });
+            }
+        });
+        Ok(true)
+    }
+
     async fn subsystem_request(
         &mut self,
         channel_id: ChannelId,

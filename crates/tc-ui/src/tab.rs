@@ -1,3 +1,4 @@
+use crate::credentials::{Credentials, PromptAction};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,18 +72,7 @@ pub enum SftpStatus {
 /// "login as:" and password prompts).
 enum LineInput {
     Login(String),
-    Secret(String, SecretKind),
-}
-
-/// Saved-password handling for one SSH connection.
-struct Credentials {
-    vault: Arc<Vault>,
-    mode: SavePasswords,
-    target: Option<Target>,
-    /// The saved password was already offered once on this connection.
-    tried_saved: bool,
-    /// Password the user typed; offered for saving after a successful login.
-    typed: Option<String>,
+    Secret(String, SecretKind, Target),
 }
 
 pub struct Tab {
@@ -101,8 +91,8 @@ pub struct Tab {
     known_hosts: PathBuf,
     repaint: Arc<dyn Fn() + Send + Sync>,
     credentials: Credentials,
-    /// "Do you want to save this password?" waiting for an answer.
-    pub offer_save: Option<(Target, String)>,
+    /// "Do you want to save this password?" questions waiting for an answer.
+    pub offers: std::collections::VecDeque<(Target, String)>,
 }
 
 /// Prompt hook for bash and zsh that reports `$PWD` with OSC 7. Typed into
@@ -137,14 +127,8 @@ impl Tab {
             line: None,
             known_hosts: env.known_hosts.clone(),
             repaint: env.repaint.clone(),
-            credentials: Credentials {
-                vault: env.vault.clone(),
-                mode: env.save_passwords,
-                target: None,
-                tried_saved: false,
-                typed: None,
-            },
-            offer_save: None,
+            credentials: Credentials::new(env.vault.clone(), env.save_passwords),
+            offers: Default::default(),
         };
         match tab.session.as_ref().map(|s| s.kind.clone()) {
             None => tab.spawn_local(None),
@@ -205,14 +189,31 @@ impl Tab {
         // Schema ids: 3_7 Compression, 3_8 Execute command.
         let opt = |id: &str| options.get(id).map(String::as_str);
         let (rows, cols) = self.term.size();
-        self.credentials.target = Some(Target::ssh(&user, host, *port));
-        self.credentials.tried_saved = false;
-        self.credentials.typed = None;
+        self.credentials.reset();
+        // Network settings: 3_9 gateway host, 3_10 port, 3_11 login, 3_16 key.
+        let gateway = opt("3_9")
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            .map(|h| tc_ssh::Endpoint {
+                host: h.to_string(),
+                port: opt("3_10")
+                    .and_then(|p| p.trim().parse().ok())
+                    .unwrap_or(22),
+                user: opt("3_11")
+                    .map(str::trim)
+                    .filter(|u| !u.is_empty())
+                    .map_or_else(|| user.clone(), String::from),
+                private_key: opt("3_16")
+                    .map(str::trim)
+                    .filter(|k| !k.is_empty())
+                    .map(PathBuf::from),
+            });
         let params = ConnectParams {
             host: host.clone(),
             port: *port,
             user,
             private_key: private_key.as_ref().map(PathBuf::from),
+            gateway,
             known_hosts: self.known_hosts.clone(),
             compression: opt("3_7").is_some_and(schema::is_true),
             command: opt("3_8")
@@ -289,29 +290,31 @@ impl Tab {
                 }
                 SshEvent::Info(text) => self.message(&format!("\x1b[90m{text}\x1b[0m")),
                 SshEvent::UnknownHostKey {
+                    host,
+                    port,
                     algorithm,
                     fingerprint,
                 } => {
-                    let host = match &self.session {
-                        Some(Session {
-                            kind: SessionKind::Ssh { host, port, .. },
-                            ..
-                        }) => format!("{host}:{port}"),
-                        _ => String::new(),
-                    };
                     self.host_key = Some(HostKeyPrompt {
-                        host,
+                        host: format!("{host}:{port}"),
                         algorithm,
                         fingerprint,
                     });
                 }
-                SshEvent::SecretNeeded { prompt, kind } => self.on_secret_needed(prompt, kind),
+                SshEvent::SecretNeeded {
+                    prompt,
+                    kind,
+                    user,
+                    host,
+                    port,
+                } => self.on_secret_needed(prompt, kind, Target::ssh(&user, &host, port)),
                 SshEvent::Connected => {
                     self.status = None;
                     self.after_login();
                 }
                 SshEvent::Error(e) => self.message(&format!("\x1b[31m{e}\x1b[0m")),
                 SshEvent::Sftp(e) => self.on_sftp(e),
+                SshEvent::Listening(_) => {}
                 SshEvent::Closed { exit_status } => {
                     self.backend = Backend::None;
                     self.sftp = SftpStatus::Off;
@@ -329,45 +332,36 @@ impl Tab {
         changed
     }
 
-    /// Auto-fill a saved password once per connection; otherwise prompt in
-    /// the terminal like PuTTY.
-    fn on_secret_needed(&mut self, prompt: String, kind: SecretKind) {
-        let c = &mut self.credentials;
-        if kind == SecretKind::Password && c.mode != SavePasswords::Never {
-            if !c.tried_saved {
-                c.tried_saved = true;
-                let saved = c
-                    .target
-                    .as_ref()
-                    .and_then(|t| c.vault.get(t).ok().flatten());
-                if let (Some(password), Backend::Ssh(ssh)) = (saved, &self.backend) {
+    /// Auto-fill a saved password once per target; otherwise prompt in the
+    /// terminal like PuTTY.
+    fn on_secret_needed(&mut self, prompt: String, kind: SecretKind, target: Target) {
+        match self.credentials.on_prompt(kind, &target) {
+            PromptAction::AutoFill(password) => {
+                if let Backend::Ssh(ssh) = &self.backend {
                     ssh.reply(Reply::Secret(password));
-                    self.message("\x1b[90mUsing saved password\x1b[0m");
-                    return;
                 }
-            } else if c.typed.is_none() {
-                self.message("\x1b[33mThe saved password was rejected.\x1b[0m");
+                self.message(&format!(
+                    "\x1b[90mUsing saved password for {}\x1b[0m",
+                    target.key()
+                ));
+            }
+            PromptAction::Ask { saved_rejected } => {
+                if saved_rejected {
+                    self.message("\x1b[33mThe saved password was rejected.\x1b[0m");
+                }
+                self.term.feed(format!("{prompt} ").as_bytes());
+                self.line = Some(LineInput::Secret(String::new(), kind, target));
             }
         }
-        self.term.feed(format!("{prompt} ").as_bytes());
-        self.line = Some(LineInput::Secret(String::new(), kind));
     }
 
-    /// After a successful login with a typed password, save it (Always) or
-    /// ask the user (Ask).
+    /// After a successful login, save typed passwords (Always) or queue the
+    /// "Do you want to save this password?" questions (Ask).
     fn after_login(&mut self) {
-        let c = &mut self.credentials;
-        let (Some(password), Some(target)) = (c.typed.take(), c.target.clone()) else {
-            return;
-        };
-        match c.mode {
-            SavePasswords::Always => {
-                if let Err(e) = c.vault.save(&target, &password) {
-                    self.message(&format!("\x1b[31mcould not save password: {e}\x1b[0m"));
-                }
-            }
-            SavePasswords::Ask => self.offer_save = Some((target, password)),
-            SavePasswords::Never => {}
+        let (offers, errors) = self.credentials.after_login();
+        self.offers.extend(offers);
+        for e in errors {
+            self.message(&format!("\x1b[31m{e}\x1b[0m"));
         }
     }
 
@@ -507,7 +501,7 @@ impl Tab {
             let Some(line) = &mut self.line else { return };
             let (buffer, echo) = match line {
                 LineInput::Login(b) => (b, true),
-                LineInput::Secret(b, _) => (b, false),
+                LineInput::Secret(b, ..) => (b, false),
             };
             match ch {
                 '\r' | '\n' => {
@@ -518,10 +512,8 @@ impl Tab {
                             self.term.feed(b"login as: ");
                             self.line = Some(LineInput::Login(String::new()));
                         }
-                        Some(LineInput::Secret(secret, kind)) => {
-                            if kind == SecretKind::Password {
-                                self.credentials.typed = Some(secret.clone());
-                            }
+                        Some(LineInput::Secret(secret, kind, target)) => {
+                            self.credentials.on_typed(kind, target, secret.clone());
                             if let Backend::Ssh(ssh) = &self.backend {
                                 ssh.reply(Reply::Secret(secret));
                             }
@@ -641,8 +633,8 @@ mod tests {
         let mut tab = Tab::open(1, Some(dev_session(addr.port())), &env);
         pump_until(&mut tab, |t| t.term.contents().contains("password:"));
         tab.send(format!("{}\r", tc_devserver::DEV_PASSWORD).as_bytes());
-        pump_until(&mut tab, |t| t.offer_save.is_some());
-        let (target, password) = tab.offer_save.take().unwrap();
+        pump_until(&mut tab, |t| !t.offers.is_empty());
+        let (target, password) = tab.offers.pop_front().unwrap();
         assert_eq!(
             target,
             Target::ssh(tc_devserver::DEV_USER, "127.0.0.1", addr.port())
@@ -658,7 +650,7 @@ mod tests {
         assert!(screen.contains("Using saved password"), "{screen}");
         assert!(!screen.contains("password: "), "{screen}");
         assert!(screen.contains("saved-password-test"), "{screen}");
-        assert!(tab.offer_save.is_none());
+        assert!(tab.offers.is_empty());
     }
 
     /// Run the hook in a real bash (skipped when bash is not installed) and

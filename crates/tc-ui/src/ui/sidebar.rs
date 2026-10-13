@@ -191,7 +191,7 @@ fn tools(ui: &mut egui::Ui, out: &mut Vec<Action>) {
             .default_open(true)
             .show(ui, |ui| {
                 for t in *tools {
-                    item(ui, t, None, out);
+                    item(ui, t, menus::tool_action(t), out);
                 }
             });
     }

@@ -1,12 +1,14 @@
 use crate::tab::{Tab, TabEnv};
 use crate::term_view;
+use crate::tunnels::RunningTunnel;
 use crate::ui::session_editor::SessionEditor;
 use crate::ui::{self, Action, home, menus, sidebar, tabbar, toolbar};
 use crate::updates::{UpdateState, Updates};
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use tc_commands::{Command, CommandError, Host, TabInfo, execute, recent_sessions};
 use tc_core::settings::{Theme, UpdateChannel};
-use tc_core::{Paths, Session, SessionId, SessionStore, Settings};
+use tc_core::{Paths, Session, SessionId, SessionStore, Settings, Tunnel, TunnelId, TunnelStore};
 
 /// Everything the command registry can act on. Kept separate from widget
 /// state so `execute(&mut core, cmd)` borrows cleanly.
@@ -19,6 +21,8 @@ struct Core {
     next_tab_id: u64,
     repaint: Arc<dyn Fn() + Send + Sync>,
     vault: Arc<tc_vault::Vault>,
+    tunnels: TunnelStore,
+    running: BTreeMap<TunnelId, RunningTunnel>,
 }
 
 impl Core {
@@ -107,6 +111,39 @@ impl Host for Core {
         Ok(&self.vault)
     }
 
+    fn tunnels(&mut self) -> Result<&mut TunnelStore, CommandError> {
+        Ok(&mut self.tunnels)
+    }
+
+    fn persist_tunnels(&mut self) -> Result<(), CommandError> {
+        self.tunnels
+            .save(&self.paths.tunnels_file())
+            .map_err(|e| CommandError::Failed(e.to_string()))
+    }
+
+    fn tunnel_status(&self, id: TunnelId) -> Option<String> {
+        self.running.get(&id).map(|t| t.status.clone())
+    }
+
+    fn tunnel_start(&mut self, tunnel: Tunnel) -> Result<(), CommandError> {
+        let running = RunningTunnel::start(
+            &tunnel,
+            self.paths.known_hosts_file(),
+            self.vault.clone(),
+            self.settings.passwords.save,
+            self.repaint.clone(),
+        );
+        self.running.insert(tunnel.id, running);
+        Ok(())
+    }
+
+    fn tunnel_stop(&mut self, id: TunnelId) -> Result<(), CommandError> {
+        self.running
+            .remove(&id)
+            .map(drop)
+            .ok_or_else(|| CommandError::NotFound(format!("tunnel {id} is not running")))
+    }
+
     fn tab_rename(&mut self, tab: Option<u64>, title: &str) -> Result<(), CommandError> {
         let i = self.tab_index(tab)?;
         let title = title.trim();
@@ -132,6 +169,10 @@ pub struct TermCraftApp {
     show_import: bool,
     show_about: bool,
     show_passwords: bool,
+    show_tunnels: bool,
+    tunnel_editor: Option<crate::ui::tunnels_window::TunnelEditor>,
+    /// "Do you want to save this password?" questions from tabs and tunnels.
+    offers: VecDeque<(tc_vault::Target, String)>,
     /// Selected rows in the Passwords settings list.
     password_selection: std::collections::BTreeSet<tc_vault::Target>,
     dont_ask_again: bool,
@@ -155,6 +196,10 @@ impl TermCraftApp {
             SessionStore::default()
         });
         let settings = Settings::load(&paths.settings_file()).unwrap_or_default();
+        let tunnels = TunnelStore::load(&paths.tunnels_file()).unwrap_or_else(|e| {
+            status = format!("could not load tunnels: {e}");
+            TunnelStore::default()
+        });
         let vault = Arc::new(tc_vault::Vault::open(
             paths.passwords_index_file(),
             Box::new(tc_vault::OsKeychain),
@@ -172,7 +217,7 @@ impl TermCraftApp {
             updates.check(&cc.egui_ctx);
         }
 
-        Self {
+        let mut app = Self {
             core: Core {
                 paths,
                 store,
@@ -182,6 +227,8 @@ impl TermCraftApp {
                 next_tab_id: 1,
                 repaint,
                 vault,
+                tunnels,
+                running: BTreeMap::new(),
             },
             updates,
             quick_connect: String::new(),
@@ -190,6 +237,9 @@ impl TermCraftApp {
             show_import: false,
             show_about: false,
             show_passwords: false,
+            show_tunnels: false,
+            tunnel_editor: None,
+            offers: VecDeque::new(),
             password_selection: Default::default(),
             dont_ask_again: false,
             rename: None,
@@ -197,6 +247,23 @@ impl TermCraftApp {
             editor: None,
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
+        };
+        app.autostart_tunnels();
+        app
+    }
+
+    /// Start tunnels marked "Start this tunnel when TermCraft starts".
+    fn autostart_tunnels(&mut self) {
+        let ids: Vec<TunnelId> = self
+            .core
+            .tunnels
+            .tunnels
+            .iter()
+            .filter(|t| t.autostart)
+            .map(|t| t.id)
+            .collect();
+        for id in ids {
+            self.run(Command::TunnelStart { id });
         }
     }
 
@@ -231,6 +298,7 @@ impl TermCraftApp {
             }
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.show_passwords = true,
+            Action::Tunnels => return self.show_tunnels = true,
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
             Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
@@ -291,6 +359,24 @@ impl TermCraftApp {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
+        if self.show_tunnels {
+            let mut open = true;
+            crate::ui::tunnels_window::manager(
+                ctx,
+                &mut open,
+                &self.core.tunnels.tunnels,
+                &self.core.running,
+                &mut self.tunnel_editor,
+                out,
+            );
+            self.show_tunnels = open;
+        }
+        if let Some(editor) = &mut self.tunnel_editor
+            && !editor.show(ctx, out)
+        {
+            self.tunnel_editor = None;
+        }
+        crate::ui::tunnels_window::prompts(ctx, &mut self.core.running);
         self.save_password_dialog(ctx);
         self.passwords_window(ctx, out);
         self.host_key_dialog(ctx);
@@ -405,16 +491,12 @@ impl TermCraftApp {
 
     /// Reference `TFORMSTOREPASSWORDS`: "Do you want to save this password?"
     fn save_password_dialog(&mut self, ctx: &egui::Context) {
-        let active = self.core.active;
-        let Some(tab) = self.core.tabs.iter_mut().find(|t| Some(t.id) == active) else {
-            return;
-        };
-        let Some((target, _)) = &tab.offer_save else {
+        let Some((target, _)) = self.offers.front() else {
             return;
         };
         let mut answer = None;
         egui::Window::new("Save password")
-            .id(egui::Id::new(("save-password", tab.id)))
+            .id(egui::Id::new("save-password"))
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -441,7 +523,7 @@ impl TermCraftApp {
                 ui.checkbox(&mut self.dont_ask_again, "Do not show this message again");
             });
         let Some(yes) = answer else { return };
-        let (target, password) = tab.offer_save.take().expect("checked above");
+        let (target, password) = self.offers.pop_front().expect("checked above");
         if yes && let Err(e) = self.core.vault.save(&target, &password) {
             self.status = format!("could not save password: {e}");
         }
@@ -650,8 +732,13 @@ impl eframe::App for TermCraftApp {
             let update = update.clone();
             self.updates.install(&ctx, update);
         }
+        for t in self.core.running.values_mut() {
+            t.pump();
+            self.offers.extend(t.offers.drain(..));
+        }
         for tab in &mut self.core.tabs {
             tab.pump();
+            self.offers.extend(tab.offers.drain(..));
             // Like the reference: the SSH-browser shows up on SSH login.
             if std::mem::take(&mut tab.sftp_just_ready) && Some(tab.id) == self.core.active {
                 self.core.settings.view.sidebar_tab = tc_core::settings::SidebarTab::Sftp;
@@ -662,8 +749,18 @@ impl eframe::App for TermCraftApp {
         if let Some(snap) = &mut self.snapshot {
             let active = self.core.active;
             let tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
-            if let Some(cmd) = snap.step(&ctx, tab) {
+            let first_frame = !self.show_tunnels && snap.tunnels;
+            if let Some(cmd) = snap.step(&ctx, tab, &mut self.core.running) {
                 self.run(cmd);
+            }
+            // Keep "Do you want to save this password?" out of snapshots.
+            self.offers.clear();
+            if first_frame {
+                self.show_tunnels = true;
+                let ids: Vec<TunnelId> = self.core.tunnels.tunnels.iter().map(|t| t.id).collect();
+                for id in ids {
+                    self.run(Command::TunnelStart { id });
+                }
             }
         }
 

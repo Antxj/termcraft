@@ -64,7 +64,9 @@ impl Settings {
     }
 }
 
-fn load_toml<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> Result<T, StoreError> {
+pub(crate) fn load_toml<T: Default + for<'de> Deserialize<'de>>(
+    path: &Path,
+) -> Result<T, StoreError> {
     match std::fs::read_to_string(path) {
         Ok(text) => toml::from_str(&text).map_err(|source| StoreError::Parse {
             path: path.display().to_string(),
@@ -79,7 +81,7 @@ fn load_toml<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> Result<T, S
 }
 
 /// Write atomically: serialize to a sibling temp file, then rename over.
-fn save_toml<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
+pub(crate) fn save_toml<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
     let io_err = |source| StoreError::Io {
         path: path.display().to_string(),
         source,

@@ -8,7 +8,7 @@ pub use catalog::{CATALOG, CommandSpec, spec};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tc_core::{Session, SessionId, SessionStore};
+use tc_core::{Session, SessionId, SessionStore, Tunnel, TunnelId, TunnelStore};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "command", content = "args", rename_all = "snake_case")]
@@ -65,6 +65,22 @@ pub enum Command {
         tab: Option<u64>,
         title: String,
     },
+    TunnelList {},
+    TunnelAdd {
+        tunnel: Tunnel,
+    },
+    TunnelUpdate {
+        tunnel: Tunnel,
+    },
+    TunnelRemove {
+        id: TunnelId,
+    },
+    TunnelStart {
+        id: TunnelId,
+    },
+    TunnelStop {
+        id: TunnelId,
+    },
     PasswordList {},
     PasswordForget {
         target: tc_vault::Target,
@@ -99,6 +115,12 @@ impl Command {
             Self::TabClose { .. } => "tab_close",
             Self::TabDuplicate { .. } => "tab_duplicate",
             Self::TabRename { .. } => "tab_rename",
+            Self::TunnelList {} => "tunnel_list",
+            Self::TunnelAdd { .. } => "tunnel_add",
+            Self::TunnelUpdate { .. } => "tunnel_update",
+            Self::TunnelRemove { .. } => "tunnel_remove",
+            Self::TunnelStart { .. } => "tunnel_start",
+            Self::TunnelStop { .. } => "tunnel_stop",
             Self::PasswordList {} => "password_list",
             Self::PasswordForget { .. } => "password_forget",
             Self::PasswordForgetAll {} => "password_forget_all",
@@ -150,6 +172,22 @@ pub trait Host {
     }
     fn tab_rename(&mut self, _tab: Option<u64>, _title: &str) -> Result<(), CommandError> {
         Err(CommandError::Unsupported("tabs require the GUI"))
+    }
+    fn tunnels(&mut self) -> Result<&mut TunnelStore, CommandError> {
+        Err(CommandError::Unsupported("no tunnel store"))
+    }
+    fn persist_tunnels(&mut self) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("no tunnel store"))
+    }
+    /// Human-readable state of a running tunnel ("Listening on …").
+    fn tunnel_status(&self, _id: TunnelId) -> Option<String> {
+        None
+    }
+    fn tunnel_start(&mut self, _tunnel: Tunnel) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("tunnels run in the GUI"))
+    }
+    fn tunnel_stop(&mut self, _id: TunnelId) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("tunnels run in the GUI"))
     }
     /// Saved-password store; secrets are never returned through commands.
     fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
@@ -303,6 +341,62 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         }
         Command::TabSend { tab, text } => {
             host.tab_send(tab, &text)?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::TunnelList {} => {
+            let tunnels = host.tunnels()?.tunnels.clone();
+            let rows: Vec<Value> = tunnels
+                .iter()
+                .map(|t| {
+                    let mut v = serde_json::to_value(t).unwrap_or_default();
+                    v["status"] = json!(host.tunnel_status(t.id));
+                    v
+                })
+                .collect();
+            Ok(Value::Array(rows))
+        }
+        Command::TunnelAdd { tunnel } => {
+            tunnel.validate().map_err(CommandError::InvalidArgs)?;
+            let id = tunnel.id;
+            host.tunnels()?.tunnels.push(tunnel);
+            host.persist_tunnels()?;
+            Ok(json!({ "id": id }))
+        }
+        Command::TunnelUpdate { tunnel } => {
+            tunnel.validate().map_err(CommandError::InvalidArgs)?;
+            let store = host.tunnels()?;
+            let slot = store
+                .tunnels
+                .iter_mut()
+                .find(|t| t.id == tunnel.id)
+                .ok_or_else(|| CommandError::NotFound(tunnel.id.to_string()))?;
+            *slot = tunnel;
+            host.persist_tunnels()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::TunnelRemove { id } => {
+            let _ = host.tunnel_stop(id);
+            let store = host.tunnels()?;
+            let before = store.tunnels.len();
+            store.tunnels.retain(|t| t.id != id);
+            if store.tunnels.len() == before {
+                return Err(CommandError::NotFound(id.to_string()));
+            }
+            host.persist_tunnels()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::TunnelStart { id } => {
+            let tunnel = host
+                .tunnels()?
+                .get(id)
+                .cloned()
+                .ok_or_else(|| CommandError::NotFound(id.to_string()))?;
+            tunnel.validate().map_err(CommandError::InvalidArgs)?;
+            host.tunnel_start(tunnel)?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::TunnelStop { id } => {
+            host.tunnel_stop(id)?;
             Ok(json!({ "ok": true }))
         }
         Command::PasswordList {} => to_json(&host.vault()?.list()),

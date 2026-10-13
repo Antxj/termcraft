@@ -11,6 +11,7 @@ pub mod sftp_browser;
 pub mod sidebar;
 pub mod tabbar;
 pub mod toolbar;
+pub mod tunnels_window;
 
 use tc_commands::Command;
 use tc_core::SessionId;
@@ -27,6 +28,7 @@ pub enum Action {
     ToggleFullscreen,
     About,
     PasswordsSettings,
+    Tunnels,
     CheckUpdates,
     ImportDialog,
     NewSession,

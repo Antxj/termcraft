@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod credentials;
 mod snapshot;
 mod tab;
 mod term_view;
+mod tunnels;
 mod ui;
 mod updates;
 

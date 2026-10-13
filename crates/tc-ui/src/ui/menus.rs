@@ -213,9 +213,17 @@ pub fn tools_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
     for (group, tools) in TOOLS {
         header(ui, group);
         for t in *tools {
-            item(ui, t, None, out);
+            item(ui, t, tool_action(t), out);
         }
         ui.separator();
+    }
+}
+
+/// Tools that are implemented.
+pub fn tool_action(name: &str) -> Option<Action> {
+    match name {
+        "SSH tunnels (port forwarding)" => Some(Action::Tunnels),
+        _ => None,
     }
 }
 

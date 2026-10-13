@@ -72,7 +72,7 @@ refined against it.
 | P0 | [~] | SSH remote command ("Execute command"); keep-open after exit pending | `tc-ssh` |
 | P0 | [ ] | SSH agent (Pageant / ssh-agent / OpenSSH agent pipe) | `tc-ssh` |
 | P1 | [x] | SSH compression (zlib / zlib@openssh.com) | `tc-ssh` |
-| P1 | [ ] | SSH gateway / jump host (multi-hop) | `tc-ssh` |
+| P1 | [~] | SSH gateway / jump host (session Network settings 3_9/3_10/3_11/3_16); single hop, multi-hop pending | `tc-ssh` |
 | P1 | [ ] | SOCKS / HTTP proxy for SSH | `tc-ssh` |
 | P1 | [ ] | Telnet | `tc-telnet` |
 | P1 | [ ] | Serial (COM / tty, baud, parity, flow control) | `tc-serial` |
@@ -130,10 +130,10 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P1 | [ ] | Local port forwarding | `tc-ssh` |
-| P1 | [ ] | Remote port forwarding | `tc-ssh` |
-| P1 | [ ] | Dynamic (SOCKS) forwarding | `tc-ssh` |
-| P1 | [ ] | Graphical tunnel manager (start / stop / autostart) | `tc-ui` |
+| P1 | [x] | Local port forwarding | `tc-ssh` |
+| P1 | [x] | Remote port forwarding | `tc-ssh` |
+| P1 | [x] | Dynamic (SOCKS5) forwarding | `tc-ssh` |
+| P1 | [x] | Graphical tunnel manager (start / stop / start all / stop all / autostart, editor with the 3 types); tunnel_* commands | `tc-ui` + `tc-commands` |
 | P2 | [ ] | Built-in light servers: SFTP, FTP, TFTP, HTTP, Telnet | `tc-servers` |
 | P3 | [ ] | Open ports list | `tc-tools` |
 | P3 | [ ] | Port scanner / network scanner | `tc-tools` |

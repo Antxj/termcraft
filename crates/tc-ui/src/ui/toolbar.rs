@@ -141,7 +141,7 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             icon::ARROWS_LEFT_RIGHT,
             "Tunneling",
             "Graphical SSH port forwarding builder",
-            Kind::Action(None),
+            Kind::Action(Some(Action::Tunnels)),
         ),
         (
             icon::PACKAGE,

@@ -1,23 +1,39 @@
 //! Native SSH client built on `russh`.
 //!
-//! [`SshSession::connect`] starts a background thread with its own tokio
-//! runtime and returns immediately. The UI reads [`SshEvent`]s from a
-//! channel and answers questions (unknown host key, password, key
-//! passphrase) with [`SshSession::reply`]. Input and resizes are queued the
-//! same way, so the UI thread never blocks on the network.
+//! [`SshSession::connect`] (interactive shell) and [`SshSession::tunnel`]
+//! (port forwarding) start a background thread with its own tokio runtime
+//! and return immediately. The UI reads [`SshEvent`]s from a channel and
+//! answers questions (unknown host key, password, key passphrase) with
+//! [`SshSession::reply`]. Input and resizes are queued the same way, so the
+//! UI thread never blocks on the network.
+//!
+//! Both kinds of session can go through an SSH gateway (jump host).
 
 pub mod sftp;
+pub mod tunnel;
 
 pub use sftp::{RemoteEntry, SftpEvent, SftpRequest};
+pub use tunnel::{TunnelParams, TunnelSpec};
 
 use crossbeam_channel::{Receiver, Sender};
 use russh::client::{self, KeyboardInteractiveAuthResponse};
 use russh::keys::{self, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 use russh::{ChannelMsg, Disconnect, MethodKind};
+use std::collections::HashMap;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex, mpsc};
+
+/// One SSH server to log in to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Endpoint {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub private_key: Option<PathBuf>,
+}
 
 #[derive(Debug, Clone)]
 pub struct ConnectParams {
@@ -25,6 +41,8 @@ pub struct ConnectParams {
     pub port: u16,
     pub user: String,
     pub private_key: Option<PathBuf>,
+    /// SSH gateway (jump host) to go through, if any.
+    pub gateway: Option<Endpoint>,
     /// OpenSSH-format known_hosts file used for host key verification.
     pub known_hosts: PathBuf,
     pub compression: bool,
@@ -37,6 +55,17 @@ pub struct ConnectParams {
     pub sftp: bool,
 }
 
+impl ConnectParams {
+    fn endpoint(&self) -> Endpoint {
+        Endpoint {
+            host: self.host.clone(),
+            port: self.port,
+            user: self.user.clone(),
+            private_key: self.private_key.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SshEvent {
     /// Terminal output (stdout and stderr).
@@ -45,16 +74,23 @@ pub enum SshEvent {
     Info(String),
     /// The server key is not in known_hosts; answer with `Reply::HostKey`.
     UnknownHostKey {
+        host: String,
+        port: u16,
         algorithm: String,
         fingerprint: String,
     },
     /// A secret is needed (password, keyboard-interactive or key
-    /// passphrase); answer with `Reply::Secret`.
+    /// passphrase) for `user@host:port`; answer with `Reply::Secret`.
     SecretNeeded {
         prompt: String,
         kind: SecretKind,
+        user: String,
+        host: String,
+        port: u16,
     },
     Connected,
+    /// A tunnel is accepting connections on this address.
+    Listening(String),
     Error(String),
     Closed {
         exit_status: Option<u32>,
@@ -95,7 +131,29 @@ pub struct SshSession {
 }
 
 impl SshSession {
+    /// Interactive shell (or `command`) with an optional SFTP browser.
     pub fn connect(params: ConnectParams, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
+        let name = format!("ssh {}", params.host);
+        Self::spawn(name, notify, move |input, replies, events| {
+            run_shell(params, input, replies, events)
+        })
+    }
+
+    /// Port forwarding session (no terminal).
+    pub fn tunnel(params: TunnelParams, notify: Arc<dyn Fn() + Send + Sync>) -> Self {
+        let name = format!("tunnel {}", params.ssh.host);
+        Self::spawn(name, notify, move |input, replies, events| async move {
+            tunnel::run(params, input, replies, events)
+                .await
+                .map(|()| None)
+        })
+    }
+
+    fn spawn<F, Fut>(name: String, notify: Arc<dyn Fn() + Send + Sync>, body: F) -> Self
+    where
+        F: FnOnce(mpsc::UnboundedReceiver<Input>, Replies, Events) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<Option<u32>, String>>,
+    {
         let (input_tx, input_rx) = mpsc::unbounded_channel();
         let (reply_tx, reply_rx) = mpsc::unbounded_channel();
         let (event_tx, events) = crossbeam_channel::unbounded();
@@ -104,7 +162,7 @@ impl SshSession {
             notify,
         };
         std::thread::Builder::new()
-            .name(format!("ssh {}", params.host))
+            .name(name)
             .spawn(move || {
                 let runtime = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
@@ -114,7 +172,7 @@ impl SshSession {
                     Err(e) => return events_out.send(SshEvent::Error(e.to_string())),
                 };
                 let replies = Arc::new(Mutex::new(reply_rx));
-                let result = runtime.block_on(run(params, input_rx, replies, events_out.clone()));
+                let result = runtime.block_on(body(input_rx, replies, events_out.clone()));
                 match result {
                     Ok(exit_status) => events_out.send(SshEvent::Closed { exit_status }),
                     Err(e) => {
@@ -174,13 +232,13 @@ pub(crate) struct Events {
 }
 
 impl Events {
-    fn send(&self, event: SshEvent) {
+    pub(crate) fn send(&self, event: SshEvent) {
         let _ = self.tx.send(event);
         (self.notify)();
     }
 }
 
-type Replies = Arc<Mutex<mpsc::UnboundedReceiver<Reply>>>;
+pub(crate) type Replies = Arc<Mutex<mpsc::UnboundedReceiver<Reply>>>;
 
 async fn next_reply(replies: &Replies) -> Reply {
     replies.lock().await.recv().await.unwrap_or(Reply::Cancel)
@@ -189,10 +247,17 @@ async fn next_reply(replies: &Replies) -> Reply {
 async fn ask_secret(
     events: &Events,
     replies: &Replies,
+    endpoint: &Endpoint,
     prompt: String,
     kind: SecretKind,
 ) -> Option<String> {
-    events.send(SshEvent::SecretNeeded { prompt, kind });
+    events.send(SshEvent::SecretNeeded {
+        prompt,
+        kind,
+        user: endpoint.user.clone(),
+        host: endpoint.host.clone(),
+        port: endpoint.port,
+    });
     loop {
         match next_reply(replies).await {
             Reply::Secret(s) => return Some(s),
@@ -202,12 +267,16 @@ async fn ask_secret(
     }
 }
 
+/// Remote forwards: port bound on the server → local `host:port` to reach.
+pub(crate) type RemoteForwards = Arc<std::sync::Mutex<HashMap<u32, (String, u16)>>>;
+
 pub(crate) struct Handler {
     host: String,
     port: u16,
     known_hosts: PathBuf,
     events: Events,
     replies: Replies,
+    forwards: RemoteForwards,
 }
 
 impl client::Handler for Handler {
@@ -237,11 +306,51 @@ impl client::Handler for Handler {
             Ok(false) | Err(_) => Ok(self.ask_host_key(key).await),
         }
     }
+
+    /// A connection arrived on a remote forward: connect locally and bridge.
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        _connected_address: &str,
+        connected_port: u32,
+        originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let target = self
+            .forwards
+            .lock()
+            .expect("lock")
+            .get(&connected_port)
+            .cloned();
+        let Some((host, port)) = target else {
+            drop(reply); // rejects
+            return Ok(());
+        };
+        reply.accept().await;
+        let events = self.events.clone();
+        let from = originator_address.to_string();
+        tokio::spawn(async move {
+            match tokio::net::TcpStream::connect((host.as_str(), port)).await {
+                Ok(mut tcp) => {
+                    let mut stream = channel.into_stream();
+                    let _ = tokio::io::copy_bidirectional(&mut tcp, &mut stream).await;
+                }
+                Err(e) => events.send(SshEvent::Info(format!(
+                    "remote forward from {from}: cannot reach {host}:{port}: {e}"
+                ))),
+            }
+        });
+        Ok(())
+    }
 }
 
 impl Handler {
     async fn ask_host_key(&mut self, key: &PublicKey) -> bool {
         self.events.send(SshEvent::UnknownHostKey {
+            host: self.host.clone(),
+            port: self.port,
             algorithm: key.algorithm().to_string(),
             fingerprint: key.fingerprint(HashAlg::Sha256).to_string(),
         });
@@ -271,40 +380,124 @@ impl Handler {
     }
 }
 
-async fn run(
-    params: ConnectParams,
-    mut input: mpsc::UnboundedReceiver<Input>,
-    replies: Replies,
-    events: Events,
-) -> Result<Option<u32>, String> {
+/// An authenticated connection; the gateway session (if any) is kept alive
+/// for as long as the target session is used.
+pub(crate) struct Connection {
+    pub(crate) handle: client::Handle<Handler>,
+    pub(crate) forwards: RemoteForwards,
+    _gateway: Option<client::Handle<Handler>>,
+}
+
+pub(crate) struct ConnectOptions<'a> {
+    pub target: &'a Endpoint,
+    pub gateway: Option<&'a Endpoint>,
+    pub known_hosts: &'a std::path::Path,
+    pub compression: bool,
+}
+
+fn client_config(compression: bool) -> Arc<client::Config> {
     let mut config = client::Config::default();
-    if params.compression {
+    if compression {
         config.preferred.compression = std::borrow::Cow::Borrowed(&[
             russh::compression::ZLIB_LEGACY,
             russh::compression::ZLIB,
             russh::compression::NONE,
         ]);
     }
-    let handler = Handler {
-        host: params.host.clone(),
-        port: params.port,
-        known_hosts: params.known_hosts.clone(),
+    Arc::new(config)
+}
+
+/// Connect (directly or through the gateway) and authenticate.
+pub(crate) async fn establish(
+    opts: ConnectOptions<'_>,
+    replies: &Replies,
+    events: &Events,
+) -> Result<Connection, String> {
+    let forwards: RemoteForwards = Arc::default();
+    let handler = |e: &Endpoint| Handler {
+        host: e.host.clone(),
+        port: e.port,
+        known_hosts: opts.known_hosts.to_path_buf(),
         events: events.clone(),
         replies: replies.clone(),
+        forwards: forwards.clone(),
     };
-    events.send(SshEvent::Info(format!(
-        "Connecting to {}:{} …",
-        params.host, params.port
-    )));
-    let mut session = client::connect(
-        Arc::new(config),
-        (params.host.as_str(), params.port),
-        handler,
-    )
-    .await
-    .map_err(|e| format!("connection failed: {e}"))?;
+    let target = opts.target;
+    let config = client_config(opts.compression);
 
-    authenticate(&mut session, &params, &replies, &events).await?;
+    let (mut handle, gateway) = match opts.gateway {
+        None => {
+            events.send(SshEvent::Info(format!(
+                "Connecting to {}:{} …",
+                target.host, target.port
+            )));
+            let handle =
+                client::connect(config, (target.host.as_str(), target.port), handler(target))
+                    .await
+                    .map_err(|e| format!("connection failed: {e}"))?;
+            (handle, None)
+        }
+        Some(gw) => {
+            events.send(SshEvent::Info(format!(
+                "Connecting to SSH gateway {}:{} …",
+                gw.host, gw.port
+            )));
+            let mut gw_handle = client::connect(
+                client_config(false),
+                (gw.host.as_str(), gw.port),
+                handler(gw),
+            )
+            .await
+            .map_err(|e| format!("gateway connection failed: {e}"))?;
+            authenticate(&mut gw_handle, gw, replies, events).await?;
+            events.send(SshEvent::Info(format!(
+                "Connecting to {}:{} through the gateway …",
+                target.host, target.port
+            )));
+            let channel = gw_handle
+                .channel_open_direct_tcpip(
+                    target.host.clone(),
+                    u32::from(target.port),
+                    "127.0.0.1",
+                    0,
+                )
+                .await
+                .map_err(|e| {
+                    format!("gateway cannot reach {}:{}: {e}", target.host, target.port)
+                })?;
+            let handle = client::connect_stream(config, channel.into_stream(), handler(target))
+                .await
+                .map_err(|e| format!("connection through gateway failed: {e}"))?;
+            (handle, Some(gw_handle))
+        }
+    };
+    authenticate(&mut handle, target, replies, events).await?;
+    Ok(Connection {
+        handle,
+        forwards,
+        _gateway: gateway,
+    })
+}
+
+async fn run_shell(
+    params: ConnectParams,
+    mut input: mpsc::UnboundedReceiver<Input>,
+    replies: Replies,
+    events: Events,
+) -> Result<Option<u32>, String> {
+    let target = params.endpoint();
+    let conn = establish(
+        ConnectOptions {
+            target: &target,
+            gateway: params.gateway.as_ref(),
+            known_hosts: &params.known_hosts,
+            compression: params.compression,
+        },
+        &replies,
+        &events,
+    )
+    .await?;
+    let session = &conn.handle;
     events.send(SshEvent::Connected);
 
     let mut channel = session
@@ -330,7 +523,7 @@ async fn run(
     .map_err(|e| format!("cannot start shell: {e}"))?;
 
     let sftp = if params.sftp {
-        match sftp::open(&session).await {
+        match sftp::open(session).await {
             Ok((sftp, home)) => {
                 events.send(SshEvent::Sftp(SftpEvent::Ready { home }));
                 Some(sftp)
@@ -385,19 +578,20 @@ async fn run(
 
 async fn authenticate(
     session: &mut client::Handle<Handler>,
-    params: &ConnectParams,
+    endpoint: &Endpoint,
     replies: &Replies,
     events: &Events,
 ) -> Result<(), String> {
-    let user = params.user.clone();
+    let user = endpoint.user.clone();
     let err = |e: russh::Error| format!("authentication error: {e}");
 
-    if let Some(path) = &params.private_key {
+    if let Some(path) = &endpoint.private_key {
         let key = match keys::load_secret_key(path, None) {
             Ok(k) => Some(k),
             Err(keys::Error::KeyIsEncrypted) => {
                 let prompt = format!("Passphrase for key {}:", path.display());
-                match ask_secret(events, replies, prompt, SecretKind::KeyPassphrase).await {
+                match ask_secret(events, replies, endpoint, prompt, SecretKind::KeyPassphrase).await
+                {
                     Some(pass) => keys::load_secret_key(path, Some(&pass))
                         .map_err(|e| format!("cannot load key {}: {e}", path.display()))
                         .map(Some)?,
@@ -433,8 +627,10 @@ async fn authenticate(
     }
 
     for _attempt in 0..3 {
-        let prompt = format!("{}@{}'s password:", user, params.host);
-        let Some(password) = ask_secret(events, replies, prompt, SecretKind::Password).await else {
+        let prompt = format!("{}@{}'s password:", user, endpoint.host);
+        let Some(password) =
+            ask_secret(events, replies, endpoint, prompt, SecretKind::Password).await
+        else {
             return Err("cancelled".into());
         };
         match session
@@ -447,7 +643,8 @@ async fn authenticate(
                 remaining_methods, ..
             } => {
                 if remaining_methods.contains(&MethodKind::KeyboardInteractive)
-                    && keyboard_interactive(session, &user, Some(password), replies, events).await?
+                    && keyboard_interactive(session, endpoint, Some(password), replies, events)
+                        .await?
                 {
                     return Ok(());
                 }
@@ -462,14 +659,14 @@ async fn authenticate(
 /// the password the user already typed.
 async fn keyboard_interactive(
     session: &mut client::Handle<Handler>,
-    user: &str,
+    endpoint: &Endpoint,
     mut password: Option<String>,
     replies: &Replies,
     events: &Events,
 ) -> Result<bool, String> {
     let err = |e: russh::Error| format!("authentication error: {e}");
     let mut response = session
-        .authenticate_keyboard_interactive_start(user, None)
+        .authenticate_keyboard_interactive_start(endpoint.user.as_str(), None)
         .await
         .map_err(err)?;
     loop {
@@ -484,6 +681,7 @@ async fn keyboard_interactive(
                         _ => match ask_secret(
                             events,
                             replies,
+                            endpoint,
                             p.prompt.clone(),
                             SecretKind::Challenge,
                         )

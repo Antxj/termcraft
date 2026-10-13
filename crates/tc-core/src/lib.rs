@@ -7,8 +7,10 @@ mod schema_gen;
 pub mod session;
 pub mod settings;
 pub mod store;
+pub mod tunnel;
 
 pub use paths::Paths;
 pub use session::{Session, SessionId, SessionKind};
 pub use settings::Settings;
 pub use store::{SessionStore, StoreError};
+pub use tunnel::{Tunnel, TunnelId, TunnelKind, TunnelStore};

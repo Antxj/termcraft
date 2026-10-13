@@ -30,6 +30,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         port,
         user: DEV_USER.into(),
         private_key: None,
+        gateway: None,
         known_hosts: known_hosts.to_path_buf(),
         compression: false,
         command: Some(command.into()),
@@ -66,7 +67,10 @@ fn drive(session: &SshSession, mut answer: impl FnMut(&SshEvent) -> Option<Reply
                 out.exit_status = *exit_status;
                 return out;
             }
-            SshEvent::Info(_) | SshEvent::Connected | SshEvent::Sftp(_) => {}
+            SshEvent::Info(_)
+            | SshEvent::Connected
+            | SshEvent::Sftp(_)
+            | SshEvent::Listening(_) => {}
         }
         if let Some(reply) = answer(&event) {
             session.reply(reply);
@@ -309,4 +313,152 @@ fn sftp_browser_operations() {
     );
     assert!(matches!(e, SshEvent::Sftp(SftpEvent::Failed { .. })));
     s.close();
+}
+
+// ---------------------------------------------------------------- tunnels
+
+/// Plain TCP echo server on a free loopback port (std, own thread).
+fn echo_server() -> u16 {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut s = stream;
+                let mut buf = [0u8; 1024];
+                while let Ok(n) = std::io::Read::read(&mut s, &mut buf) {
+                    if n == 0 || std::io::Write::write_all(&mut s, &buf[..n]).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+fn endpoint(port: u16) -> tc_ssh::Endpoint {
+    tc_ssh::Endpoint {
+        host: "127.0.0.1".into(),
+        port,
+        user: DEV_USER.into(),
+        private_key: None,
+    }
+}
+
+/// Start a tunnel and return the address it listens on.
+fn start_tunnel(server: &Server, spec: tc_ssh::TunnelSpec, known: &Path) -> (SshSession, String) {
+    let s = SshSession::tunnel(
+        tc_ssh::TunnelParams {
+            ssh: endpoint(server.port),
+            gateway: None,
+            known_hosts: known.to_path_buf(),
+            spec,
+        },
+        noop(),
+    );
+    let SshEvent::Listening(text) = wait_for(&s, |e| matches!(e, SshEvent::Listening(_))) else {
+        unreachable!()
+    };
+    // "127.0.0.1:1234 → …", "SOCKS5 proxy on 127.0.0.1:1234", "127.0.0.1:1234 on the server → …"
+    let addr = text
+        .split_whitespace()
+        .find(|w| w.starts_with("127.0.0.1:"))
+        .expect("address in Listening text")
+        .to_string();
+    (s, addr)
+}
+
+fn roundtrip(stream: &mut std::net::TcpStream, payload: &[u8]) -> Vec<u8> {
+    use std::io::{Read, Write};
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    stream.write_all(payload).unwrap();
+    let mut got = vec![0u8; payload.len()];
+    stream.read_exact(&mut got).unwrap();
+    got
+}
+
+#[test]
+fn local_tunnel_forwards_bytes() {
+    let echo = echo_server();
+    let server = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let spec = tc_ssh::TunnelSpec::Local {
+        bind: "127.0.0.1".into(),
+        port: 0,
+        dest_host: "127.0.0.1".into(),
+        dest_port: echo,
+    };
+    let (_tunnel, addr) = start_tunnel(&server, spec, &dir.path().join("kh"));
+    let mut c = std::net::TcpStream::connect(&addr).unwrap();
+    assert_eq!(
+        roundtrip(&mut c, b"ping through local tunnel"),
+        b"ping through local tunnel"
+    );
+}
+
+#[test]
+fn remote_tunnel_forwards_bytes() {
+    let echo = echo_server();
+    let server = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let spec = tc_ssh::TunnelSpec::Remote {
+        bind: "127.0.0.1".into(),
+        port: 0,
+        dest_host: "127.0.0.1".into(),
+        dest_port: echo,
+    };
+    let (_tunnel, addr) = start_tunnel(&server, spec, &dir.path().join("kh"));
+    let mut c = std::net::TcpStream::connect(&addr).unwrap();
+    assert_eq!(
+        roundtrip(&mut c, b"ping through remote tunnel"),
+        b"ping through remote tunnel"
+    );
+}
+
+#[test]
+fn dynamic_socks5_tunnel() {
+    use std::io::{Read, Write};
+    let echo = echo_server();
+    let server = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let spec = tc_ssh::TunnelSpec::Dynamic {
+        bind: "127.0.0.1".into(),
+        port: 0,
+    };
+    let (_tunnel, addr) = start_tunnel(&server, spec, &dir.path().join("kh"));
+    let mut c = std::net::TcpStream::connect(&addr).unwrap();
+    c.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    c.write_all(&[5, 1, 0]).unwrap();
+    let mut r = [0u8; 2];
+    c.read_exact(&mut r).unwrap();
+    assert_eq!(r, [5, 0]);
+    let mut req = vec![5, 1, 0, 3, 9];
+    req.extend_from_slice(b"127.0.0.1");
+    req.extend_from_slice(&echo.to_be_bytes());
+    c.write_all(&req).unwrap();
+    let mut rep = [0u8; 10];
+    c.read_exact(&mut rep).unwrap();
+    assert_eq!(rep[1], 0, "SOCKS reply {rep:?}");
+    assert_eq!(roundtrip(&mut c, b"hello socks"), b"hello socks");
+}
+
+#[test]
+fn jump_host_shell() {
+    let gateway = start(DevConfig::default());
+    let target = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(target.port, &dir.path().join("kh"), "echo via-gateway");
+    p.gateway = Some(endpoint(gateway.port));
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.errors.is_empty(), "{out:?}");
+    assert_eq!(
+        out.host_key_prompts, 2,
+        "gateway and target keys are both checked"
+    );
+    assert_eq!(out.secret_prompts, 2, "one login per hop");
+    assert!(out.output.contains("via-gateway"), "{out:?}");
 }

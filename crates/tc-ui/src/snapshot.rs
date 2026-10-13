@@ -7,11 +7,16 @@
 //! - `TERMCRAFT_SNAPSHOT_PASSWORD=…` — typed at the first password prompt
 //!   (use only with the local dev server credentials)
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
+//! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start
+//!   every saved tunnel (prompts are answered like for the session)
 
 use crate::tab::Tab;
+use crate::tunnels::RunningTunnel;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tc_commands::Command;
+use tc_core::TunnelId;
 
 enum Phase {
     Start,
@@ -24,6 +29,7 @@ pub struct Snapshot {
     session: Option<String>,
     password: Option<String>,
     delay: Duration,
+    pub tunnels: bool,
     started: Instant,
     phase: Phase,
 }
@@ -40,13 +46,19 @@ impl Snapshot {
             session: std::env::var("TERMCRAFT_SNAPSHOT_SESSION").ok(),
             password: std::env::var("TERMCRAFT_SNAPSHOT_PASSWORD").ok(),
             delay: Duration::from_millis(delay),
+            tunnels: std::env::var_os("TERMCRAFT_SNAPSHOT_TUNNELS").is_some(),
             started: Instant::now(),
             phase: Phase::Start,
         })
     }
 
     /// Advance the script by one frame. Returns a command to run, if any.
-    pub fn step(&mut self, ctx: &egui::Context, active: Option<&mut Tab>) -> Option<Command> {
+    pub fn step(
+        &mut self,
+        ctx: &egui::Context,
+        active: Option<&mut Tab>,
+        running: &mut BTreeMap<TunnelId, RunningTunnel>,
+    ) -> Option<Command> {
         ctx.request_repaint_after(Duration::from_millis(50));
         match self.phase {
             Phase::Start => {
@@ -67,7 +79,17 @@ impl Snapshot {
                         tab.send(format!("{pw}\r").as_bytes());
                     }
                     // Keep the save-password question out of the picture.
-                    tab.offer_save = None;
+                    tab.offers.clear();
+                }
+                for t in running.values_mut() {
+                    if t.host_key.is_some() {
+                        t.answer_host_key(true, false);
+                    }
+                    if t.secret.is_some() {
+                        let pw = std::env::var("TERMCRAFT_SNAPSHOT_PASSWORD").ok();
+                        t.answer_secret(pw);
+                    }
+                    t.offers.clear();
                 }
                 if self.started.elapsed() >= self.delay {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
