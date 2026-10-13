@@ -74,8 +74,8 @@ refined against it.
 | P1 | [x] | SSH compression (zlib / zlib@openssh.com) | `tc-ssh` |
 | P1 | [~] | SSH gateway / jump host (session Network settings 3_9/3_10/3_11/3_16); single hop, multi-hop pending | `tc-ssh` |
 | P1 | [ ] | SOCKS / HTTP proxy for SSH | `tc-ssh` |
-| P1 | [ ] | Telnet | `tc-telnet` |
-| P1 | [ ] | Serial (COM / tty, baud, parity, flow control) | `tc-serial` |
+| P1 | [x] | Telnet (ECHO, SGA, TERMINAL-TYPE, NAWS negotiation) | `tc-net` |
+| P1 | [x] | Serial (COM / tty, speed, data/stop bits, parity none/odd/even, flow none/XON/RTS); mark/space parity and DSR/DTR pending | `tc-net` |
 | P1 | [ ] | SFTP standalone session | `tc-sftp` |
 | P1 | [ ] | FTP / FTPS (passive, encrypted data channel, ASCII) | `tc-ftp` |
 | P2 | [ ] | RDP (clipboard, drive redirection, CredSSP, /admin) | `tc-rdp` (IronRDP) |

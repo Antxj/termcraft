@@ -12,6 +12,7 @@ members = [
     "crates/tc-ssh",
     "crates/tc-devserver",
     "crates/tc-vault",
+    "crates/tc-net",
     "crates/tc-ui",
     "xtask",
 ]
@@ -37,6 +38,7 @@ tc-mcp = { path = "crates/tc-mcp" }
 tc-ssh = { path = "crates/tc-ssh" }
 tc-devserver = { path = "crates/tc-devserver" }
 tc-vault = { path = "crates/tc-vault" }
+tc-net = { path = "crates/tc-net" }
 
 # external
 anyhow = "1"

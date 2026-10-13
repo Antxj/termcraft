@@ -20,10 +20,15 @@ pub struct TabEnv {
     pub save_passwords: SavePasswords,
 }
 
+type StreamResult = Result<Box<dyn tc_net::Stream>, String>;
+
 enum Backend {
     None,
     Pty(PtySession),
     Ssh(SshSession),
+    /// Telnet / serial being opened in the background.
+    Connecting(crossbeam_channel::Receiver<StreamResult>),
+    Stream(Box<dyn tc_net::Stream>),
 }
 
 /// An unknown SSH host key waiting for the user's decision.
@@ -152,6 +157,8 @@ impl Tab {
                 tab.term.feed(b"login as: ");
                 tab.line = Some(LineInput::Login(String::new()));
             }
+            Some(SessionKind::Telnet { host, port }) => tab.open_telnet(host, port),
+            Some(SessionKind::Serial { port_name, baud }) => tab.open_serial(port_name, baud),
             Some(other) => {
                 tab.message(&format!(
                     "\x1b[33m{} sessions are not implemented yet - see docs/PARITY.md\x1b[0m",
@@ -253,7 +260,105 @@ impl Tab {
             Backend::None => false,
             Backend::Pty(_) => self.pump_pty(),
             Backend::Ssh(_) => self.pump_ssh(),
+            Backend::Connecting(_) | Backend::Stream(_) => self.pump_stream(),
         }
+    }
+
+    /// Open a connection off the UI thread (TCP connect can take seconds).
+    fn open_in_background(&mut self, open: impl FnOnce() -> StreamResult + Send + 'static) {
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let repaint = self.repaint.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(open());
+            repaint();
+        });
+        self.backend = Backend::Connecting(rx);
+    }
+
+    fn open_telnet(&mut self, host: String, port: u16) {
+        self.message(&format!(
+            "\x1b[90mConnecting to {host}:{port} (Telnet) …\x1b[0m"
+        ));
+        let (rows, cols) = self.term.size();
+        let term = self.term_type.clone().unwrap_or_else(|| "xterm".into());
+        let repaint = self.repaint.clone();
+        self.open_in_background(move || {
+            tc_net::telnet::Telnet::connect(&host, port, &term, rows, cols, repaint)
+                .map(|t| Box::new(t) as Box<dyn tc_net::Stream>)
+                .map_err(|e| format!("{host}:{port}: {e}"))
+        });
+    }
+
+    fn open_serial(&mut self, port: String, baud: u32) {
+        // Advanced Serial settings: 3_4 data bits, 3_5 stop bits, 3_6 parity, 3_7 flow.
+        let session = self.session.clone();
+        let idx = |id: &str, default: u8| -> u8 {
+            let param = tc_core::schema::type_params(8).iter().find(|p| p.id == id);
+            match (session.as_ref(), param) {
+                (Some(s), Some(p)) => s.option(p).parse().unwrap_or(default),
+                _ => default,
+            }
+        };
+        let config = tc_net::serial::SerialConfig::from_indices(
+            &port,
+            baud,
+            idx("3_4", 3),
+            idx("3_5", 0),
+            idx("3_6", 0),
+            idx("3_7", 1),
+        );
+        self.message(&format!("\x1b[90mOpening {port} at {baud} baud …\x1b[0m"));
+        let repaint = self.repaint.clone();
+        self.open_in_background(move || {
+            let config = config?;
+            tc_net::serial::Serial::open(&config, repaint)
+                .map(|s| Box::new(s) as Box<dyn tc_net::Stream>)
+        });
+    }
+
+    fn pump_stream(&mut self) -> bool {
+        if let Backend::Connecting(rx) = &self.backend {
+            match rx.try_recv() {
+                Ok(Ok(stream)) => {
+                    self.backend = Backend::Stream(stream);
+                    self.status = None;
+                }
+                Ok(Err(e)) => {
+                    self.backend = Backend::None;
+                    self.status = Some("connection failed".into());
+                    self.message(&format!("\x1b[31m{e}\x1b[0m"));
+                    return true;
+                }
+                Err(_) => return false,
+            }
+        }
+        let Backend::Stream(stream) = &mut self.backend else {
+            return false;
+        };
+        let events: Vec<tc_net::StreamEvent> = stream.events().try_iter().collect();
+        let changed = !events.is_empty();
+        for event in events {
+            match event {
+                tc_net::StreamEvent::Output(bytes) => {
+                    let reply = self.term.feed(&bytes);
+                    if !reply.is_empty()
+                        && let Backend::Stream(stream) = &mut self.backend
+                    {
+                        let _ = stream.write(&reply);
+                    }
+                }
+                tc_net::StreamEvent::Closed(reason) => {
+                    self.backend = Backend::None;
+                    self.status = Some("connection closed".into());
+                    let why = reason.map(|r| format!(": {r}")).unwrap_or_default();
+                    self.message(&format!(
+                        "\r\n\x1b[90m[connection closed{why} - close the tab or reopen the session]\x1b[0m"
+                    ));
+                    break;
+                }
+            }
+        }
+        changed
     }
 
     fn pump_pty(&mut self) -> bool {
@@ -508,6 +613,10 @@ impl Tab {
                 let _ = pty.write(bytes);
             }
             Backend::Ssh(ssh) => ssh.write(bytes),
+            Backend::Stream(stream) => {
+                let _ = stream.write(bytes);
+            }
+            Backend::Connecting(_) => {}
         }
     }
 
@@ -573,6 +682,10 @@ impl Tab {
                 let _ = pty.resize(rows, cols);
             }
             Backend::Ssh(ssh) => ssh.resize(rows, cols),
+            Backend::Stream(_) | Backend::Connecting(_) => {}
+        }
+        if let Backend::Stream(stream) = &mut self.backend {
+            stream.resize(rows, cols);
         }
     }
 
@@ -622,6 +735,49 @@ mod tests {
             .insert("3_8".into(), "echo saved-password-test".into());
         s.options.insert("3_26".into(), "0".into());
         s
+    }
+
+    #[test]
+    fn telnet_tab_shows_server_output() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            // IAC WILL ECHO, then a banner.
+            s.write_all(&[255, 251, 1]).unwrap();
+            s.write_all(
+                b"Welcome to telnet-test
+",
+            )
+            .unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let env = TabEnv {
+            scrollback: 100,
+            known_hosts: dir.path().join("kh"),
+            repaint: Arc::new(|| {}),
+            vault: Arc::new(Vault::open(
+                dir.path().join("i.toml"),
+                Box::new(tc_vault::MemoryStore::default()),
+            )),
+            save_passwords: SavePasswords::Ask,
+        };
+        let session = Session::new(
+            "t",
+            SessionKind::Telnet {
+                host: "127.0.0.1".into(),
+                port,
+            },
+        );
+        let mut tab = Tab::open(1, Some(session), &env);
+        pump_until(&mut tab, |t| {
+            t.term.contents().contains("Welcome to telnet-test")
+        });
+        pump_until(&mut tab, |t| {
+            t.term.contents().contains("connection closed")
+        });
     }
 
     #[test]
