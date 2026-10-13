@@ -4,7 +4,7 @@
 use super::{Action, check, header, item};
 use tc_commands::Command;
 use tc_core::Session;
-use tc_core::settings::{ToolbarStyle, ViewSettings};
+use tc_core::settings::{SplitMode, ToolbarStyle, ViewSettings};
 
 pub struct MenuCtx<'a> {
     pub view: &'a ViewSettings,
@@ -84,7 +84,12 @@ fn terminal_menu(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
         on_tab(Action::Run(Command::TabDuplicate { tab: None })),
         out,
     );
-    item(ui, "Write commands on all terminals", None, out);
+    item(
+        ui,
+        "Write commands on all terminals",
+        Some(Action::ToggleMultiExec),
+        out,
+    );
     ui.separator();
     item(ui, "Quit", Some(Action::Quit), out);
 }
@@ -105,7 +110,7 @@ pub fn sessions_menu(ui: &mut egui::Ui, sessions: &[Session], out: &mut Vec<Acti
 }
 
 pub fn view_menu(ui: &mut egui::Ui, v: &ViewSettings, out: &mut Vec<Action>) {
-    split_items(ui, out);
+    split_items(ui, v.split, out);
     ui.separator();
     item(ui, "Compact mode", None, out);
     item(ui, "Fullscreen mode", Some(Action::ToggleFullscreen), out);
@@ -202,11 +207,15 @@ pub fn view_menu(ui: &mut egui::Ui, v: &ViewSettings, out: &mut Vec<Action>) {
     item(ui, "Take a screenshot", None, out);
 }
 
-pub fn split_items(ui: &mut egui::Ui, out: &mut Vec<Action>) {
-    item(ui, "Single terminal mode", None, out);
-    item(ui, "2 terminals mode (vertical split)", None, out);
-    item(ui, "2 terminals mode (horizontal split)", None, out);
-    item(ui, "4 terminals mode", None, out);
+pub fn split_items(ui: &mut egui::Ui, current: SplitMode, out: &mut Vec<Action>) {
+    for (label, mode) in [
+        ("Single terminal mode", SplitMode::Single),
+        ("2 terminals mode (vertical split)", SplitMode::Vertical),
+        ("2 terminals mode (horizontal split)", SplitMode::Horizontal),
+        ("4 terminals mode", SplitMode::Quad),
+    ] {
+        check(ui, label, current == mode, Action::Split(mode), out);
+    }
 }
 
 pub fn tools_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {

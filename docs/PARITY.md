@@ -27,8 +27,8 @@ refined against it.
 | P0 | [x] | Single command registry shared by GUI / CLI / MCP | `tc-commands` |
 | P0 | [x] | Portable mode (config next to the executable) | `tc-core` |
 | P0 | [~] | Auto-update (signed manifest, portable-safe) | `tc-update` |
-| P1 | [ ] | Split view: 2 terminals (vertical / horizontal) | `tc-ui` |
-| P1 | [ ] | Split view: 4 terminals (grid) | `tc-ui` |
+| P1 | [x] | Split view: 2 terminals (vertical / horizontal); click a pane to make it active | `tc-ui` |
+| P1 | [x] | Split view: 4 terminals (grid) | `tc-ui` |
 | P1 | [ ] | Detachable tabs (tab → own window) | `tc-ui` |
 | P1 | [x] | Fullscreen from tab menu and View menu | `tc-ui` |
 | P1 | [~] | Tab context menu: rename, duplicate, close / close left / right / others / all (reconnect pending) | `tc-ui` |
@@ -143,7 +143,7 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P1 | [ ] | MultiExec: type into all / selected terminals | `tc-ui` |
+| P1 | [~] | MultiExec: type into all terminals, with the reference banner; "Multi-paste" and per-terminal selection pending | `tc-ui` |
 | P1 | [ ] | Macros: record keystrokes, replay on any tab | `tc-core` |
 | P0 | [x] | CLI exposing every command (`termcraft-cli`) | `tc-cli` |
 | P0 | [~] | MCP server (agents drive the app) | `tc-mcp` |

@@ -129,13 +129,13 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             icon::SQUARE_SPLIT_HORIZONTAL,
             "Split",
             "Terminal splitting options",
-            Kind::Popup(|ui, _, out| menus::split_items(ui, out)),
+            Kind::Popup(|ui, cx, out| menus::split_items(ui, cx.view.split, out)),
         ),
         (
             icon::BROADCAST,
             "MultiExec",
             "Send commands to all terminals at once",
-            Kind::Action(None),
+            Kind::Action(Some(Action::ToggleMultiExec)),
         ),
         (
             icon::ARROWS_LEFT_RIGHT,

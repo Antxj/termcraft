@@ -170,6 +170,8 @@ pub struct TermCraftApp {
     show_about: bool,
     show_passwords: bool,
     show_tunnels: bool,
+    /// MultiExec: keystrokes go to every open terminal.
+    multiexec: bool,
     tunnel_editor: Option<crate::ui::tunnels_window::TunnelEditor>,
     /// "Do you want to save this password?" questions from tabs and tunnels.
     offers: VecDeque<(tc_vault::Target, String)>,
@@ -238,6 +240,7 @@ impl TermCraftApp {
             show_about: false,
             show_passwords: false,
             show_tunnels: false,
+            multiexec: false,
             tunnel_editor: None,
             offers: VecDeque::new(),
             password_selection: Default::default(),
@@ -359,6 +362,8 @@ impl TermCraftApp {
             }
             Action::ToolbarStyle(style) => view.toolbar_style = style,
             Action::ToggleTabNumbers => view.show_tab_numbers = !view.show_tab_numbers,
+            Action::Split(mode) => view.split = mode,
+            Action::ToggleMultiExec => return self.multiexec = !self.multiexec,
             Action::ToggleCloseButton => view.show_close_button = !view.show_close_button,
         }
         if let Err(e) = self.core.save_settings() {
@@ -722,6 +727,97 @@ impl TermCraftApp {
     }
 }
 
+/// Reference MultiExec bar.
+fn multiexec_banner(ui: &mut egui::Ui, multiexec: &mut bool) {
+    egui::Frame::new()
+        .fill(ui.visuals().selection.bg_fill)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(
+                        "Multi-execution mode: commands are typed to all terminals",
+                    )
+                    .color(ui.visuals().selection.stroke.color),
+                );
+                if ui.button("Exit multi-execution mode").clicked() {
+                    *multiexec = false;
+                }
+            });
+        });
+}
+
+/// Draw the terminals for the current split mode: the active tab alone, or
+/// the first 2 / 4 tabs in panes. Returns each pane's output.
+fn terminals(
+    ui: &mut egui::Ui,
+    core: &mut Core,
+    split: tc_core::settings::SplitMode,
+    font_size: f32,
+) -> Vec<(u64, term_view::TermOutput)> {
+    use tc_core::settings::SplitMode as S;
+    let area = ui.available_rect_before_wrap();
+    let gap = 3.0;
+    let rects: Vec<egui::Rect> = match split {
+        S::Single => vec![area],
+        S::Vertical => {
+            let (l, r) = area.split_left_right_at_fraction(0.5);
+            vec![
+                l.shrink2(egui::vec2(gap, 0.0)),
+                r.shrink2(egui::vec2(gap, 0.0)),
+            ]
+        }
+        S::Horizontal => {
+            let (t, b) = area.split_top_bottom_at_fraction(0.5);
+            vec![
+                t.shrink2(egui::vec2(0.0, gap)),
+                b.shrink2(egui::vec2(0.0, gap)),
+            ]
+        }
+        S::Quad => {
+            let (t, b) = area.split_top_bottom_at_fraction(0.5);
+            let (tl, tr) = t.split_left_right_at_fraction(0.5);
+            let (bl, br) = b.split_left_right_at_fraction(0.5);
+            [tl, tr, bl, br].map(|r| r.shrink(gap)).to_vec()
+        }
+    };
+    let active = core.active;
+    let ids: Vec<u64> = if split == S::Single {
+        active.into_iter().collect()
+    } else {
+        core.tabs.iter().take(rects.len()).map(|t| t.id).collect()
+    };
+    let mut outputs = Vec::new();
+    for (i, rect) in rects.iter().enumerate() {
+        let mut pane = ui.new_child(egui::UiBuilder::new().max_rect(*rect));
+        match ids
+            .get(i)
+            .and_then(|id| core.tabs.iter_mut().find(|t| t.id == *id))
+        {
+            Some(tab) => {
+                let is_active = Some(tab.id) == active;
+                let id = tab.id;
+                outputs.push((id, term_view::show(&mut pane, tab, font_size, is_active)));
+                if split != S::Single && is_active {
+                    pane.painter().rect_stroke(
+                        *rect,
+                        0.0,
+                        egui::Stroke::new(1.5, pane.visuals().selection.bg_fill),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+            }
+            None => {
+                pane.centered_and_justified(|ui| {
+                    ui.weak("Open another tab to fill this terminal pane.");
+                });
+            }
+        }
+    }
+    ui.allocate_rect(area, egui::Sense::hover());
+    outputs
+}
+
 fn apply_theme(ctx: &egui::Context, theme: Theme) {
     ctx.set_theme(match theme {
         Theme::System => egui::ThemePreference::System,
@@ -758,7 +854,7 @@ impl eframe::App for TermCraftApp {
             let active = self.core.active;
             let tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
             let first_frame = !self.show_tunnels && snap.tunnels;
-            if let Some(cmd) = snap.step(&ctx, tab, &mut self.core.running) {
+            for cmd in snap.step(&ctx, tab, &mut self.core.running) {
                 self.run(cmd);
             }
             // Keep "Do you want to save this password?" out of snapshots.
@@ -829,16 +925,33 @@ impl eframe::App for TermCraftApp {
         let font_size = self.core.settings.terminal.font_size;
         let core = &mut self.core;
         let home_search = &mut self.home_search;
+        let multiexec = &mut self.multiexec;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| {
                 tabbar::show(ui, &tab_views, core.active, &view, &mut out);
-                let active = core.active;
-                if let Some(tab) = core.tabs.iter_mut().find(|t| Some(t.id) == active) {
-                    term_view::show(ui, tab, font_size);
-                } else {
+                if *multiexec {
+                    multiexec_banner(ui, multiexec);
+                }
+                if core.tabs.is_empty() {
                     let recent = recent_sessions(&core.store, 9);
                     home::show(ui, home_search, &core.store.sessions, &recent, &mut out);
+                    return;
+                }
+                let outputs = terminals(ui, core, view.split, font_size);
+                for (id, output) in outputs {
+                    if output.clicked {
+                        out.push(Action::SelectTab(id));
+                    }
+                    for bytes in output.input {
+                        if *multiexec {
+                            for tab in core.tabs.iter_mut().filter(|t| t.is_alive()) {
+                                tab.send(&bytes);
+                            }
+                        } else if let Some(tab) = core.tabs.iter_mut().find(|t| t.id == id) {
+                            tab.send(&bytes);
+                        }
+                    }
                 }
             });
 

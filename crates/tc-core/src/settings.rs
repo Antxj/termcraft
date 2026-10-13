@@ -53,6 +53,30 @@ pub enum SidebarTab {
     Sftp,
 }
 
+/// Terminal split modes (View / Split menus).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SplitMode {
+    #[default]
+    Single,
+    /// Two terminals side by side.
+    Vertical,
+    /// Two terminals one above the other.
+    Horizontal,
+    /// Four terminals in a 2×2 grid.
+    Quad,
+}
+
+impl SplitMode {
+    pub fn panes(self) -> usize {
+        match self {
+            Self::Single => 1,
+            Self::Vertical | Self::Horizontal => 2,
+            Self::Quad => 4,
+        }
+    }
+}
+
 /// Window chrome options (View menu).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -66,6 +90,7 @@ pub struct ViewSettings {
     pub show_tab_numbers: bool,
     pub show_close_button: bool,
     pub theme: Theme,
+    pub split: SplitMode,
 }
 
 impl Default for ViewSettings {
@@ -80,6 +105,7 @@ impl Default for ViewSettings {
             show_tab_numbers: false,
             show_close_button: true,
             theme: Theme::default(),
+            split: SplitMode::default(),
         }
     }
 }

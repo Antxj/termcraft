@@ -15,7 +15,7 @@ pub mod tunnels_window;
 
 use tc_commands::Command;
 use tc_core::SessionId;
-use tc_core::settings::{SidebarTab, ToolbarStyle};
+use tc_core::settings::{SidebarTab, SplitMode, ToolbarStyle};
 
 pub use egui_phosphor::regular as icon;
 
@@ -52,6 +52,8 @@ pub enum Action {
     },
     ToolbarStyle(ToolbarStyle),
     ToggleTabNumbers,
+    Split(SplitMode),
+    ToggleMultiExec,
     ToggleCloseButton,
 }
 

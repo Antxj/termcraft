@@ -10,7 +10,21 @@ fn color(c: Rgb) -> Color32 {
     Color32::from_rgb(c.0, c.1, c.2)
 }
 
-pub fn show(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32) {
+/// What the widget produced this frame. Input is returned rather than sent
+/// so the app can route it (one tab, or every tab in MultiExec mode).
+#[derive(Default)]
+pub struct TermOutput {
+    pub clicked: bool,
+    pub input: Vec<Vec<u8>>,
+}
+
+pub fn show(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32, active: bool) -> TermOutput {
+    ui.push_id(tab.id, |ui| show_inner(ui, tab, global_font_size, active))
+        .inner
+}
+
+fn show_inner(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32, active: bool) -> TermOutput {
+    let mut out = TermOutput::default();
     let font = FontId::monospace(tab.font_size.unwrap_or(global_font_size));
     let (cell_w, cell_h) = ui.fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
 
@@ -22,7 +36,10 @@ pub fn show(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32) {
 
     // Focus follows the active terminal unless another widget holds it.
     let nothing_focused = ui.memory(|m| m.focused().is_none());
-    if response.clicked() || response.drag_started() || nothing_focused {
+    if response.clicked() || response.drag_started() {
+        out.clicked = true;
+        response.request_focus();
+    } else if active && nothing_focused {
         response.request_focus();
     }
     // Keep Tab / arrows / Esc inside the terminal instead of moving UI focus.
@@ -39,7 +56,7 @@ pub fn show(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32) {
     });
 
     if response.has_focus() {
-        handle_input(ui, tab);
+        out.input = handle_input(ui, tab);
     }
     if response.hovered() {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -58,6 +75,7 @@ pub fn show(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32) {
         vec2(cell_w, cell_h),
         response.has_focus(),
     );
+    out
 }
 
 fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focused: bool) {
@@ -140,18 +158,19 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
     }
 }
 
-fn handle_input(ui: &egui::Ui, tab: &mut Tab) {
+fn handle_input(ui: &egui::Ui, tab: &mut Tab) -> Vec<Vec<u8>> {
+    let mut sent = Vec::new();
     let events = ui.input(|i| i.events.clone());
     let app_cursor = tab.term.application_cursor();
     for event in events {
         match event {
-            egui::Event::Text(text) => tab.send(text.as_bytes()),
+            egui::Event::Text(text) => sent.push(text.into_bytes()),
             egui::Event::Paste(text) => {
                 let text = text.replace("\r\n", "\r").replace('\n', "\r");
                 if tab.term.bracketed_paste() {
-                    tab.send(format!("\x1b[200~{text}\x1b[201~").as_bytes());
+                    sent.push(format!("\x1b[200~{text}\x1b[201~").into_bytes());
                 } else {
-                    tab.send(text.as_bytes());
+                    sent.push(text.into_bytes());
                 }
             }
             egui::Event::Key {
@@ -185,12 +204,13 @@ fn handle_input(ui: &egui::Ui, tab: &mut Tab) {
                 if let Some(k) = map_key(key, mods)
                     && let Some(bytes) = encode_key(k, mods, app_cursor)
                 {
-                    tab.send(&bytes);
+                    sent.push(bytes);
                 }
             }
             _ => {}
         }
     }
+    sent
 }
 
 /// Map egui keys to terminal keys. Printable characters arrive as

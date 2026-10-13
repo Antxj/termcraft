@@ -7,6 +7,7 @@
 //! - `TERMCRAFT_SNAPSHOT_PASSWORD=…` — typed at the first password prompt
 //!   (use only with the local dev server credentials)
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
+//! - `TERMCRAFT_SNAPSHOT_LOCAL_TABS=3` — also open N local terminals
 //! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start
 //!   every saved tunnel (prompts are answered like for the session)
 
@@ -58,15 +59,25 @@ impl Snapshot {
         ctx: &egui::Context,
         active: Option<&mut Tab>,
         running: &mut BTreeMap<TunnelId, RunningTunnel>,
-    ) -> Option<Command> {
+    ) -> Vec<Command> {
         ctx.request_repaint_after(Duration::from_millis(50));
         match self.phase {
             Phase::Start => {
                 self.phase = Phase::Waiting;
-                return self
-                    .session
-                    .clone()
-                    .map(|s| Command::TabOpen { session: Some(s) });
+                let locals: usize = std::env::var("TERMCRAFT_SNAPSHOT_LOCAL_TABS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                let mut cmds: Vec<Command> = (0..locals)
+                    .map(|_| Command::TabOpen { session: None })
+                    .collect();
+                // The session last, so it ends up as the active tab.
+                cmds.extend(
+                    self.session
+                        .clone()
+                        .map(|s| Command::TabOpen { session: Some(s) }),
+                );
+                return cmds;
             }
             Phase::Waiting => {
                 if let Some(tab) = active {
@@ -122,6 +133,6 @@ impl Snapshot {
                 }
             }
         }
-        None
+        Vec::new()
     }
 }
