@@ -4896,6 +4896,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui-phosphor",
+ "image",
  "rfd",
  "serde_json",
  "tc-commands",

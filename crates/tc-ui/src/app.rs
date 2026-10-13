@@ -138,6 +138,7 @@ pub struct TermCraftApp {
     rename: Option<(Rename, String)>,
     confirm_delete: Option<SessionId>,
     editor: Option<SessionEditor>,
+    snapshot: Option<crate::snapshot::Snapshot>,
     status: String,
 }
 
@@ -194,6 +195,7 @@ impl TermCraftApp {
             rename: None,
             confirm_delete: None,
             editor: None,
+            snapshot: crate::snapshot::Snapshot::from_env(),
             status,
         }
     }
@@ -654,6 +656,14 @@ impl eframe::App for TermCraftApp {
             if std::mem::take(&mut tab.sftp_just_ready) && Some(tab.id) == self.core.active {
                 self.core.settings.view.sidebar_tab = tc_core::settings::SidebarTab::Sftp;
                 self.core.settings.view.sidebar_visible = true;
+            }
+        }
+
+        if let Some(snap) = &mut self.snapshot {
+            let active = self.core.active;
+            let tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
+            if let Some(cmd) = snap.step(&ctx, tab) {
+                self.run(cmd);
             }
         }
 

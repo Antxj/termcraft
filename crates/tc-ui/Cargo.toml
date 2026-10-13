@@ -25,6 +25,7 @@ crossbeam-channel.workspace = true
 anyhow.workspace = true
 egui-phosphor = "0.14"
 rfd = "0.17"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [lints]
 workspace = true

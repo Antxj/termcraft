@@ -35,6 +35,22 @@ cargo run -p tc-cli -- run session_add '{"session":{"name":"devserver","type":"s
 That run covers host-key trust and change detection, password and
 public-key login, and a wrong password followed by cancel.
 
+## UI snapshots (no input injection)
+
+The app can render a scripted scene and save its own frame as a PNG. It
+never touches the OS mouse or keyboard, and the window does not take focus.
+
+```powershell
+$env:TERMCRAFT_SNAPSHOT = "shot.png"           # required: output file
+$env:TERMCRAFT_SNAPSHOT_SESSION = "devserver"  # optional: session to open
+$env:TERMCRAFT_SNAPSHOT_PASSWORD = "..."       # optional: dev server password only
+$env:TERMCRAFT_SNAPSHOT_DELAY_MS = "7000"      # optional: settle time
+cargo run -p tc-ui
+```
+
+Run it from a portable folder (with `termcraft.portable`) so your real
+settings are never touched.
+
 ## Driving the GUI in tests
 
 The reference app is never executed (see [CLEAN_ROOM.md](CLEAN_ROOM.md)).

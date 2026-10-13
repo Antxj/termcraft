@@ -10,7 +10,7 @@ use tc_core::Session;
 use tc_core::settings::{SidebarTab, ViewSettings};
 
 pub const STRIP_WIDTH: f32 = 34.0;
-pub const PANEL_WIDTH: f32 = 240.0;
+pub const PANEL_WIDTH: f32 = 300.0;
 
 const TABS: [(SidebarTab, &str, &str); 4] = [
     (SidebarTab::Sessions, icon::STAR, "Sessions"),

@@ -295,7 +295,8 @@ fn file_list(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction
         .filter(|e| view.show_hidden || !e.name.starts_with('.'))
         .cloned()
         .collect();
-    let height = (ui.available_height() - 40.0).max(80.0);
+    // Leave room below for "Follow terminal folder" and its button.
+    let height = (ui.available_height() - 76.0).max(80.0);
     let response = egui::ScrollArea::both()
         .id_salt("sftp-list")
         .max_height(height)

@@ -569,6 +569,11 @@ impl Tab {
         }
     }
 
+    /// A hidden (password-like) prompt is waiting for input.
+    pub fn awaiting_secret(&self) -> bool {
+        matches!(self.line, Some(LineInput::Secret(..)))
+    }
+
     pub fn is_alive(&self) -> bool {
         !matches!(self.backend, Backend::None) || self.line.is_some()
     }
