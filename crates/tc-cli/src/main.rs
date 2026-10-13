@@ -48,6 +48,23 @@ enum UpdateCmd {
     Sign { manifest: String },
     /// Print the hex SHA-256 of a file (for manifest entries).
     Hash { file: String },
+    /// Write an update manifest for release assets.
+    Manifest {
+        #[arg(long)]
+        version: String,
+        #[arg(long, default_value = "stable")]
+        channel: String,
+        /// URL prefix where the assets are published.
+        #[arg(long)]
+        base_url: String,
+        #[arg(long, default_value = "")]
+        notes: String,
+        /// Output file.
+        #[arg(long)]
+        out: String,
+        /// `platform=path`, e.g. `windows-x86_64=dist/termcraft-windows-x86_64.exe`.
+        assets: Vec<String>,
+    },
 }
 
 struct FileHost {
@@ -208,6 +225,28 @@ fn update(cmd: UpdateCmd) -> anyhow::Result<()> {
         }
         UpdateCmd::Hash { file } => {
             println!("{}", tc_update::sha256_file(std::path::Path::new(&file))?);
+        }
+        UpdateCmd::Manifest {
+            version,
+            channel,
+            base_url,
+            notes,
+            out,
+            assets,
+        } => {
+            let assets = assets
+                .iter()
+                .map(|a| {
+                    let (platform, path) = a
+                        .split_once('=')
+                        .with_context(|| format!("asset {a:?} must be platform=path"))?;
+                    Ok((platform.to_string(), std::path::PathBuf::from(path)))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+            let manifest =
+                tc_update::build_manifest(&channel, &version, &notes, &base_url, &assets)?;
+            std::fs::write(&out, serde_json::to_vec_pretty(&manifest)?)?;
+            println!("wrote {out} ({} assets)", manifest.assets.len());
         }
     }
     Ok(())

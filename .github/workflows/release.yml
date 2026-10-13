@@ -1,0 +1,116 @@
+name: Release
+
+# Push a tag like v0.2.0 to build, sign and publish a release.
+#
+# One-time setup (see docs/UPDATES.md):
+#   - repository variable TERMCRAFT_UPDATE_PUBKEY (from `termcraft-cli update keygen`)
+#   - environment "release" with secret TERMCRAFT_UPDATE_SECRET (protect it
+#     with required reviewers: anyone holding it can ship code to all users)
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.platform }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+            ext: .exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos-aarch64
+            ext: ""
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform: macos-x86_64
+            ext: ""
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+            ext: ""
+    runs-on: ${{ matrix.os }}
+    env:
+      TERMCRAFT_UPDATE_PUBKEY: ${{ vars.TERMCRAFT_UPDATE_PUBKEY }}
+      TERMCRAFT_UPDATE_BASE_URL: https://github.com/${{ github.repository }}/releases/latest/download
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libwayland-dev
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p tc-ui -p tc-cli
+      - name: Stage binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          bin=target/${{ matrix.target }}/release
+          cp "$bin/termcraft${{ matrix.ext }}" "dist/termcraft-${{ matrix.platform }}${{ matrix.ext }}"
+          cp "$bin/termcraft-cli${{ matrix.ext }}" "dist/termcraft-cli-${{ matrix.platform }}${{ matrix.ext }}"
+      - name: Portable zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stage = "portable/TermCraft"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/termcraft.exe" $stage
+          Copy-Item "target/${{ matrix.target }}/release/termcraft-cli.exe" $stage
+          New-Item -ItemType File "$stage/termcraft.portable" | Out-Null
+          Compress-Archive -Path "$stage/*" -DestinationPath "dist/TermCraft-portable-${{ matrix.platform }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}
+          path: dist/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Update manifest (signed)
+        env:
+          TERMCRAFT_UPDATE_SECRET: ${{ secrets.TERMCRAFT_UPDATE_SECRET }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          cli=dist/termcraft-cli-linux-x86_64
+          chmod +x "$cli"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          "$cli" update manifest --version "$version" --channel stable --base-url "$base" \
+            --out dist/update-stable.json \
+            windows-x86_64=dist/termcraft-windows-x86_64.exe \
+            linux-x86_64=dist/termcraft-linux-x86_64 \
+            macos-aarch64=dist/termcraft-macos-aarch64 \
+            macos-x86_64=dist/termcraft-macos-x86_64
+          "$cli" update sign dist/update-stable.json
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" --title "TermCraft $GITHUB_REF_NAME" --generate-notes $prerelease

@@ -183,8 +183,8 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [~] | CI on Windows / macOS / Linux | `.github` |
 | P0 | [x] | Dependabot (cargo + GitHub Actions) and cargo-deny | `.github` |
-| P1 | [ ] | Portable Windows `.zip` (single exe) | `xtask` |
+| P1 | [x] | Portable Windows `.zip` (termcraft + termcraft-cli + portable marker) | `release.yml` |
 | P1 | [ ] | Windows installer (MSI / MSIX), signed | `xtask` |
 | P1 | [ ] | macOS universal `.dmg`, signed and notarized | `xtask` |
 | P1 | [ ] | Linux AppImage, `.deb`, `.rpm`, Flatpak | `xtask` |
-| P1 | [ ] | Release pipeline publishing signed update manifest | `.github` |
+| P1 | [x] | Release pipeline publishing signed update manifest (4 platforms) — not run yet (no remote) | `.github` |

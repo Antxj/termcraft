@@ -23,8 +23,12 @@ use std::path::Path;
 /// Base64 ed25519 public key(s), comma-separated, injected at build time by
 /// the release pipeline. Unset in dev builds → updates disabled.
 pub const BUILD_PUBLIC_KEYS: Option<&str> = option_env!("TERMCRAFT_UPDATE_PUBKEY");
-pub const DEFAULT_BASE_URL: &str =
-    "https://github.com/termcraft/termcraft/releases/latest/download";
+/// Where update manifests are fetched from; the release pipeline sets
+/// `TERMCRAFT_UPDATE_BASE_URL` to the repository's latest-release URL.
+pub const DEFAULT_BASE_URL: &str = match option_env!("TERMCRAFT_UPDATE_BASE_URL") {
+    Some(url) => url,
+    None => "https://github.com/termcraft/termcraft/releases/latest/download",
+};
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 
 #[derive(Debug, thiserror::Error)]
@@ -265,6 +269,40 @@ pub fn sign_manifest(manifest_bytes: &[u8], secret_key_b64: &str) -> Result<Stri
     Ok(base64::engine::general_purpose::STANDARD.encode(key.sign(manifest_bytes).to_bytes()))
 }
 
+/// Build a release manifest from local files: `(platform, file)` pairs,
+/// each published at `<base_url>/<file name>`.
+pub fn build_manifest(
+    channel: &str,
+    version: &str,
+    notes: &str,
+    base_url: &str,
+    assets: &[(String, std::path::PathBuf)],
+) -> Result<Manifest, UpdateError> {
+    semver::Version::parse(version.trim_start_matches('v'))
+        .map_err(|e| UpdateError::BadManifest(format!("version {version:?}: {e}")))?;
+    let base = base_url.trim_end_matches('/');
+    let assets = assets
+        .iter()
+        .map(|(platform, path)| {
+            let name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+                UpdateError::BadManifest(format!("bad file name {}", path.display()))
+            })?;
+            Ok(Asset {
+                platform: platform.clone(),
+                url: format!("{base}/{name}"),
+                sha256: sha256_file(path)?,
+                size: std::fs::metadata(path)?.len(),
+            })
+        })
+        .collect::<Result<Vec<_>, UpdateError>>()?;
+    Ok(Manifest {
+        channel: channel.into(),
+        version: version.trim_start_matches('v').into(),
+        notes: notes.into(),
+        assets,
+    })
+}
+
 /// Hash a local file the way manifests expect (hex SHA-256).
 pub fn sha256_file(path: &Path) -> Result<String, UpdateError> {
     let mut file = std::fs::File::open(path)?;
@@ -382,6 +420,32 @@ mod tests {
             select_update(&m, "0.1.0", "linux-riscv64"),
             Err(UpdateError::NoAsset(_))
         ));
+    }
+
+    #[test]
+    fn manifest_from_files_signs_and_verifies() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("termcraft-windows-x86_64.exe");
+        std::fs::write(&exe, b"binary").unwrap();
+        let m = build_manifest(
+            "stable",
+            "v1.2.3",
+            "notes",
+            "https://example.invalid/dl/",
+            &[("windows-x86_64".into(), exe)],
+        )
+        .unwrap();
+        assert_eq!(m.version, "1.2.3");
+        assert_eq!(
+            m.assets[0].url,
+            "https://example.invalid/dl/termcraft-windows-x86_64.exe"
+        );
+        assert_eq!(m.assets[0].size, 6);
+        let bytes = serde_json::to_vec(&m).unwrap();
+        let (secret, keys) = keypair();
+        let sig = sign_manifest(&bytes, &secret).unwrap();
+        assert_eq!(verify_manifest(&bytes, &sig, &keys, "stable").unwrap(), m);
+        assert!(build_manifest("stable", "not-semver", "", "x", &[]).is_err());
     }
 
     #[test]
