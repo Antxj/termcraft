@@ -3,7 +3,7 @@
 //! live; the rest are shown disabled so the layout matches.
 
 use super::{Action, NOT_YET};
-use tc_core::settings::{Theme, ToolbarStyle, UpdateChannel};
+use tc_core::settings::{LocalShell, Theme, ToolbarStyle, UpdateChannel};
 use tc_core::{Paths, Settings};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -96,6 +96,19 @@ fn general(ui: &mut egui::Ui, paths: &Paths) {
 
 fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
     let t = &mut s.terminal;
+    ui.horizontal(|ui| {
+        ui.label("Local terminal environment:");
+        egui::ComboBox::from_id_salt("cfg-local-shell")
+            .selected_text(t.local_shell.label())
+            .show_ui(ui, |ui| {
+                for shell in LocalShell::ALL {
+                    ui.selectable_value(&mut t.local_shell, shell, shell.label());
+                }
+            })
+            .response
+            .on_hover_text("Shell used by new local terminals (Start local terminal)");
+    });
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.checkbox(&mut t.backspace_ctrl_h, "Backspace sends ^H");
         ui.checkbox(&mut t.paste_right_click, "Paste using right-click");

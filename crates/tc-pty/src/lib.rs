@@ -8,6 +8,9 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub mod shells;
+pub use shells::{ShellCommand, ShellKind};
+
 pub enum PtyEvent {
     Output(Vec<u8>),
     Exited,
@@ -29,13 +32,31 @@ impl PtySession {
         cols: u16,
         on_output: Arc<dyn Fn() + Send + Sync>,
     ) -> anyhow::Result<Self> {
+        let shell = ShellCommand {
+            program: program.map(String::from).unwrap_or_else(default_shell),
+            args: args.iter().map(|a| a.to_string()).collect(),
+            env: Vec::new(),
+        };
+        Self::spawn_command(&shell, rows, cols, on_output)
+    }
+
+    /// Run a resolved shell (see [`shells::locate`]).
+    pub fn spawn_command(
+        shell: &ShellCommand,
+        rows: u16,
+        cols: u16,
+        on_output: Arc<dyn Fn() + Send + Sync>,
+    ) -> anyhow::Result<Self> {
         let pair = native_pty_system()
             .openpty(size(rows, cols))
             .context("opening pseudo-terminal")?;
 
-        let program = program.map(String::from).unwrap_or_else(default_shell);
-        let mut cmd = CommandBuilder::new(&program);
-        cmd.args(args);
+        let program = &shell.program;
+        let mut cmd = CommandBuilder::new(program);
+        cmd.args(&shell.args);
+        for (k, v) in &shell.env {
+            cmd.env(k, v);
+        }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         if let Some(home) = home_dir() {

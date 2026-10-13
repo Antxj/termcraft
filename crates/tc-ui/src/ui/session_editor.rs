@@ -11,6 +11,16 @@ use tc_commands::Command;
 use tc_core::schema::{self, Param, SESSION_TYPES, Widget};
 use tc_core::{Session, SessionKind};
 
+/// Shell session "Terminal shell" (3_2), in `LocalShell::from_option` order.
+const SHELL_CHOICES: [&str; 6] = [
+    "<default>",
+    "Bash",
+    "Zsh",
+    "Cmd",
+    "PowerShell",
+    "Windows Subsystem for Linux (WSL)",
+];
+
 /// Icon per reference type index.
 const TYPE_ICONS: [&str; 15] = [
     icon::TERMINAL_WINDOW,    // SSH
@@ -398,7 +408,13 @@ impl SessionEditor {
             return;
         }
         ui.label(p.label);
-        match p.widget {
+        // The reference fills this combo at runtime, so the schema has no items.
+        let widget = if p.label == "Terminal shell" {
+            Widget::Choice(&SHELL_CHOICES)
+        } else {
+            p.widget
+        };
+        match widget {
             Widget::Choice(items) => {
                 let mut index = value
                     .parse::<usize>()

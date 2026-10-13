@@ -2,7 +2,7 @@ use crate::credentials::{Credentials, PromptAction};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tc_core::settings::SavePasswords;
+use tc_core::settings::{LocalShell, SavePasswords};
 use tc_core::{Session, SessionKind, schema};
 use tc_pty::{PtyEvent, PtySession};
 use tc_ssh::{
@@ -22,6 +22,18 @@ pub struct TabEnv {
     /// Global "Backspace sends ^H" (local terminals).
     pub backspace_ctrl_h: bool,
     pub paste_right_click: bool,
+    /// "Local terminal environment".
+    pub local_shell: tc_core::settings::LocalShell,
+}
+
+fn shell_kind(shell: LocalShell) -> tc_pty::ShellKind {
+    match shell {
+        LocalShell::Bash => tc_pty::ShellKind::Bash,
+        LocalShell::Zsh => tc_pty::ShellKind::Zsh,
+        LocalShell::Cmd => tc_pty::ShellKind::Cmd,
+        LocalShell::PowerShell => tc_pty::ShellKind::PowerShell,
+        LocalShell::Wsl => tc_pty::ShellKind::Wsl,
+    }
 }
 
 type StreamResult = Result<Box<dyn tc_net::Stream>, String>;
@@ -165,8 +177,17 @@ impl Tab {
         };
         tab.term_type = settings.term_type;
         match tab.session.as_ref().map(|s| s.kind.clone()) {
-            None => tab.spawn_local(None),
-            Some(SessionKind::LocalShell { program }) => tab.spawn_local(program.as_deref()),
+            None => tab.spawn_local(None, env.local_shell),
+            Some(SessionKind::LocalShell { program }) => {
+                // 3_2 "Terminal shell": 0 = the configured default.
+                let shell = tab
+                    .session
+                    .as_ref()
+                    .and_then(|s| s.options.get("3_2"))
+                    .and_then(|v| LocalShell::from_option(v))
+                    .unwrap_or(env.local_shell);
+                tab.spawn_local(program.as_deref(), shell)
+            }
             Some(SessionKind::Ssh {
                 user: Some(user), ..
             }) => tab.connect_ssh(user),
@@ -223,14 +244,35 @@ impl Tab {
         self.term.feed(format!("{text}\r\n").as_bytes());
     }
 
-    fn spawn_local(&mut self, program: Option<&str>) {
-        match PtySession::spawn(
-            program,
-            &[],
-            INITIAL_ROWS,
-            INITIAL_COLS,
-            self.repaint.clone(),
-        ) {
+    fn spawn_local(&mut self, program: Option<&str>, shell: LocalShell) {
+        let command = match program {
+            Some(p) => tc_pty::ShellCommand {
+                program: p.to_string(),
+                args: Vec::new(),
+                env: Vec::new(),
+            },
+            None => match tc_pty::shells::locate(shell_kind(shell)) {
+                Some(c) => c,
+                None => {
+                    self.message(&format!(
+                        "\x1b[33m{} is not installed on this machine; using the system shell.\x1b[0m",
+                        shell.label()
+                    ));
+                    if shell == LocalShell::Bash && cfg!(windows) {
+                        self.message(
+                            "\x1b[90mInstall Git for Windows or MSYS2 to get Bash.\x1b[0m",
+                        );
+                    }
+                    tc_pty::ShellCommand {
+                        program: tc_pty::default_shell(),
+                        args: Vec::new(),
+                        env: Vec::new(),
+                    }
+                }
+            },
+        };
+        match PtySession::spawn_command(&command, INITIAL_ROWS, INITIAL_COLS, self.repaint.clone())
+        {
             Ok(pty) => self.backend = Backend::Pty(pty),
             Err(e) => {
                 self.message(&format!("\x1b[31mfailed to start: {e:#}\x1b[0m"));
@@ -919,6 +961,7 @@ mod tests {
             ssh: Default::default(),
             backspace_ctrl_h: false,
             paste_right_click: true,
+            local_shell: Default::default(),
         };
         let session = Session::new(
             "t",
@@ -957,6 +1000,7 @@ mod tests {
             ssh: Default::default(),
             backspace_ctrl_h: false,
             paste_right_click: true,
+            local_shell: Default::default(),
         };
 
         // 1st connection: no saved password -> prompt in the terminal.

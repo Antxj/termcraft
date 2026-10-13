@@ -144,6 +144,65 @@ pub struct TerminalSettings {
     pub paste_right_click: bool,
     /// "Backspace sends ^H" for local terminals.
     pub backspace_ctrl_h: bool,
+    /// "Local terminal environment".
+    pub local_shell: LocalShell,
+}
+
+/// "Local terminal environment" (Configuration › Terminal) and the Shell
+/// session's "Terminal shell".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalShell {
+    #[default]
+    Bash,
+    Zsh,
+    Cmd,
+    PowerShell,
+    Wsl,
+}
+
+impl LocalShell {
+    pub const ALL: [LocalShell; 5] = [
+        Self::Bash,
+        Self::Zsh,
+        Self::Cmd,
+        Self::PowerShell,
+        Self::Wsl,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Bash => "Bash",
+            Self::Zsh => "Zsh",
+            Self::Cmd => "Cmd",
+            Self::PowerShell => "PowerShell",
+            Self::Wsl => "Windows Subsystem for Linux (WSL)",
+        }
+    }
+
+    /// Shell session option `3_2` ("Terminal shell"): `0` = the
+    /// configured default, then Bash, Zsh, Cmd, PowerShell, WSL.
+    pub fn from_option(value: &str) -> Option<Self> {
+        match value.trim() {
+            "1" => Some(Self::Bash),
+            "2" => Some(Self::Zsh),
+            "3" => Some(Self::Cmd),
+            "4" => Some(Self::PowerShell),
+            "5" => Some(Self::Wsl),
+            _ => None,
+        }
+    }
+
+    pub fn option_value(shell: Option<Self>) -> &'static str {
+        match shell {
+            None => "0",
+            Some(Self::Bash) => "1",
+            Some(Self::Zsh) => "2",
+            Some(Self::Cmd) => "3",
+            Some(Self::PowerShell) => "4",
+            Some(Self::Wsl) => "5",
+        }
+    }
 }
 
 impl Default for TerminalSettings {
@@ -154,6 +213,7 @@ impl Default for TerminalSettings {
             confirm_exit: true,
             paste_right_click: true,
             backspace_ctrl_h: false,
+            local_shell: LocalShell::default(),
         }
     }
 }
@@ -183,5 +243,23 @@ impl Default for UpdateSettings {
             auto_install: false,
             channel: UpdateChannel::Stable,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_shell_option_round_trip() {
+        assert_eq!(LocalShell::from_option("0"), None);
+        assert_eq!(LocalShell::from_option(""), None);
+        for shell in LocalShell::ALL {
+            let v = LocalShell::option_value(Some(shell));
+            assert_eq!(LocalShell::from_option(v), Some(shell));
+        }
+        let s: Settings = toml::from_str("[terminal]\nlocal_shell = \"power_shell\"\n").unwrap();
+        assert_eq!(s.terminal.local_shell, LocalShell::PowerShell);
+        assert_eq!(Settings::default().terminal.local_shell, LocalShell::Bash);
     }
 }

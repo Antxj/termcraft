@@ -79,6 +79,7 @@ impl Host for Core {
             ssh: self.settings.ssh.clone(),
             backspace_ctrl_h: self.settings.terminal.backspace_ctrl_h,
             paste_right_click: self.settings.terminal.paste_right_click,
+            local_shell: self.settings.terminal.local_shell,
         };
         self.tabs.push(Tab::open(id, session, &env));
         self.active = Some(id);

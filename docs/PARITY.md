@@ -82,7 +82,7 @@ refined against it.
 | P2 | [~] | RDP opens in the system client (mstsc with .rdp file / macOS rdp:// / FreeRDP or Remmina); embedded IronRDP view pending | `tc-ui` |
 | P2 | [~] | VNC opens in the system viewer (Screen Sharing / TigerVNC / TightVNC / Remmina); embedded view pending | `tc-ui` |
 | P2 | [ ] | Mosh | `tc-mosh` |
-| P2 | [ ] | WSL distribution as local shell (Windows) | `tc-pty` |
+| P2 | [~] | WSL as local shell (Windows): `wsl.exe` default distribution; per-distribution choice pending | `tc-pty` |
 | P2 | [ ] | Custom shell-script bookmark | `tc-core` |
 | P3 | [ ] | Rlogin / RSH | `tc-telnet` |
 | P3 | [ ] | XDMCP | `tc-x11` |
@@ -165,7 +165,7 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P2 | [ ] | Windows: offer Git-Bash / MSYS2 / WSL / BusyBox-w32 as local shell | `tc-pty` |
+| P2 | [~] | "Local terminal environment" (Configuration › Terminal) and Shell session "Terminal shell": Bash (default; Git for Windows or MSYS2), Zsh, Cmd, PowerShell, WSL. Falls back to the system shell with a notice. BusyBox-w32 download pending | `tc-pty` + `tc-ui` |
 | P3 | [ ] | Persistent home directory in portable mode | `tc-core` |
 | P3 | [ ] | Plugin / package system for extra tools | — |
 
