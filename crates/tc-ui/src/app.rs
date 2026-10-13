@@ -21,6 +21,7 @@ struct Core {
     next_tab_id: u64,
     repaint: Arc<dyn Fn() + Send + Sync>,
     vault: Arc<tc_vault::Vault>,
+    macros: tc_core::MacroStore,
     tunnels: TunnelStore,
     running: BTreeMap<TunnelId, RunningTunnel>,
 }
@@ -111,6 +112,16 @@ impl Host for Core {
         Ok(&self.vault)
     }
 
+    fn macros(&mut self) -> Result<&mut tc_core::MacroStore, CommandError> {
+        Ok(&mut self.macros)
+    }
+
+    fn persist_macros(&mut self) -> Result<(), CommandError> {
+        self.macros
+            .save(&self.paths.macros_file())
+            .map_err(|e| CommandError::Failed(e.to_string()))
+    }
+
     fn tunnels(&mut self) -> Result<&mut TunnelStore, CommandError> {
         Ok(&mut self.tunnels)
     }
@@ -158,6 +169,9 @@ impl Host for Core {
 enum Rename {
     Tab(u64),
     Session(SessionId),
+    Macro(tc_core::MacroId),
+    /// Name for a macro that was just recorded (its keys).
+    NewMacro(String),
 }
 
 pub struct TermCraftApp {
@@ -172,6 +186,8 @@ pub struct TermCraftApp {
     show_tunnels: bool,
     /// MultiExec: keystrokes go to every open terminal.
     multiexec: bool,
+    /// Macro being recorded: tab id and what was typed so far.
+    recording: Option<(u64, String)>,
     tunnel_editor: Option<crate::ui::tunnels_window::TunnelEditor>,
     /// "Do you want to save this password?" questions from tabs and tunnels.
     offers: VecDeque<(tc_vault::Target, String)>,
@@ -198,6 +214,7 @@ impl TermCraftApp {
             SessionStore::default()
         });
         let settings = Settings::load(&paths.settings_file()).unwrap_or_default();
+        let macros = tc_core::MacroStore::load(&paths.macros_file()).unwrap_or_default();
         let tunnels = TunnelStore::load(&paths.tunnels_file()).unwrap_or_else(|e| {
             status = format!("could not load tunnels: {e}");
             TunnelStore::default()
@@ -229,6 +246,7 @@ impl TermCraftApp {
                 next_tab_id: 1,
                 repaint,
                 vault,
+                macros,
                 tunnels,
                 running: BTreeMap::new(),
             },
@@ -241,6 +259,7 @@ impl TermCraftApp {
             show_passwords: false,
             show_tunnels: false,
             multiexec: false,
+            recording: None,
             tunnel_editor: None,
             offers: VecDeque::new(),
             password_selection: Default::default(),
@@ -364,6 +383,26 @@ impl TermCraftApp {
             Action::ToggleTabNumbers => view.show_tab_numbers = !view.show_tab_numbers,
             Action::Split(mode) => view.split = mode,
             Action::ToggleMultiExec => return self.multiexec = !self.multiexec,
+            Action::StartRecording => {
+                if let Some(id) = self.core.active {
+                    self.recording = Some((id, String::new()));
+                }
+                return;
+            }
+            Action::StopRecording => {
+                if let Some((_, keys)) = self.recording.take()
+                    && !keys.is_empty()
+                {
+                    let n = self.core.macros.macros.len() + 1;
+                    self.rename = Some((Rename::NewMacro(keys), format!("Macro {n}")));
+                }
+                return;
+            }
+            Action::RenameMacro(id) => {
+                let name = self.core.macros.get(id).map(|m| m.name.clone());
+                self.rename = name.map(|n| (Rename::Macro(id), n));
+                return;
+            }
             Action::ToggleCloseButton => view.show_close_button = !view.show_close_button,
         }
         if let Err(e) = self.core.save_settings() {
@@ -439,6 +478,8 @@ impl TermCraftApp {
             let title = match target {
                 Rename::Tab(_) => "Rename tab",
                 Rename::Session(_) => "Rename session",
+                Rename::Macro(_) => "Rename macro",
+                Rename::NewMacro(_) => "Save recorded macro",
             };
             let mut open = true;
             egui::Window::new(title)
@@ -469,6 +510,10 @@ impl TermCraftApp {
                     title: text,
                 },
                 Rename::Session(id) => Command::SessionRename { id, name: text },
+                Rename::Macro(id) => Command::MacroRename { id, name: text },
+                Rename::NewMacro(keys) => Command::MacroAdd {
+                    r#macro: tc_core::Macro::new(text, keys),
+                },
             }));
         }
 
@@ -727,6 +772,27 @@ impl TermCraftApp {
     }
 }
 
+/// Reference macro-recording bar; returns true when STOP is clicked.
+fn recording_banner(ui: &mut egui::Ui) -> bool {
+    let mut stop = false;
+    egui::Frame::new()
+        .fill(egui::Color32::from_rgb(120, 24, 24))
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{}  Recording macro: everything typed in this terminal is recorded",
+                        ui::icon::RECORD
+                    ))
+                    .color(egui::Color32::WHITE),
+                );
+                stop = ui.button("STOP").clicked();
+            });
+        });
+    stop
+}
+
 /// Reference MultiExec bar.
 fn multiexec_banner(ui: &mut egui::Ui, multiexec: &mut bool) {
     egui::Frame::new()
@@ -875,6 +941,8 @@ impl eframe::App for TermCraftApp {
             let cx = menus::MenuCtx {
                 view: &view,
                 sessions: &self.core.store.sessions,
+                macros: &self.core.macros.macros,
+                recording: self.recording.is_some(),
                 has_tab: !self.core.tabs.is_empty(),
                 active_tab: self.core.active,
             };
@@ -902,13 +970,17 @@ impl eframe::App for TermCraftApp {
         if view.sidebar_visible {
             let sessions = &self.core.store.sessions;
             let quick = &mut self.quick_connect;
+            let macros = &self.core.macros.macros;
+            let recording = self.recording.is_some();
             let active = self.core.active;
             let active_tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
             side("sidebar")
                 .default_size(sidebar::PANEL_WIDTH)
                 .min_size(160.0)
                 .show(ui, |ui| {
-                    sidebar::content(ui, quick, &view, sessions, active_tab, &mut out)
+                    sidebar::content(
+                        ui, quick, &view, sessions, macros, recording, active_tab, &mut out,
+                    )
                 });
         }
 
@@ -926,12 +998,16 @@ impl eframe::App for TermCraftApp {
         let core = &mut self.core;
         let home_search = &mut self.home_search;
         let multiexec = &mut self.multiexec;
+        let recording = &mut self.recording;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| {
                 tabbar::show(ui, &tab_views, core.active, &view, &mut out);
                 if *multiexec {
                     multiexec_banner(ui, multiexec);
+                }
+                if recording.is_some() && recording_banner(ui) {
+                    out.push(Action::StopRecording);
                 }
                 if core.tabs.is_empty() {
                     let recent = recent_sessions(&core.store, 9);
@@ -944,6 +1020,11 @@ impl eframe::App for TermCraftApp {
                         out.push(Action::SelectTab(id));
                     }
                     for bytes in output.input {
+                        if let Some((rid, keys)) = recording.as_mut()
+                            && *rid == id
+                        {
+                            keys.push_str(&String::from_utf8_lossy(&bytes));
+                        }
                         if *multiexec {
                             for tab in core.tabs.iter_mut().filter(|t| t.is_alive()) {
                                 tab.send(&bytes);

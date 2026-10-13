@@ -144,7 +144,7 @@ refined against it.
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
 | P1 | [~] | MultiExec: type into all terminals, with the reference banner; "Multi-paste" and per-terminal selection pending | `tc-ui` |
-| P1 | [ ] | Macros: record keystrokes, replay on any tab | `tc-core` |
+| P1 | [x] | Macros: record keystrokes (recording bar + STOP), name, replay on any tab from the Macros menu / sidebar, rename / delete; macro_* commands | `tc-core` + `tc-ui` |
 | P0 | [x] | CLI exposing every command (`termcraft-cli`) | `tc-cli` |
 | P0 | [~] | MCP server (agents drive the app) | `tc-mcp` |
 | P1 | [ ] | Loopback JSON control channel to running app | `tc-ui` |

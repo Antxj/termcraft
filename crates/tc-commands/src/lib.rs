@@ -8,7 +8,9 @@ pub use catalog::{CATALOG, CommandSpec, spec};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tc_core::{Session, SessionId, SessionStore, Tunnel, TunnelId, TunnelStore};
+use tc_core::{
+    Macro, MacroId, MacroStore, Session, SessionId, SessionStore, Tunnel, TunnelId, TunnelStore,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "command", content = "args", rename_all = "snake_case")]
@@ -65,6 +67,24 @@ pub enum Command {
         tab: Option<u64>,
         title: String,
     },
+    MacroList {},
+    MacroAdd {
+        #[serde(rename = "macro")]
+        r#macro: Macro,
+    },
+    MacroRename {
+        id: MacroId,
+        name: String,
+    },
+    MacroRemove {
+        id: MacroId,
+    },
+    /// Type a saved macro into a tab (the active tab if omitted).
+    MacroRun {
+        id: MacroId,
+        #[serde(default)]
+        tab: Option<u64>,
+    },
     TunnelList {},
     TunnelAdd {
         tunnel: Tunnel,
@@ -115,6 +135,11 @@ impl Command {
             Self::TabClose { .. } => "tab_close",
             Self::TabDuplicate { .. } => "tab_duplicate",
             Self::TabRename { .. } => "tab_rename",
+            Self::MacroList {} => "macro_list",
+            Self::MacroAdd { .. } => "macro_add",
+            Self::MacroRename { .. } => "macro_rename",
+            Self::MacroRemove { .. } => "macro_remove",
+            Self::MacroRun { .. } => "macro_run",
             Self::TunnelList {} => "tunnel_list",
             Self::TunnelAdd { .. } => "tunnel_add",
             Self::TunnelUpdate { .. } => "tunnel_update",
@@ -172,6 +197,12 @@ pub trait Host {
     }
     fn tab_rename(&mut self, _tab: Option<u64>, _title: &str) -> Result<(), CommandError> {
         Err(CommandError::Unsupported("tabs require the GUI"))
+    }
+    fn macros(&mut self) -> Result<&mut MacroStore, CommandError> {
+        Err(CommandError::Unsupported("no macro store"))
+    }
+    fn persist_macros(&mut self) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("no macro store"))
     }
     fn tunnels(&mut self) -> Result<&mut TunnelStore, CommandError> {
         Err(CommandError::Unsupported("no tunnel store"))
@@ -341,6 +372,50 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         }
         Command::TabSend { tab, text } => {
             host.tab_send(tab, &text)?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::MacroList {} => to_json(&host.macros()?.macros),
+        Command::MacroAdd { r#macro } => {
+            if r#macro.name.trim().is_empty() {
+                return Err(CommandError::InvalidArgs("name must not be empty".into()));
+            }
+            let id = r#macro.id;
+            host.macros()?.macros.push(r#macro);
+            host.persist_macros()?;
+            Ok(json!({ "id": id }))
+        }
+        Command::MacroRename { id, name } => {
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return Err(CommandError::InvalidArgs("name must not be empty".into()));
+            }
+            let m = host
+                .macros()?
+                .macros
+                .iter_mut()
+                .find(|m| m.id == id)
+                .ok_or_else(|| CommandError::NotFound(id.to_string()))?;
+            m.name = name;
+            host.persist_macros()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::MacroRemove { id } => {
+            let store = host.macros()?;
+            let before = store.macros.len();
+            store.macros.retain(|m| m.id != id);
+            if store.macros.len() == before {
+                return Err(CommandError::NotFound(id.to_string()));
+            }
+            host.persist_macros()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::MacroRun { id, tab } => {
+            let keys = host
+                .macros()?
+                .get(id)
+                .map(|m| m.keys.clone())
+                .ok_or_else(|| CommandError::NotFound(id.to_string()))?;
+            host.tab_send(tab, &keys)?;
             Ok(json!({ "ok": true }))
         }
         Command::TunnelList {} => {
@@ -673,6 +748,51 @@ mod tests {
         execute(&mut host, Command::PasswordForget { target: t }).unwrap();
         assert!(host.1.list().is_empty());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn macros_add_rename_run_remove() {
+        #[derive(Default)]
+        struct MacroHost {
+            store: SessionStore,
+            macros: MacroStore,
+            typed: Vec<(Option<u64>, String)>,
+        }
+        impl Host for MacroHost {
+            fn store(&mut self) -> &mut SessionStore {
+                &mut self.store
+            }
+            fn persist(&mut self) -> Result<(), CommandError> {
+                Ok(())
+            }
+            fn macros(&mut self) -> Result<&mut MacroStore, CommandError> {
+                Ok(&mut self.macros)
+            }
+            fn persist_macros(&mut self) -> Result<(), CommandError> {
+                Ok(())
+            }
+            fn tab_send(&mut self, tab: Option<u64>, text: &str) -> Result<(), CommandError> {
+                self.typed.push((tab, text.to_string()));
+                Ok(())
+            }
+        }
+        let mut host = MacroHost::default();
+        let args = json!({ "macro": { "name": "up", "keys": "uptime\r" } });
+        let out = execute(&mut host, Command::from_call("macro_add", args).unwrap()).unwrap();
+        let id: MacroId = serde_json::from_value(out["id"].clone()).unwrap();
+        execute(
+            &mut host,
+            Command::MacroRename {
+                id,
+                name: "load".into(),
+            },
+        )
+        .unwrap();
+        execute(&mut host, Command::MacroRun { id, tab: Some(3) }).unwrap();
+        assert_eq!(host.typed, vec![(Some(3), "uptime\r".to_string())]);
+        assert_eq!(host.macros.macros[0].name, "load");
+        execute(&mut host, Command::MacroRemove { id }).unwrap();
+        assert!(host.macros.macros.is_empty());
     }
 
     #[test]

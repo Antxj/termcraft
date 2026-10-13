@@ -1,5 +1,6 @@
 //! TermCraft core model. Pure data + persistence; must never depend on UI crates.
 
+pub mod macros;
 pub mod paths;
 pub mod schema;
 #[rustfmt::skip]
@@ -9,6 +10,7 @@ pub mod settings;
 pub mod store;
 pub mod tunnel;
 
+pub use macros::{Macro, MacroId, MacroStore};
 pub use paths::Paths;
 pub use session::{Session, SessionId, SessionKind};
 pub use settings::Settings;

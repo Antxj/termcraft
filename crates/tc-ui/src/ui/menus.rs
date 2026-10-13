@@ -9,6 +9,8 @@ use tc_core::settings::{SplitMode, ToolbarStyle, ViewSettings};
 pub struct MenuCtx<'a> {
     pub view: &'a ViewSettings,
     pub sessions: &'a [Session],
+    pub macros: &'a [tc_core::Macro],
+    pub recording: bool,
     pub has_tab: bool,
     pub active_tab: Option<u64>,
 }
@@ -43,9 +45,23 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
             item(ui, "Edit session presets", None, out);
         });
         ui.menu_button("Macros", |ui| {
-            item(ui, "Record new macro", None, out);
+            if cx.recording {
+                item(ui, "Stop recording", Some(Action::StopRecording), out);
+            } else {
+                let start = cx.has_tab.then_some(Action::StartRecording);
+                item(ui, "Record new macro", start, out);
+            }
             ui.separator();
             header(ui, "Saved macros");
+            for m in cx.macros {
+                let run = cx.has_tab.then(|| {
+                    Action::Run(Command::MacroRun {
+                        id: m.id,
+                        tab: None,
+                    })
+                });
+                item(ui, &m.name, run, out);
+            }
         });
         ui.menu_button("Help", |ui| help_menu(ui, out));
     });

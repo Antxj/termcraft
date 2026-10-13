@@ -57,9 +57,12 @@ pub fn content(
     quick_connect: &mut String,
     view: &ViewSettings,
     sessions: &[Session],
+    macros: &[tc_core::Macro],
+    recording: bool,
     active_tab: Option<&mut crate::tab::Tab>,
     out: &mut Vec<Action>,
 ) {
+    let has_tab = active_tab.is_some();
     ui.add_space(4.0);
     let response = ui.add(
         egui::TextEdit::singleline(quick_connect)
@@ -83,10 +86,7 @@ pub fn content(
         .show(ui, |ui| match view.sidebar_tab {
             SidebarTab::Sessions => session_tree(ui, sessions, &quick_connect.to_lowercase(), out),
             SidebarTab::Tools => tools(ui, out),
-            SidebarTab::Macros => {
-                item(ui, "Record new macro", None, out);
-                ui.weak("No saved macros");
-            }
+            SidebarTab::Macros => macro_list(ui, macros, recording, has_tab, out),
             SidebarTab::Sftp => {}
         });
 }
@@ -183,6 +183,64 @@ fn root_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
             item(ui, &format!("Import {p} sessions"), None, out);
         }
     });
+}
+
+fn macro_list(
+    ui: &mut egui::Ui,
+    macros: &[tc_core::Macro],
+    recording: bool,
+    has_tab: bool,
+    out: &mut Vec<Action>,
+) {
+    if recording {
+        if ui
+            .button(format!("{}  Stop recording", icon::STOP))
+            .clicked()
+        {
+            out.push(Action::StopRecording);
+        }
+    } else {
+        let record = ui.add_enabled(
+            has_tab,
+            egui::Button::new(format!("{}  Record new macro", icon::RECORD)),
+        );
+        if record
+            .on_disabled_hover_text("Open a terminal first")
+            .clicked()
+        {
+            out.push(Action::StartRecording);
+        }
+    }
+    ui.separator();
+    if macros.is_empty() {
+        ui.weak("No saved macros");
+    }
+    for m in macros {
+        let row = ui
+            .selectable_label(false, format!("{}  {}", icon::RECORD, m.name))
+            .on_hover_text(m.preview(120));
+        let run = Action::Run(Command::MacroRun {
+            id: m.id,
+            tab: None,
+        });
+        if row.double_clicked() && has_tab {
+            out.push(run);
+        }
+        row.context_menu(|ui| {
+            let run = Action::Run(Command::MacroRun {
+                id: m.id,
+                tab: None,
+            });
+            item(ui, "Execute", has_tab.then_some(run), out);
+            item(ui, "Rename", Some(Action::RenameMacro(m.id)), out);
+            item(
+                ui,
+                "Delete",
+                Some(Action::Run(Command::MacroRemove { id: m.id })),
+                out,
+            );
+        });
+    }
 }
 
 fn tools(ui: &mut egui::Ui, out: &mut Vec<Action>) {

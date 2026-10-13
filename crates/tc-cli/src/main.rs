@@ -3,7 +3,7 @@ use base64::Engine as _;
 use clap::{Parser, Subcommand};
 use serde_json::Value;
 use tc_commands::{CATALOG, Command, CommandError, Host, execute};
-use tc_core::{Paths, SessionStore, Settings, TunnelStore};
+use tc_core::{MacroStore, Paths, SessionStore, Settings, TunnelStore};
 
 #[derive(Parser)]
 #[command(name = "termcraft-cli", version, about = "Headless TermCraft")]
@@ -56,6 +56,7 @@ struct FileHost {
     settings: Settings,
     vault: tc_vault::Vault,
     tunnels: TunnelStore,
+    macros: MacroStore,
 }
 
 impl FileHost {
@@ -66,12 +67,14 @@ impl FileHost {
         let vault =
             tc_vault::Vault::open(paths.passwords_index_file(), Box::new(tc_vault::OsKeychain));
         let tunnels = TunnelStore::load(&paths.tunnels_file())?;
+        let macros = MacroStore::load(&paths.macros_file())?;
         Ok(Self {
             paths,
             store,
             settings,
             vault,
             tunnels,
+            macros,
         })
     }
 
@@ -93,6 +96,16 @@ impl Host for FileHost {
 
     fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
         Ok(&self.vault)
+    }
+
+    fn macros(&mut self) -> Result<&mut MacroStore, CommandError> {
+        Ok(&mut self.macros)
+    }
+
+    fn persist_macros(&mut self) -> Result<(), CommandError> {
+        self.macros
+            .save(&self.paths.macros_file())
+            .map_err(|e| CommandError::Failed(e.to_string()))
     }
 
     fn tunnels(&mut self) -> Result<&mut TunnelStore, CommandError> {

@@ -54,6 +54,10 @@ impl Paths {
         self.data_dir.join("known_hosts")
     }
 
+    pub fn macros_file(&self) -> PathBuf {
+        self.config_dir.join("macros.toml")
+    }
+
     pub fn tunnels_file(&self) -> PathBuf {
         self.config_dir.join("tunnels.toml")
     }
