@@ -16,6 +16,7 @@ tc-pty.workspace = true
 russh = { version = "0.64", default-features = false, features = ["flate2", "ring", "rsa"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "io-util", "process"] }
 anyhow.workspace = true
+russh-sftp = "3"
 
 [lints]
 workspace = true

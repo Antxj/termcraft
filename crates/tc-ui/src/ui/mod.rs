@@ -7,6 +7,7 @@
 pub mod home;
 pub mod menus;
 pub mod session_editor;
+pub mod sftp_browser;
 pub mod sidebar;
 pub mod tabbar;
 pub mod toolbar;

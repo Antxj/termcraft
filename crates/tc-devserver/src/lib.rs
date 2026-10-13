@@ -1,6 +1,9 @@
 //! Minimal SSH server for development and tests. Binds to loopback only.
 //! Supports password and public-key auth, PTY + interactive shell (the
-//! local shell via `tc-pty`), exec requests and window resizes.
+//! local shell via `tc-pty`), exec requests, window resizes and an SFTP
+//! subsystem rooted at `DevConfig::sftp_root`.
+
+pub mod sftp;
 
 use russh::keys::ssh_key::private::Ed25519Keypair;
 use russh::keys::{PrivateKey, PublicKey};
@@ -8,6 +11,7 @@ use russh::server::{Auth, Msg, Server, Session};
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tc_pty::{PtyEvent, PtySession};
@@ -24,6 +28,8 @@ pub struct DevConfig {
     pub user: String,
     pub password: String,
     pub authorized_keys: Vec<PublicKey>,
+    /// Local directory served as SFTP `/` (created on demand).
+    pub sftp_root: PathBuf,
 }
 
 impl Default for DevConfig {
@@ -32,6 +38,7 @@ impl Default for DevConfig {
             user: DEV_USER.into(),
             password: DEV_PASSWORD.into(),
             authorized_keys: Vec::new(),
+            sftp_root: std::env::temp_dir().join("termcraft-devserver"),
         }
     }
 }
@@ -75,6 +82,7 @@ impl Server for DevServer {
             config: self.config.clone(),
             sizes: HashMap::new(),
             ptys: HashMap::new(),
+            channels: HashMap::new(),
         }
     }
 }
@@ -83,6 +91,8 @@ struct Conn {
     config: Arc<DevConfig>,
     sizes: HashMap<ChannelId, (u16, u16)>,
     ptys: HashMap<ChannelId, Arc<Mutex<PtySession>>>,
+    /// Opened channels not yet claimed by a subsystem.
+    channels: HashMap<ChannelId, Channel<Msg>>,
 }
 
 fn reject() -> Auth {
@@ -120,10 +130,11 @@ impl russh::server::Handler for Conn {
 
     async fn channel_open_session(
         &mut self,
-        _channel: Channel<Msg>,
+        channel: Channel<Msg>,
         reply: russh::server::ChannelOpenHandle,
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
+        self.channels.insert(channel.id(), channel);
         reply.accept().await;
         Ok(())
     }
@@ -245,6 +256,25 @@ impl russh::server::Handler for Conn {
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
         self.ptys.remove(&channel);
+        self.channels.remove(&channel);
+        Ok(())
+    }
+
+    async fn subsystem_request(
+        &mut self,
+        channel_id: ChannelId,
+        name: &str,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        match (name, self.channels.remove(&channel_id)) {
+            ("sftp", Some(channel)) => {
+                std::fs::create_dir_all(&self.config.sftp_root)?;
+                session.channel_success(channel_id)?;
+                let fs = sftp::SftpFs::new(self.config.sftp_root.clone());
+                russh_sftp::server::run(channel.into_stream(), fs).await;
+            }
+            _ => session.channel_failure(channel_id)?,
+        }
         Ok(())
     }
 }

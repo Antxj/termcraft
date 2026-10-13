@@ -1,0 +1,517 @@
+//! SSH-browser side panel (reference `sTabSFTP`): toolbar, path box, file
+//! list (Name, Size (KB), Last modified, Access), transfers, and
+//! "Follow terminal folder". Files dropped from the OS are uploaded.
+
+use super::{NOT_YET, icon};
+use crate::tab::{BrowserPrompt, SftpStatus, SftpView, Tab};
+use std::path::PathBuf;
+use tc_ssh::sftp::{join, parent};
+use tc_ssh::{RemoteEntry, SftpRequest};
+
+pub fn show(ui: &mut egui::Ui, tab: Option<&mut Tab>) {
+    let Some(tab) = tab else {
+        ui.weak("The SSH-browser appears here when an SSH session is connected.");
+        return;
+    };
+    match &tab.sftp {
+        SftpStatus::Off => {
+            ui.weak("The SSH-browser appears here when an SSH session is connected.");
+            return;
+        }
+        SftpStatus::Connecting => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Connecting SSH-browser…");
+            });
+            return;
+        }
+        SftpStatus::Unavailable(e) => {
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
+                format!("SSH-browser unavailable: {e}"),
+            );
+            return;
+        }
+        SftpStatus::Ready(_) => {}
+    }
+
+    let mut actions = Vec::new();
+    {
+        let SftpStatus::Ready(view) = &mut tab.sftp else {
+            return;
+        };
+        toolbar(ui, view, &mut actions);
+        path_box(ui, view, &mut actions);
+        prompt(ui, view, &mut actions);
+        if let Some(e) = &view.error {
+            ui.colored_label(ui.visuals().error_fg_color, e);
+        }
+        transfers(ui, view);
+        let list_rect = file_list(ui, view, &mut actions);
+        dropped_files(ui, list_rect, view, &mut actions);
+        ui.separator();
+        ui.add_enabled(
+            false,
+            egui::Checkbox::new(&mut false, "Follow terminal folder"),
+        )
+        .on_disabled_hover_text(NOT_YET);
+    }
+    for action in actions {
+        apply(tab, action);
+    }
+}
+
+enum BrowserAction {
+    Cd(String),
+    Request(SftpRequest),
+    TypeInTerminal(String),
+}
+
+fn apply(tab: &mut Tab, action: BrowserAction) {
+    match action {
+        BrowserAction::Cd(path) => tab.sftp_list(&path),
+        BrowserAction::Request(r) => tab.sftp_op(r),
+        BrowserAction::TypeInTerminal(text) => tab.send(text.as_bytes()),
+    }
+}
+
+fn tool(ui: &mut egui::Ui, glyph: &str, hint: &str, enabled: bool) -> bool {
+    let b = ui.add_enabled(
+        enabled,
+        egui::Button::new(egui::RichText::new(glyph).size(15.0)).frame(false),
+    );
+    if enabled {
+        b.on_hover_text(hint).clicked()
+    } else {
+        b.on_disabled_hover_text(format!("{hint}\n{NOT_YET}"));
+        false
+    }
+}
+
+fn selected_entries(view: &SftpView) -> Vec<&RemoteEntry> {
+    view.entries
+        .iter()
+        .filter(|e| view.selected.contains(&e.name))
+        .collect()
+}
+
+fn toolbar(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) {
+    let has_selection = !view.selected.is_empty();
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        if tool(ui, icon::ARROW_UP, "Parent directory", view.cwd != "/") {
+            out.push(BrowserAction::Cd(parent(&view.cwd)));
+        }
+        if tool(
+            ui,
+            icon::DOWNLOAD_SIMPLE,
+            "Download selected files",
+            has_selection,
+        ) {
+            download(view, &selected_entries(view), out);
+        }
+        if tool(ui, icon::UPLOAD_SIMPLE, "Upload to current folder", true)
+            && let Some(files) = rfd::FileDialog::new()
+                .set_title("Upload files")
+                .pick_files()
+        {
+            upload(view, files, out);
+        }
+        if tool(ui, icon::ARROWS_CLOCKWISE, "Refresh folder", true) {
+            out.push(BrowserAction::Cd(view.cwd.clone()));
+        }
+        if tool(ui, icon::FOLDER_PLUS, "Create new directory", true) {
+            view.prompt = Some(BrowserPrompt::NewFolder(String::new()));
+        }
+        if tool(ui, icon::FILE_PLUS, "Create new file", true) {
+            view.prompt = Some(BrowserPrompt::NewFile(String::new()));
+        }
+        if tool(ui, icon::TRASH, "Delete selected files", has_selection) {
+            let items = selected_entries(view)
+                .iter()
+                .map(|e| (join(&view.cwd, &e.name), e.is_dir))
+                .collect();
+            view.prompt = Some(BrowserPrompt::ConfirmDelete(items));
+        }
+        tool(ui, icon::SHIELD_CHECK, "Use SUDO for SSH-browser", false);
+        tool(ui, icon::TEXT_AA, "ASCII mode", false);
+        let hidden_hint = if view.show_hidden {
+            "Hide hidden (dot) files"
+        } else {
+            "Show hidden (dot) files"
+        };
+        if tool(ui, icon::EYE, hidden_hint, true) {
+            view.show_hidden = !view.show_hidden;
+        }
+        if tool(ui, icon::COPY, "Copy file/folder path", true) {
+            let path = first_selected_path(view);
+            ui.ctx().copy_text(path);
+        }
+        if tool(
+            ui,
+            icon::TERMINAL,
+            "Copy file path to terminal (Middle mouse click)",
+            true,
+        ) {
+            out.push(BrowserAction::TypeInTerminal(shell_quote(
+                &first_selected_path(view),
+            )));
+        }
+    });
+}
+
+fn first_selected_path(view: &SftpView) -> String {
+    view.selected
+        .iter()
+        .next()
+        .map_or_else(|| view.cwd.clone(), |n| join(&view.cwd, n))
+}
+
+/// Quote a path for a POSIX shell when it contains special characters.
+fn shell_quote(path: &str) -> String {
+    if path
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "/._-~".contains(c))
+    {
+        path.to_string()
+    } else {
+        format!("'{}'", path.replace('\'', "'\\''"))
+    }
+}
+
+fn path_box(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) {
+    let r = ui.add(egui::TextEdit::singleline(&mut view.path_input).desired_width(f32::INFINITY));
+    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        let path = view.path_input.trim().to_string();
+        if !path.is_empty() {
+            out.push(BrowserAction::Cd(path));
+        }
+    }
+}
+
+fn prompt(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) {
+    let Some(mut p) = view.prompt.take() else {
+        return;
+    };
+    let cwd = view.cwd.clone();
+    let mut close = false;
+    // Some(true) = OK, Some(false) = Cancel.
+    fn buttons(ui: &mut egui::Ui, enter: bool) -> Option<bool> {
+        ui.horizontal(|ui| {
+            if ui.button("OK").clicked() || enter {
+                Some(true)
+            } else if ui.button("Cancel").clicked() {
+                Some(false)
+            } else {
+                None
+            }
+        })
+        .inner
+    }
+    egui::Frame::group(ui.style()).show(ui, |ui| match &mut p {
+        BrowserPrompt::NewFolder(name) | BrowserPrompt::NewFile(name) => {
+            ui.label("Name:");
+            let edit = ui.text_edit_singleline(name);
+            edit.request_focus();
+            let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let choice = buttons(ui, enter);
+            close |= choice == Some(false);
+            if choice == Some(true) && !name.trim().is_empty() {
+                let path = join(&cwd, name.trim());
+                out.push(BrowserAction::Request(match p {
+                    BrowserPrompt::NewFolder(_) => SftpRequest::Mkdir(path),
+                    _ => SftpRequest::CreateFile(path),
+                }));
+                close = true;
+            }
+        }
+        BrowserPrompt::Rename { from, to } => {
+            ui.label(format!("Rename {from} to:"));
+            let edit = ui.text_edit_singleline(to);
+            let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let choice = buttons(ui, enter);
+            close |= choice == Some(false);
+            if choice == Some(true) && !to.trim().is_empty() {
+                out.push(BrowserAction::Request(SftpRequest::Rename {
+                    from: join(&cwd, from),
+                    to: join(&cwd, to.trim()),
+                }));
+                close = true;
+            }
+        }
+        BrowserPrompt::ConfirmDelete(items) => {
+            ui.label(format!("Delete {} item(s)?", items.len()));
+            for (path, _) in items.iter().take(5) {
+                ui.weak(path.as_str());
+            }
+            let choice = buttons(ui, false);
+            close |= choice == Some(false);
+            if choice == Some(true) {
+                for (path, is_dir) in items.drain(..) {
+                    out.push(BrowserAction::Request(SftpRequest::Remove { path, is_dir }));
+                }
+                close = true;
+            }
+        }
+    });
+    if !close {
+        view.prompt = Some(p);
+    }
+}
+
+fn transfers(ui: &mut egui::Ui, view: &SftpView) {
+    for (label, done, total) in view.transfers.values() {
+        ui.label(egui::RichText::new(label).small());
+        match total {
+            Some(t) if *t > 0 => {
+                ui.add(egui::ProgressBar::new(*done as f32 / *t as f32).show_percentage());
+            }
+            _ => {
+                ui.add(egui::ProgressBar::new(0.0).text(format!("{} KB", done / 1024)));
+            }
+        }
+    }
+}
+
+fn file_list(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) -> egui::Rect {
+    let entries: Vec<RemoteEntry> = view
+        .entries
+        .iter()
+        .filter(|e| view.show_hidden || !e.name.starts_with('.'))
+        .cloned()
+        .collect();
+    let height = (ui.available_height() - 40.0).max(80.0);
+    let response = egui::ScrollArea::both()
+        .id_salt("sftp-list")
+        .max_height(height)
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            egui::Grid::new("sftp-grid")
+                .num_columns(4)
+                .striped(true)
+                .spacing([10.0, 2.0])
+                .show(ui, |ui| {
+                    for h in ["Name", "Size (KB)", "Last modified", "Access"] {
+                        ui.strong(h);
+                    }
+                    ui.end_row();
+                    if view.cwd != "/" {
+                        let up = ui.selectable_label(false, format!("{}  ..", icon::FOLDER));
+                        if up.double_clicked() {
+                            out.push(BrowserAction::Cd(parent(&view.cwd)));
+                        }
+                        ui.end_row();
+                    }
+                    for e in &entries {
+                        row(ui, view, e, out);
+                    }
+                });
+        });
+    response.inner_rect
+}
+
+fn row(ui: &mut egui::Ui, view: &mut SftpView, e: &RemoteEntry, out: &mut Vec<BrowserAction>) {
+    let glyph = if e.is_dir { icon::FOLDER } else { icon::FILE };
+    let selected = view.selected.contains(&e.name);
+    let r = ui.selectable_label(selected, format!("{glyph}  {}", e.name));
+    if r.clicked() {
+        if ui.input(|i| i.modifiers.command) {
+            if !view.selected.remove(&e.name) {
+                view.selected.insert(e.name.clone());
+            }
+        } else {
+            view.selected = std::iter::once(e.name.clone()).collect();
+        }
+    }
+    if r.double_clicked() {
+        if e.is_dir {
+            out.push(BrowserAction::Cd(join(&view.cwd, &e.name)));
+        } else {
+            download(view, &[e], out);
+        }
+    }
+    if r.middle_clicked() {
+        out.push(BrowserAction::TypeInTerminal(shell_quote(&join(
+            &view.cwd, &e.name,
+        ))));
+    }
+    r.context_menu(|ui| context_menu(ui, view, e, out));
+    ui.label(if e.is_dir {
+        String::new()
+    } else {
+        format!("{}", e.size.div_ceil(1024))
+    });
+    ui.label(e.modified.map(format_time).unwrap_or_default());
+    ui.monospace(e.permissions.map(access_string).unwrap_or_default());
+    ui.end_row();
+}
+
+/// Visible entries of the reference `PopupMenu5`.
+fn context_menu(
+    ui: &mut egui::Ui,
+    view: &mut SftpView,
+    e: &RemoteEntry,
+    out: &mut Vec<BrowserAction>,
+) {
+    let path = join(&view.cwd, &e.name);
+    if e.is_dir && ui.button("Open").clicked() {
+        out.push(BrowserAction::Cd(path.clone()));
+        ui.close();
+    }
+    for label in [
+        "Open with default text editor",
+        "Open with...",
+        "Compare text files",
+    ] {
+        ui.add_enabled(false, egui::Button::new(label))
+            .on_disabled_hover_text(NOT_YET);
+    }
+    if !e.is_dir && ui.button("Download").clicked() {
+        download(view, &[e], out);
+        ui.close();
+    }
+    ui.separator();
+    if ui.button("Delete").clicked() {
+        view.prompt = Some(BrowserPrompt::ConfirmDelete(vec![(path.clone(), e.is_dir)]));
+        ui.close();
+    }
+    if ui.button("Rename").clicked() {
+        view.prompt = Some(BrowserPrompt::Rename {
+            from: e.name.clone(),
+            to: e.name.clone(),
+        });
+        ui.close();
+    }
+    ui.separator();
+    if ui.button("Copy file path").clicked() {
+        ui.ctx().copy_text(path.clone());
+        ui.close();
+    }
+    if ui
+        .button("Copy file path to terminal (Middle mouse click)")
+        .clicked()
+    {
+        out.push(BrowserAction::TypeInTerminal(shell_quote(&path)));
+        ui.close();
+    }
+    ui.add_enabled(false, egui::Button::new("Properties"))
+        .on_disabled_hover_text(NOT_YET);
+    ui.add_enabled(false, egui::Button::new("Permissions"))
+        .on_disabled_hover_text(NOT_YET);
+}
+
+/// Ask where to save, then queue downloads (directories are skipped).
+fn download(view: &SftpView, entries: &[&RemoteEntry], out: &mut Vec<BrowserAction>) {
+    let files: Vec<&&RemoteEntry> = entries.iter().filter(|e| !e.is_dir).collect();
+    match files.as_slice() {
+        [] => {}
+        [one] => {
+            if let Some(local) = rfd::FileDialog::new().set_file_name(&one.name).save_file() {
+                out.push(BrowserAction::Request(SftpRequest::Download {
+                    remote: join(&view.cwd, &one.name),
+                    local,
+                }));
+            }
+        }
+        many => {
+            if let Some(dir) = rfd::FileDialog::new()
+                .set_title("Download to folder")
+                .pick_folder()
+            {
+                for e in many {
+                    out.push(BrowserAction::Request(SftpRequest::Download {
+                        remote: join(&view.cwd, &e.name),
+                        local: dir.join(&e.name),
+                    }));
+                }
+            }
+        }
+    }
+}
+
+fn upload(view: &SftpView, files: Vec<PathBuf>, out: &mut Vec<BrowserAction>) {
+    for local in files.into_iter().filter(|p| p.is_file()) {
+        let Some(name) = local.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        out.push(BrowserAction::Request(SftpRequest::Upload {
+            remote: join(&view.cwd, &name),
+            local,
+        }));
+    }
+}
+
+/// Upload files dragged from the OS and dropped over the list.
+fn dropped_files(ui: &egui::Ui, rect: egui::Rect, view: &SftpView, out: &mut Vec<BrowserAction>) {
+    let (hovering, dropped, pointer) = ui.input(|i| {
+        (
+            !i.raw.hovered_files.is_empty(),
+            i.raw
+                .dropped_files
+                .iter()
+                .map(|f| f.path().to_path_buf())
+                .collect::<Vec<_>>(),
+            i.pointer.latest_pos(),
+        )
+    });
+    let over = pointer.is_none_or(|p| rect.contains(p));
+    if hovering && over {
+        ui.painter().rect_stroke(
+            rect,
+            4.0,
+            egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
+            egui::StrokeKind::Inside,
+        );
+    }
+    if !dropped.is_empty() && over {
+        upload(view, dropped, out);
+    }
+}
+
+/// `rwxr-xr-x` from Unix permission bits.
+fn access_string(mode: u32) -> String {
+    let mut s = String::with_capacity(9);
+    for shift in [6, 3, 0] {
+        let bits = (mode >> shift) & 7;
+        s.push(if bits & 4 != 0 { 'r' } else { '-' });
+        s.push(if bits & 2 != 0 { 'w' } else { '-' });
+        s.push(if bits & 1 != 0 { 'x' } else { '-' });
+    }
+    s
+}
+
+/// `YYYY-MM-DD HH:MM` (UTC) from Unix seconds, without a date library.
+fn format_time(secs: u64) -> String {
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    // Civil-from-days (H. Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}:{:02}",
+        rem / 3600,
+        (rem % 3600) / 60
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats() {
+        assert_eq!(access_string(0o755), "rwxr-xr-x");
+        assert_eq!(access_string(0o640), "rw-r-----");
+        assert_eq!(format_time(0), "1970-01-01 00:00");
+        assert_eq!(format_time(1_791_914_134), "2026-10-13 17:55");
+        assert_eq!(shell_quote("/home/u/a.txt"), "/home/u/a.txt");
+        assert_eq!(shell_quote("/tmp/it's here"), "'/tmp/it'\\''s here'");
+    }
+}

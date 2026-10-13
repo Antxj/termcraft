@@ -6,12 +6,17 @@
 //! passphrase) with [`SshSession::reply`]. Input and resizes are queued the
 //! same way, so the UI thread never blocks on the network.
 
+pub mod sftp;
+
+pub use sftp::{RemoteEntry, SftpEvent, SftpRequest};
+
 use crossbeam_channel::{Receiver, Sender};
 use russh::client::{self, KeyboardInteractiveAuthResponse};
 use russh::keys::{self, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 use russh::{ChannelMsg, Disconnect, MethodKind};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex, mpsc};
 
 #[derive(Debug, Clone)]
@@ -28,6 +33,8 @@ pub struct ConnectParams {
     pub term: String,
     pub cols: u16,
     pub rows: u16,
+    /// Open the SFTP "SSH-browser" channel after login.
+    pub sftp: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +58,7 @@ pub enum SshEvent {
     Closed {
         exit_status: Option<u32>,
     },
+    Sftp(SftpEvent),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,6 +71,7 @@ pub enum Reply {
 enum Input {
     Data(Vec<u8>),
     Resize(u16, u16),
+    Sftp(u64, SftpRequest),
     Close,
 }
 
@@ -70,6 +79,7 @@ pub struct SshSession {
     input: mpsc::UnboundedSender<Input>,
     replies: mpsc::UnboundedSender<Reply>,
     events: Receiver<SshEvent>,
+    next_request: AtomicU64,
 }
 
 impl SshSession {
@@ -106,6 +116,7 @@ impl SshSession {
             input: input_tx,
             replies: reply_tx,
             events,
+            next_request: AtomicU64::new(1),
         }
     }
 
@@ -119,6 +130,13 @@ impl SshSession {
 
     pub fn resize(&self, rows: u16, cols: u16) {
         let _ = self.input.send(Input::Resize(cols, rows));
+    }
+
+    /// Queue an SFTP request; the returned id tags its result events.
+    pub fn sftp(&self, request: SftpRequest) -> u64 {
+        let id = self.next_request.fetch_add(1, Ordering::Relaxed);
+        let _ = self.input.send(Input::Sftp(id, request));
+        id
     }
 
     pub fn reply(&self, reply: Reply) {
@@ -138,7 +156,7 @@ impl Drop for SshSession {
 }
 
 #[derive(Clone)]
-struct Events {
+pub(crate) struct Events {
     tx: Sender<SshEvent>,
     notify: Arc<dyn Fn() + Send + Sync>,
 }
@@ -167,7 +185,7 @@ async fn ask_secret(events: &Events, replies: &Replies, prompt: String) -> Optio
     }
 }
 
-struct Handler {
+pub(crate) struct Handler {
     host: String,
     port: u16,
     known_hosts: PathBuf,
@@ -294,6 +312,21 @@ async fn run(
     }
     .map_err(|e| format!("cannot start shell: {e}"))?;
 
+    let sftp = if params.sftp {
+        match sftp::open(&session).await {
+            Ok((sftp, home)) => {
+                events.send(SshEvent::Sftp(SftpEvent::Ready { home }));
+                Some(sftp)
+            }
+            Err(e) => {
+                events.send(SshEvent::Sftp(SftpEvent::Unavailable(e)));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let mut exit_status = None;
     loop {
         tokio::select! {
@@ -314,6 +347,15 @@ async fn run(
                 Some(Input::Resize(cols, rows)) => {
                     let _ = channel.window_change(u32::from(cols), u32::from(rows), 0, 0).await;
                 }
+                Some(Input::Sftp(id, request)) => match &sftp {
+                    Some(s) => {
+                        tokio::spawn(sftp::execute(s.clone(), id, request, events.clone()));
+                    }
+                    None => events.send(SshEvent::Sftp(SftpEvent::Failed {
+                        id,
+                        error: "SFTP is not available on this connection".into(),
+                    })),
+                },
                 Some(Input::Close) | None => break,
             },
         }

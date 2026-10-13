@@ -1,8 +1,9 @@
+use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tc_core::{Session, SessionKind, schema};
 use tc_pty::{PtyEvent, PtySession};
-use tc_ssh::{ConnectParams, Reply, SshEvent, SshSession};
+use tc_ssh::{ConnectParams, RemoteEntry, Reply, SftpEvent, SftpRequest, SshEvent, SshSession};
 use tc_term::Terminal;
 
 /// What every tab needs from the app.
@@ -25,6 +26,37 @@ pub struct HostKeyPrompt {
     pub fingerprint: String,
 }
 
+/// State of the SSH-browser (SFTP side panel) for one tab.
+#[derive(Default)]
+pub struct SftpView {
+    pub cwd: String,
+    pub path_input: String,
+    pub entries: Vec<RemoteEntry>,
+    pub selected: BTreeSet<String>,
+    pub show_hidden: bool,
+    pub error: Option<String>,
+    /// In-flight operations: id → label.
+    pub ops: HashMap<u64, String>,
+    /// Transfers: id → (label, bytes done, total).
+    pub transfers: HashMap<u64, (String, u64, Option<u64>)>,
+    pub prompt: Option<BrowserPrompt>,
+    listing: Option<u64>,
+}
+
+pub enum BrowserPrompt {
+    NewFolder(String),
+    NewFile(String),
+    Rename { from: String, to: String },
+    ConfirmDelete(Vec<(String, bool)>),
+}
+
+pub enum SftpStatus {
+    Off,
+    Connecting,
+    Ready(Box<SftpView>),
+    Unavailable(String),
+}
+
 /// A line typed into the terminal and handled locally (PuTTY-style
 /// "login as:" and password prompts).
 enum LineInput {
@@ -41,6 +73,9 @@ pub struct Tab {
     backend: Backend,
     pub status: Option<String>,
     pub host_key: Option<HostKeyPrompt>,
+    pub sftp: SftpStatus,
+    /// Set once when the SSH-browser becomes ready (the app shows the Sftp tab).
+    pub sftp_just_ready: bool,
     line: Option<LineInput>,
     known_hosts: PathBuf,
     repaint: Arc<dyn Fn() + Send + Sync>,
@@ -62,6 +97,8 @@ impl Tab {
             backend: Backend::None,
             status: None,
             host_key: None,
+            sftp: SftpStatus::Off,
+            sftp_just_ready: false,
             line: None,
             known_hosts: env.known_hosts.clone(),
             repaint: env.repaint.clone(),
@@ -139,7 +176,12 @@ impl Tab {
             term: "xterm-256color".into(),
             cols,
             rows,
+            // 3_26 SSH-browser type: 0 = none.
+            sftp: opt("3_26") != Some("0"),
         };
+        if params.sftp {
+            self.sftp = SftpStatus::Connecting;
+        }
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
     }
 
@@ -220,8 +262,10 @@ impl Tab {
                 }
                 SshEvent::Connected => self.status = None,
                 SshEvent::Error(e) => self.message(&format!("\x1b[31m{e}\x1b[0m")),
+                SshEvent::Sftp(e) => self.on_sftp(e),
                 SshEvent::Closed { exit_status } => {
                     self.backend = Backend::None;
+                    self.sftp = SftpStatus::Off;
                     self.line = None;
                     self.host_key = None;
                     let code =
@@ -234,6 +278,90 @@ impl Tab {
             }
         }
         changed
+    }
+
+    fn on_sftp(&mut self, event: SftpEvent) {
+        match event {
+            SftpEvent::Ready { home } => {
+                self.sftp = SftpStatus::Ready(Box::new(SftpView {
+                    cwd: home.clone(),
+                    path_input: home.clone(),
+                    ..SftpView::default()
+                }));
+                self.sftp_just_ready = true;
+                self.sftp_list(&home);
+            }
+            SftpEvent::Unavailable(e) => self.sftp = SftpStatus::Unavailable(e),
+            SftpEvent::Listing { id, path, entries } => {
+                if let SftpStatus::Ready(v) = &mut self.sftp
+                    && v.listing == Some(id)
+                {
+                    v.listing = None;
+                    v.path_input = path.clone();
+                    v.cwd = path;
+                    v.entries = entries;
+                    v.selected.clear();
+                    v.error = None;
+                }
+            }
+            SftpEvent::Progress { id, done, total } => {
+                if let SftpStatus::Ready(v) = &mut self.sftp
+                    && let Some(t) = v.transfers.get_mut(&id)
+                {
+                    t.1 = done;
+                    t.2 = total;
+                }
+            }
+            SftpEvent::Done { id } => {
+                if let SftpStatus::Ready(v) = &mut self.sftp {
+                    v.ops.remove(&id);
+                    v.transfers.remove(&id);
+                    let cwd = v.cwd.clone();
+                    self.sftp_list(&cwd);
+                }
+            }
+            SftpEvent::Failed { id, error } => {
+                if let SftpStatus::Ready(v) = &mut self.sftp {
+                    let label = v.ops.remove(&id);
+                    v.transfers.remove(&id);
+                    if v.listing == Some(id) {
+                        v.listing = None;
+                    }
+                    v.error = Some(match label {
+                        Some(l) => format!("{l}: {error}"),
+                        None => error,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Browse to a remote directory.
+    pub fn sftp_list(&mut self, path: &str) {
+        if let (Backend::Ssh(ssh), SftpStatus::Ready(v)) = (&self.backend, &mut self.sftp) {
+            v.listing = Some(ssh.sftp(SftpRequest::List(path.to_string())));
+        }
+    }
+
+    /// Start a mutating SFTP operation (refreshes the listing when done).
+    pub fn sftp_op(&mut self, request: SftpRequest) {
+        let (Backend::Ssh(ssh), SftpStatus::Ready(v)) = (&self.backend, &mut self.sftp) else {
+            return;
+        };
+        let (label, transfer) = match &request {
+            SftpRequest::Download { remote, .. } => (format!("Download {remote}"), true),
+            SftpRequest::Upload { local, .. } => (format!("Upload {}", local.display()), true),
+            SftpRequest::Mkdir(p) => (format!("Create folder {p}"), false),
+            SftpRequest::CreateFile(p) => (format!("Create file {p}"), false),
+            SftpRequest::Remove { path, .. } => (format!("Delete {path}"), false),
+            SftpRequest::Rename { from, .. } => (format!("Rename {from}"), false),
+            SftpRequest::List(p) => (format!("List {p}"), false),
+        };
+        let id = ssh.sftp(request);
+        if transfer {
+            v.transfers.insert(id, (label.clone(), 0, None));
+        }
+        v.ops.insert(id, label);
     }
 
     /// Answer the pending host key question.

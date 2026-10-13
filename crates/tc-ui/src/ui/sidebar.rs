@@ -57,6 +57,7 @@ pub fn content(
     quick_connect: &mut String,
     view: &ViewSettings,
     sessions: &[Session],
+    active_tab: Option<&mut crate::tab::Tab>,
     out: &mut Vec<Action>,
 ) {
     ui.add_space(4.0);
@@ -72,6 +73,11 @@ pub fn content(
         }
     }
     ui.separator();
+    if view.sidebar_tab == SidebarTab::Sftp {
+        // The browser manages its own scrolling.
+        super::sftp_browser::show(ui, active_tab);
+        return;
+    }
     egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| match view.sidebar_tab {
@@ -81,9 +87,7 @@ pub fn content(
                 item(ui, "Record new macro", None, out);
                 ui.weak("No saved macros");
             }
-            SidebarTab::Sftp => {
-                ui.weak("The SSH-browser appears here when an SSH session is connected.");
-            }
+            SidebarTab::Sftp => {}
         });
 }
 

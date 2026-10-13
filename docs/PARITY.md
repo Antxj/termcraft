@@ -90,13 +90,13 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P0 | [ ] | Sidebar file browser opened automatically on SSH login | `tc-sftp` |
-| P0 | [ ] | Upload / download with drag and drop | `tc-sftp` |
+| P0 | [x] | SSH-browser (SFTP) in the sidebar, opened automatically on SSH login; same toolbar / columns as the reference | `tc-ssh` + `tc-ui` |
+| P0 | [~] | Upload (button or drop files from the OS) / download (save dialog); dragging files *out* to the OS pending | `tc-ssh` + `tc-ui` |
 | P1 | [ ] | "Follow terminal folder" (track remote `cwd`) | `tc-sftp` |
-| P1 | [ ] | Transfer queue with progress | `tc-sftp` |
+| P1 | [x] | Transfers run in parallel with progress bars | `tc-ssh` |
 | P1 | [ ] | Open remote file in local editor, upload on save | `tc-sftp` |
 | P2 | [ ] | SCP mode (fast / legacy) when SFTP is unavailable | `tc-sftp` |
-| P2 | [ ] | Permissions (chmod) / rename / mkdir / delete | `tc-sftp` |
+| P2 | [~] | Rename / new folder / new file / delete (with confirmation), copy path (to clipboard or terminal), hidden files toggle; chmod pending | `tc-ui` |
 
 ## 5. Sessions manager
 

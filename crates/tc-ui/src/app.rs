@@ -492,6 +492,11 @@ impl eframe::App for TermCraftApp {
         }
         for tab in &mut self.core.tabs {
             tab.pump();
+            // Like the reference: the SSH-browser shows up on SSH login.
+            if std::mem::take(&mut tab.sftp_just_ready) && Some(tab.id) == self.core.active {
+                self.core.settings.view.sidebar_tab = tc_core::settings::SidebarTab::Sftp;
+                self.core.settings.view.sidebar_visible = true;
+            }
         }
 
         let mut out = Vec::new();
@@ -528,11 +533,13 @@ impl eframe::App for TermCraftApp {
         if view.sidebar_visible {
             let sessions = &self.core.store.sessions;
             let quick = &mut self.quick_connect;
+            let active = self.core.active;
+            let active_tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
             side("sidebar")
                 .default_size(sidebar::PANEL_WIDTH)
                 .min_size(160.0)
                 .show(ui, |ui| {
-                    sidebar::content(ui, quick, &view, sessions, &mut out)
+                    sidebar::content(ui, quick, &view, sessions, active_tab, &mut out)
                 });
         }
 
