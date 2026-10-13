@@ -76,6 +76,9 @@ impl Host for Core {
             repaint: self.repaint.clone(),
             vault: self.vault.clone(),
             save_passwords: self.settings.passwords.save,
+            ssh: self.settings.ssh.clone(),
+            backspace_ctrl_h: self.settings.terminal.backspace_ctrl_h,
+            paste_right_click: self.settings.terminal.paste_right_click,
         };
         self.tabs.push(Tab::open(id, session, &env));
         self.active = Some(id);
@@ -183,6 +186,11 @@ pub struct TermCraftApp {
     show_import: bool,
     show_about: bool,
     show_passwords: bool,
+    show_config: bool,
+    config_tab: crate::ui::config_window::ConfigTab,
+    /// "Close prompt" waiting for an answer.
+    confirm_exit: bool,
+    exit_confirmed: bool,
     show_tunnels: bool,
     /// MultiExec: keystrokes go to every open terminal.
     multiexec: bool,
@@ -257,6 +265,10 @@ impl TermCraftApp {
             show_import: false,
             show_about: false,
             show_passwords: false,
+            show_config: false,
+            config_tab: Default::default(),
+            confirm_exit: false,
+            exit_confirmed: false,
             show_tunnels: false,
             multiexec: false,
             recording: None,
@@ -310,7 +322,8 @@ impl TermCraftApp {
         let view = &mut self.core.settings.view;
         match action {
             Action::Run(cmd) => return self.run(cmd),
-            Action::Quit => return ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Action::Quit => return self.request_exit(ctx),
+            Action::Configuration => return self.show_config = true,
             Action::Minimize => {
                 return ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
@@ -410,7 +423,70 @@ impl TermCraftApp {
         }
     }
 
+    fn live_sessions(&self) -> usize {
+        self.core.tabs.iter().filter(|t| t.is_alive()).count() + self.core.running.len()
+    }
+
+    /// Exit now, or ask first ("Close prompt") when sessions are open.
+    fn request_exit(&mut self, ctx: &egui::Context) {
+        if self.core.settings.terminal.confirm_exit
+            && self.live_sessions() > 0
+            && !self.exit_confirmed
+        {
+            self.confirm_exit = true;
+        } else {
+            self.exit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
     fn dialogs(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
+        if self.show_config {
+            let mut open = true;
+            let changed = crate::ui::config_window::show(
+                ctx,
+                &mut open,
+                &mut self.config_tab,
+                &mut self.core.settings,
+                &self.core.paths,
+                out,
+            );
+            self.show_config = open;
+            if changed {
+                apply_theme(ctx, self.core.settings.view.theme);
+                if let Err(e) = self.core.save_settings() {
+                    self.status = format!("could not save settings: {e}");
+                }
+            }
+        }
+        if self.confirm_exit {
+            let n = self.live_sessions();
+            let mut answer = None;
+            egui::Window::new("Exit TermCraft")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(format!(
+                        "{n} session(s) or tunnel(s) are still open. Do you want to exit TermCraft?"
+                    ));
+                    ui.horizontal(|ui| {
+                        if ui.button("Exit").clicked() {
+                            answer = Some(true);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            answer = Some(false);
+                        }
+                    });
+                });
+            if let Some(exit) = answer {
+                self.confirm_exit = false;
+                if exit {
+                    self.exit_confirmed = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+        }
         if self.show_tunnels {
             let mut open = true;
             crate::ui::tunnels_window::manager(
@@ -895,6 +971,15 @@ fn apply_theme(ctx: &egui::Context, theme: Theme) {
 impl eframe::App for TermCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // The window close button goes through the same "Close prompt".
+        if ctx.input(|i| i.viewport().close_requested()) && !self.exit_confirmed {
+            if self.core.settings.terminal.confirm_exit && self.live_sessions() > 0 {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.confirm_exit = true;
+            } else {
+                self.exit_confirmed = true;
+            }
+        }
         self.updates.poll();
         if self.core.settings.update.auto_install
             && let UpdateState::Available(update) = &self.updates.state
@@ -910,7 +995,10 @@ impl eframe::App for TermCraftApp {
             tab.pump();
             self.offers.extend(tab.offers.drain(..));
             // Like the reference: the SSH-browser shows up on SSH login.
-            if std::mem::take(&mut tab.sftp_just_ready) && Some(tab.id) == self.core.active {
+            if std::mem::take(&mut tab.sftp_just_ready)
+                && Some(tab.id) == self.core.active
+                && self.core.settings.ssh.switch_to_browser
+            {
                 self.core.settings.view.sidebar_tab = tc_core::settings::SidebarTab::Sftp;
                 self.core.settings.view.sidebar_visible = true;
             }
@@ -920,6 +1008,14 @@ impl eframe::App for TermCraftApp {
             let active = self.core.active;
             let tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
             let first_frame = !self.show_tunnels && snap.tunnels;
+            match snap.window.take().as_deref() {
+                Some("config") => {
+                    self.show_config = true;
+                    self.config_tab = crate::ui::config_window::ConfigTab::Terminal;
+                }
+                Some("passwords") => self.show_passwords = true,
+                _ => {}
+            }
             for cmd in snap.step(&ctx, tab, &mut self.core.running) {
                 self.run(cmd);
             }

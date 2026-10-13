@@ -153,7 +153,7 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             icon::GEAR,
             "Settings",
             "Edit TermCraft configuration",
-            Kind::Action(None),
+            Kind::Action(Some(Action::Configuration)),
         ),
         (
             icon::QUESTION,

@@ -38,6 +38,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         cols: 80,
         rows: 24,
         sftp: false,
+        keepalive: None,
     }
 }
 

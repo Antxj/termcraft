@@ -53,6 +53,8 @@ pub struct ConnectParams {
     pub rows: u16,
     /// Open the SFTP "SSH-browser" channel after login.
     pub sftp: bool,
+    /// Send SSH keepalives at this interval.
+    pub keepalive: Option<std::time::Duration>,
 }
 
 impl ConnectParams {
@@ -393,10 +395,14 @@ pub(crate) struct ConnectOptions<'a> {
     pub gateway: Option<&'a Endpoint>,
     pub known_hosts: &'a std::path::Path,
     pub compression: bool,
+    pub keepalive: Option<std::time::Duration>,
 }
 
-fn client_config(compression: bool) -> Arc<client::Config> {
-    let mut config = client::Config::default();
+fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
+    let mut config = client::Config {
+        keepalive_interval: keepalive,
+        ..client::Config::default()
+    };
     if compression {
         config.preferred.compression = std::borrow::Cow::Borrowed(&[
             russh::compression::ZLIB_LEGACY,
@@ -423,7 +429,7 @@ pub(crate) async fn establish(
         forwards: forwards.clone(),
     };
     let target = opts.target;
-    let config = client_config(opts.compression);
+    let config = client_config(opts.compression, opts.keepalive);
 
     let (mut handle, gateway) = match opts.gateway {
         None => {
@@ -443,7 +449,7 @@ pub(crate) async fn establish(
                 gw.host, gw.port
             )));
             let mut gw_handle = client::connect(
-                client_config(false),
+                client_config(false, opts.keepalive),
                 (gw.host.as_str(), gw.port),
                 handler(gw),
             )
@@ -492,6 +498,7 @@ async fn run_shell(
             gateway: params.gateway.as_ref(),
             known_hosts: &params.known_hosts,
             compression: params.compression,
+            keepalive: params.keepalive,
         },
         &replies,
         &events,

@@ -51,6 +51,7 @@ pub(crate) async fn run(
             gateway: params.gateway.as_ref(),
             known_hosts: &params.known_hosts,
             compression: false,
+            keepalive: Some(std::time::Duration::from_secs(30)),
         },
         &replies,
         &events,

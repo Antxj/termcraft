@@ -18,6 +18,10 @@ pub struct TabEnv {
     pub repaint: Arc<dyn Fn() + Send + Sync>,
     pub vault: Arc<Vault>,
     pub save_passwords: SavePasswords,
+    pub ssh: tc_core::settings::SshSettings,
+    /// Global "Backspace sends ^H" (local terminals).
+    pub backspace_ctrl_h: bool,
+    pub paste_right_click: bool,
 }
 
 type StreamResult = Result<Box<dyn tc_net::Stream>, String>;
@@ -91,6 +95,8 @@ pub struct Tab {
     /// Font size from the session (px); `None` = global setting.
     pub font_size: Option<f32>,
     pub backspace_sends_ctrl_h: bool,
+    pub paste_right_click: bool,
+    ssh_settings: tc_core::settings::SshSettings,
     term_type: Option<String>,
     /// FTP connection waiting for its password prompt.
     pending_ftp: Option<tc_net::ftp::FtpParams>,
@@ -134,6 +140,8 @@ impl Tab {
             term: Terminal::new(INITIAL_ROWS, INITIAL_COLS, env.scrollback),
             font_size: None,
             backspace_sends_ctrl_h: false,
+            paste_right_click: env.paste_right_click,
+            ssh_settings: env.ssh.clone(),
             term_type: None,
             pending_ftp: None,
             backend: Backend::None,
@@ -150,7 +158,11 @@ impl Tab {
         let settings = crate::term_settings::for_session(tab.session.as_ref());
         tab.term.theme = settings.theme;
         tab.font_size = settings.font_px;
-        tab.backspace_sends_ctrl_h = settings.backspace_sends_ctrl_h;
+        tab.backspace_sends_ctrl_h = if tab.session.is_some() {
+            settings.backspace_sends_ctrl_h
+        } else {
+            env.backspace_ctrl_h
+        };
         tab.term_type = settings.term_type;
         match tab.session.as_ref().map(|s| s.kind.clone()) {
             None => tab.spawn_local(None),
@@ -283,7 +295,9 @@ impl Tab {
             cols,
             rows,
             // 3_26 SSH-browser type: 0 = none.
-            sftp: opt("3_26") != Some("0"),
+            sftp: self.ssh_settings.browser && opt("3_26") != Some("0"),
+            keepalive: (self.ssh_settings.keepalive_secs > 0)
+                .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
         };
         if params.sftp {
             self.sftp = SftpStatus::Connecting;
@@ -902,6 +916,9 @@ mod tests {
                 Box::new(tc_vault::MemoryStore::default()),
             )),
             save_passwords: SavePasswords::Ask,
+            ssh: Default::default(),
+            backspace_ctrl_h: false,
+            paste_right_click: true,
         };
         let session = Session::new(
             "t",
@@ -937,6 +954,9 @@ mod tests {
             repaint: Arc::new(|| {}),
             vault: vault.clone(),
             save_passwords: SavePasswords::Ask,
+            ssh: Default::default(),
+            backspace_ctrl_h: false,
+            paste_right_click: true,
         };
 
         // 1st connection: no saved password -> prompt in the terminal.

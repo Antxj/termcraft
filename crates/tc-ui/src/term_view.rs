@@ -36,7 +36,14 @@ fn show_inner(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32, active: b
 
     // Focus follows the active terminal unless another widget holds it.
     let nothing_focused = ui.memory(|m| m.focused().is_none());
-    if response.clicked() || response.drag_started() {
+    if response.secondary_clicked() && tab.paste_right_click {
+        // "Paste using right-click": ask the platform for the clipboard;
+        // it arrives as an Event::Paste on the focused terminal.
+        out.clicked = true;
+        response.request_focus();
+        ui.ctx()
+            .send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+    } else if response.clicked() || response.drag_started() {
         out.clicked = true;
         response.request_focus();
     } else if active && nothing_focused {

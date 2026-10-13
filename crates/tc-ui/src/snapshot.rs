@@ -8,6 +8,7 @@
 //!   (use only with the local dev server credentials)
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
 //! - `TERMCRAFT_SNAPSHOT_LOCAL_TABS=3` — also open N local terminals
+//! - `TERMCRAFT_SNAPSHOT_WINDOW=config|passwords` — open that window
 //! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start
 //!   every saved tunnel (prompts are answered like for the session)
 
@@ -31,6 +32,8 @@ pub struct Snapshot {
     password: Option<String>,
     delay: Duration,
     pub tunnels: bool,
+    /// Window to open on the first frame (taken once).
+    pub window: Option<String>,
     started: Instant,
     phase: Phase,
 }
@@ -48,6 +51,7 @@ impl Snapshot {
             password: std::env::var("TERMCRAFT_SNAPSHOT_PASSWORD").ok(),
             delay: Duration::from_millis(delay),
             tunnels: std::env::var_os("TERMCRAFT_SNAPSHOT_TUNNELS").is_some(),
+            window: std::env::var("TERMCRAFT_SNAPSHOT_WINDOW").ok(),
             started: Instant::now(),
             phase: Phase::Start,
         })

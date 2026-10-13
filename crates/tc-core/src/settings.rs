@@ -7,6 +7,29 @@ pub struct Settings {
     pub update: UpdateSettings,
     pub view: ViewSettings,
     pub passwords: PasswordSettings,
+    pub ssh: SshSettings,
+}
+
+/// Configuration › SSH.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshSettings {
+    /// "Enable graphical SSH-browser".
+    pub browser: bool,
+    /// "Automatically switch to SSH-browser tab after login".
+    pub switch_to_browser: bool,
+    /// "SSH keepalive" (seconds; 0 = off).
+    pub keepalive_secs: u64,
+}
+
+impl Default for SshSettings {
+    fn default() -> Self {
+        Self {
+            browser: true,
+            switch_to_browser: true,
+            keepalive_secs: 0,
+        }
+    }
 }
 
 /// "Save sessions passwords" (Passwords settings dialog).
@@ -115,7 +138,12 @@ impl Default for ViewSettings {
 pub struct TerminalSettings {
     pub font_size: f32,
     pub scrollback_lines: usize,
+    /// "Close prompt": confirm before exiting with sessions open.
     pub confirm_exit: bool,
+    /// "Paste using right-click".
+    pub paste_right_click: bool,
+    /// "Backspace sends ^H" for local terminals.
+    pub backspace_ctrl_h: bool,
 }
 
 impl Default for TerminalSettings {
@@ -124,6 +152,8 @@ impl Default for TerminalSettings {
             font_size: 14.0,
             scrollback_lines: 10_000,
             confirm_exit: true,
+            paste_right_click: true,
+            backspace_ctrl_h: false,
         }
     }
 }

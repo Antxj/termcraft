@@ -4,6 +4,7 @@
 //! applies after the frame, and persistent changes go through the command
 //! registry.
 
+pub mod config_window;
 pub mod home;
 pub mod menus;
 pub mod session_editor;
@@ -28,6 +29,7 @@ pub enum Action {
     ToggleFullscreen,
     About,
     PasswordsSettings,
+    Configuration,
     Tunnels,
     CheckUpdates,
     ImportDialog,

@@ -27,7 +27,7 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
         ui.menu_button("Tools", |ui| tools_menu(ui, out));
         ui.menu_button("Games", |ui| games_menu(ui, out));
         ui.menu_button("Settings", |ui| {
-            item(ui, "Configuration", None, out);
+            item(ui, "Configuration", Some(Action::Configuration), out);
             item(ui, "Keyboard shortcuts", None, out);
             ui.separator();
             item(ui, "Import configuration", None, out);

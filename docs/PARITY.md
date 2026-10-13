@@ -33,6 +33,7 @@ refined against it.
 | P1 | [x] | Fullscreen from tab menu and View menu | `tc-ui` |
 | P1 | [~] | Tab context menu: rename, duplicate, close / close left / right / others / all (reconnect pending) | `tc-ui` |
 | P1 | [ ] | Configurable keyboard shortcuts | `tc-ui` |
+| P1 | [~] | Settings › Configuration dialog (General / Terminal / X11 / SSH / Display / Toolbar / Misc); supported options live, others shown disabled | `tc-ui` |
 | P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close button, light/dark (compact mode pending) | `tc-ui` |
 | P2 | [ ] | Minimize to system tray | `tc-ui` |
 | P2 | [ ] | Popup ("quake") terminal shortcut | `tc-ui` |
@@ -46,7 +47,7 @@ refined against it.
 | P0 | [~] | VT/xterm emulation (colors, cursor, alt screen) | `tc-term` |
 | P0 | [x] | Local shell tab (ConPTY on Windows, PTY on Unix) | `tc-pty` |
 | P0 | [~] | Scrollback (Shift+PgUp/PgDn/Home/End) | `tc-term` |
-| P0 | [ ] | Copy on select / right-click paste | `tc-ui` |
+| P0 | [~] | Right-click paste ("Paste using right-click"); copy-on-select pending | `tc-ui` |
 | P1 | [x] | Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size | `tc-term` + `tc-ui` |
 | P1 | [ ] | Charset selection (UTF-8, ISO-8859-x…) | `tc-term` |
 | P1 | [x] | Backspace behavior (^H / ^?) and terminal type (TERM) per session | `tc-ui` |
@@ -54,7 +55,7 @@ refined against it.
 | P1 | [ ] | Output logging to file | `tc-term` |
 | P1 | [ ] | Multi-line paste warning | `tc-ui` |
 | P1 | [ ] | Paste delay (per session) | `tc-ui` |
-| P1 | [ ] | Exit confirmation | `tc-ui` |
+| P1 | [x] | Exit confirmation ("Close prompt") from menu, Exit button and window close | `tc-ui` |
 | P2 | [ ] | Column (block) selection (Ctrl+Alt+Click) | `tc-ui` |
 | P2 | [ ] | Configurable word delimiters for double-click | `tc-core` |
 | P2 | [ ] | Syntax highlighting of output (keywords, errors, IPs…) | `tc-term` |
