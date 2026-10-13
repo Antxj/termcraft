@@ -9,6 +9,11 @@ license.workspace = true
 [dependencies]
 crossbeam-channel.workspace = true
 serialport = { version = "4", default-features = false }
+suppaftp = "12"
+tc-core.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

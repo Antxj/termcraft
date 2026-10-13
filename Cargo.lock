@@ -2544,6 +2544,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy-regex"
+version = "3.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0a2cce8a22920a29fdcc8c9170aa5d29edd9fbcf8bea856e24c2cb1c2419f67"
+dependencies = [
+ "lazy-regex-proc_macros",
+ "once_cell",
+ "regex",
+]
+
+[[package]]
+name = "lazy-regex-proc_macros"
+version = "3.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f1e4b1f1d8c71edb4ff2b2150ec4606445fd2ddf67ddc097655daf59286baa6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn 3.0.9",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4804,6 +4827,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "suppaftp"
+version = "12.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a560e9f42cc5bd4a92295eca3c7140d51eb685d688087f547f27e6426fbe97da"
+dependencies = [
+ "chrono",
+ "lazy-regex",
+ "log",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4911,6 +4946,9 @@ version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "serialport",
+ "suppaftp",
+ "tc-core",
+ "tempfile",
 ]
 
 [[package]]
@@ -4930,6 +4968,7 @@ dependencies = [
  "crossbeam-channel",
  "russh",
  "russh-sftp",
+ "tc-core",
  "tc-devserver",
  "tempfile",
  "thiserror 2.0.21",

@@ -3,6 +3,7 @@
 //! directly. [`telnet`] speaks the Telnet protocol (RFC 854) with the
 //! options a terminal needs; [`serial`] drives a COM / tty port.
 
+pub mod ftp;
 pub mod serial;
 pub mod telnet;
 

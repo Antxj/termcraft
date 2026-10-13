@@ -2,6 +2,7 @@
 
 mod app;
 mod credentials;
+mod external;
 mod snapshot;
 mod tab;
 mod term_settings;

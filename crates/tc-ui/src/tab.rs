@@ -29,6 +29,8 @@ enum Backend {
     /// Telnet / serial being opened in the background.
     Connecting(crossbeam_channel::Receiver<StreamResult>),
     Stream(Box<dyn tc_net::Stream>),
+    /// FTP session: the browser is the UI, the terminal shows status.
+    Ftp(tc_net::ftp::FtpSession),
 }
 
 /// An unknown SSH host key waiting for the user's decision.
@@ -90,6 +92,8 @@ pub struct Tab {
     pub font_size: Option<f32>,
     pub backspace_sends_ctrl_h: bool,
     term_type: Option<String>,
+    /// FTP connection waiting for its password prompt.
+    pending_ftp: Option<tc_net::ftp::FtpParams>,
     backend: Backend,
     pub status: Option<String>,
     pub host_key: Option<HostKeyPrompt>,
@@ -131,6 +135,7 @@ impl Tab {
             font_size: None,
             backspace_sends_ctrl_h: false,
             term_type: None,
+            pending_ftp: None,
             backend: Backend::None,
             status: None,
             host_key: None,
@@ -159,6 +164,16 @@ impl Tab {
             }
             Some(SessionKind::Telnet { host, port }) => tab.open_telnet(host, port),
             Some(SessionKind::Serial { port_name, baud }) => tab.open_serial(port_name, baud),
+            Some(SessionKind::Ftp { host, port, user }) => tab.open_ftp(host, port, user),
+            Some(SessionKind::Rdp { host, port, user }) => {
+                let temp = std::env::temp_dir().join("termcraft-rdp");
+                let result = crate::external::launch_rdp(&host, port, user.as_deref(), &temp);
+                tab.external_result("RDP", &host, port, result);
+            }
+            Some(SessionKind::Vnc { host, port }) => {
+                let result = crate::external::launch_vnc(&host, port);
+                tab.external_result("VNC", &host, port, result);
+            }
             Some(other) => {
                 tab.message(&format!(
                     "\x1b[33m{} sessions are not implemented yet - see docs/PARITY.md\x1b[0m",
@@ -168,6 +183,28 @@ impl Tab {
             }
         }
         tab
+    }
+
+    fn external_result(
+        &mut self,
+        kind: &str,
+        host: &str,
+        port: u16,
+        result: Result<String, String>,
+    ) {
+        match result {
+            Ok(client) => {
+                self.message(&format!(
+                    "\x1b[32m{kind} session to {host}:{port} opened in {client}.\x1b[0m"
+                ));
+                self.message("\x1b[90mAn embedded viewer is planned (see docs/PARITY.md).\x1b[0m");
+                self.status = Some(format!("{kind} opened externally"));
+            }
+            Err(e) => {
+                self.message(&format!("\x1b[31m{kind}: {e}\x1b[0m"));
+                self.status = Some(format!("{kind} unavailable"));
+            }
+        }
     }
 
     fn message(&mut self, text: &str) {
@@ -261,6 +298,7 @@ impl Tab {
             Backend::Pty(_) => self.pump_pty(),
             Backend::Ssh(_) => self.pump_ssh(),
             Backend::Connecting(_) | Backend::Stream(_) => self.pump_stream(),
+            Backend::Ftp(_) => self.pump_ftp(),
         }
     }
 
@@ -314,6 +352,92 @@ impl Tab {
             tc_net::serial::Serial::open(&config, repaint)
                 .map(|s| Box::new(s) as Box<dyn tc_net::Stream>)
         });
+    }
+
+    fn open_ftp(&mut self, host: String, port: u16, user: Option<String>) {
+        // Advanced Ftp settings: 3_5 passive, 3_9 ASCII, 3_6 remote startup folder.
+        let session = self.session.clone();
+        let opt = |id: &str| -> Option<String> {
+            let param = tc_core::schema::type_params(6)
+                .iter()
+                .find(|p| p.id == id)?;
+            Some(session.as_ref()?.option(param).to_string())
+        };
+        let params = tc_net::ftp::FtpParams {
+            host: host.clone(),
+            port,
+            user: user.clone().unwrap_or_default(),
+            password: String::new(),
+            passive: opt("3_5").is_none_or(|v| schema::is_true(&v)),
+            ascii: opt("3_9").is_some_and(|v| schema::is_true(&v)),
+            start_dir: opt("3_6").filter(|d| !d.trim().is_empty()),
+        };
+        match user.filter(|u| !u.is_empty()) {
+            // Anonymous login needs no password.
+            None => self.start_ftp(params),
+            Some(user) => {
+                self.pending_ftp = Some(params);
+                let target = Target {
+                    protocol: "ftp".into(),
+                    username: user.clone(),
+                    server: format!("{host}:{port}"),
+                };
+                let prompt = format!("{user}@{host}'s FTP password:");
+                self.on_secret_needed(prompt, SecretKind::Password, target);
+            }
+        }
+    }
+
+    fn start_ftp(&mut self, params: tc_net::ftp::FtpParams) {
+        self.message(&format!(
+            "\x1b[90mConnecting to {}:{} (FTP) …\x1b[0m",
+            params.host, params.port
+        ));
+        self.sftp = SftpStatus::Connecting;
+        self.backend = Backend::Ftp(tc_net::ftp::FtpSession::connect(
+            params,
+            self.repaint.clone(),
+        ));
+    }
+
+    fn pump_ftp(&mut self) -> bool {
+        let Backend::Ftp(ftp) = &self.backend else {
+            return false;
+        };
+        let events: Vec<SftpEvent> = ftp.events().try_iter().collect();
+        let changed = !events.is_empty();
+        for event in events {
+            match &event {
+                SftpEvent::Ready { home } => {
+                    self.message(&format!(
+                        "\x1b[32mConnected. Browse files in the side panel ({home}).\x1b[0m"
+                    ));
+                    self.status = None;
+                    self.after_login();
+                }
+                SftpEvent::Unavailable(e) => {
+                    self.message(&format!("\x1b[31mFTP: {e}\x1b[0m"));
+                    self.status = Some("connection failed".into());
+                }
+                SftpEvent::Failed { error, .. } => self.message(&format!("\x1b[33m{error}\x1b[0m")),
+                _ => {}
+            }
+            let unavailable = matches!(event, SftpEvent::Unavailable(_));
+            self.on_sftp(event);
+            if unavailable {
+                self.backend = Backend::None;
+            }
+        }
+        changed
+    }
+
+    /// Send a browser request over SFTP or FTP.
+    fn fs_request(&self, request: SftpRequest) -> Option<u64> {
+        match &self.backend {
+            Backend::Ssh(ssh) => Some(ssh.sftp(request)),
+            Backend::Ftp(ftp) => Some(ftp.request(request)),
+            _ => None,
+        }
     }
 
     fn pump_stream(&mut self) -> bool {
@@ -457,13 +581,16 @@ impl Tab {
     fn on_secret_needed(&mut self, prompt: String, kind: SecretKind, target: Target) {
         match self.credentials.on_prompt(kind, &target) {
             PromptAction::AutoFill(password) => {
-                if let Backend::Ssh(ssh) = &self.backend {
-                    ssh.reply(Reply::Secret(password));
-                }
                 self.message(&format!(
                     "\x1b[90mUsing saved password for {}\x1b[0m",
                     target.key()
                 ));
+                if let Some(mut ftp) = self.pending_ftp.take() {
+                    ftp.password = password;
+                    self.start_ftp(ftp);
+                } else if let Backend::Ssh(ssh) = &self.backend {
+                    ssh.reply(Reply::Secret(password));
+                }
             }
             PromptAction::Ask { saved_rejected } => {
                 if saved_rejected {
@@ -567,16 +694,20 @@ impl Tab {
 
     /// Browse to a remote directory.
     pub fn sftp_list(&mut self, path: &str) {
-        if let (Backend::Ssh(ssh), SftpStatus::Ready(v)) = (&self.backend, &mut self.sftp) {
-            v.listing = Some(ssh.sftp(SftpRequest::List(path.to_string())));
+        if !matches!(self.sftp, SftpStatus::Ready(_)) {
+            return;
+        }
+        let id = self.fs_request(SftpRequest::List(path.to_string()));
+        if let SftpStatus::Ready(v) = &mut self.sftp {
+            v.listing = id;
         }
     }
 
     /// Start a mutating SFTP operation (refreshes the listing when done).
     pub fn sftp_op(&mut self, request: SftpRequest) {
-        let (Backend::Ssh(ssh), SftpStatus::Ready(v)) = (&self.backend, &mut self.sftp) else {
+        if !matches!(self.sftp, SftpStatus::Ready(_)) {
             return;
-        };
+        }
         let (label, transfer) = match &request {
             SftpRequest::Download { remote, .. } => (format!("Download {remote}"), true),
             SftpRequest::Upload { local, .. } => (format!("Upload {}", local.display()), true),
@@ -586,7 +717,12 @@ impl Tab {
             SftpRequest::Rename { from, .. } => (format!("Rename {from}"), false),
             SftpRequest::List(p) => (format!("List {p}"), false),
         };
-        let id = ssh.sftp(request);
+        let Some(id) = self.fs_request(request) else {
+            return;
+        };
+        let SftpStatus::Ready(v) = &mut self.sftp else {
+            return;
+        };
         if transfer {
             v.transfers.insert(id, (label.clone(), 0, None));
         }
@@ -616,7 +752,7 @@ impl Tab {
             Backend::Stream(stream) => {
                 let _ = stream.write(bytes);
             }
-            Backend::Connecting(_) => {}
+            Backend::Connecting(_) | Backend::Ftp(_) => {}
         }
     }
 
@@ -638,7 +774,10 @@ impl Tab {
                         }
                         Some(LineInput::Secret(secret, kind, target)) => {
                             self.credentials.on_typed(kind, target, secret.clone());
-                            if let Backend::Ssh(ssh) = &self.backend {
+                            if let Some(mut ftp) = self.pending_ftp.take() {
+                                ftp.password = secret;
+                                self.start_ftp(ftp);
+                            } else if let Backend::Ssh(ssh) = &self.backend {
                                 ssh.reply(Reply::Secret(secret));
                             }
                         }
@@ -682,7 +821,7 @@ impl Tab {
                 let _ = pty.resize(rows, cols);
             }
             Backend::Ssh(ssh) => ssh.resize(rows, cols),
-            Backend::Stream(_) | Backend::Connecting(_) => {}
+            Backend::Stream(_) | Backend::Connecting(_) | Backend::Ftp(_) => {}
         }
         if let Backend::Stream(stream) = &mut self.backend {
             stream.resize(rows, cols);

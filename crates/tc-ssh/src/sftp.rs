@@ -4,89 +4,11 @@
 use crate::Events;
 use crate::SshEvent;
 use russh_sftp::client::SftpSession;
-use std::path::PathBuf;
 use std::sync::Arc;
+pub use tc_core::remote_fs::{
+    FsEvent as SftpEvent, FsRequest as SftpRequest, RemoteEntry, join, parent,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemoteEntry {
-    pub name: String,
-    pub is_dir: bool,
-    pub size: u64,
-    /// Unix seconds.
-    pub modified: Option<u64>,
-    /// Unix mode bits (permissions part).
-    pub permissions: Option<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SftpRequest {
-    List(String),
-    Download {
-        remote: String,
-        local: PathBuf,
-    },
-    Upload {
-        local: PathBuf,
-        remote: String,
-    },
-    Mkdir(String),
-    /// Create an empty file (fails if it exists).
-    CreateFile(String),
-    Remove {
-        path: String,
-        is_dir: bool,
-    },
-    Rename {
-        from: String,
-        to: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SftpEvent {
-    /// The browser is available; `home` is the initial directory.
-    Ready {
-        home: String,
-    },
-    Unavailable(String),
-    Listing {
-        id: u64,
-        path: String,
-        entries: Vec<RemoteEntry>,
-    },
-    Progress {
-        id: u64,
-        done: u64,
-        total: Option<u64>,
-    },
-    /// A non-listing request finished.
-    Done {
-        id: u64,
-    },
-    Failed {
-        id: u64,
-        error: String,
-    },
-}
-
-/// Join a remote directory and a name with `/` separators.
-pub fn join(dir: &str, name: &str) -> String {
-    if dir.ends_with('/') {
-        format!("{dir}{name}")
-    } else {
-        format!("{dir}/{name}")
-    }
-}
-
-/// Parent of a remote path (`/` stays `/`).
-pub fn parent(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    match trimmed.rfind('/') {
-        Some(0) | None => "/".into(),
-        Some(i) => trimmed[..i].into(),
-    }
-}
 
 pub(crate) async fn open(
     session: &russh::client::Handle<crate::Handler>,
@@ -215,19 +137,5 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
         Ok(Some(event)) => send(event),
         Ok(None) => send(SftpEvent::Done { id }),
         Err(error) => send(SftpEvent::Failed { id, error }),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn remote_paths() {
-        assert_eq!(join("/", "a"), "/a");
-        assert_eq!(join("/home/u", "f.txt"), "/home/u/f.txt");
-        assert_eq!(parent("/home/u/"), "/home");
-        assert_eq!(parent("/home"), "/");
-        assert_eq!(parent("/"), "/");
     }
 }

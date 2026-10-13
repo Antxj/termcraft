@@ -2,6 +2,7 @@
 
 pub mod macros;
 pub mod paths;
+pub mod remote_fs;
 pub mod schema;
 #[rustfmt::skip]
 mod schema_gen;

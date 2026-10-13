@@ -77,9 +77,9 @@ refined against it.
 | P1 | [x] | Telnet (ECHO, SGA, TERMINAL-TYPE, NAWS negotiation) | `tc-net` |
 | P1 | [x] | Serial (COM / tty, speed, data/stop bits, parity none/odd/even, flow none/XON/RTS); mark/space parity and DSR/DTR pending | `tc-net` |
 | P1 | [ ] | SFTP standalone session | `tc-sftp` |
-| P1 | [ ] | FTP / FTPS (passive, encrypted data channel, ASCII) | `tc-ftp` |
-| P2 | [ ] | RDP (clipboard, drive redirection, CredSSP, /admin) | `tc-rdp` (IronRDP) |
-| P2 | [ ] | VNC | `tc-vnc` |
+| P1 | [~] | FTP in the file browser (passive / active, ASCII, startup folder, saved password); FTPS pending | `tc-net` |
+| P2 | [~] | RDP opens in the system client (mstsc with .rdp file / macOS rdp:// / FreeRDP or Remmina); embedded IronRDP view pending | `tc-ui` |
+| P2 | [~] | VNC opens in the system viewer (Screen Sharing / TigerVNC / TightVNC / Remmina); embedded view pending | `tc-ui` |
 | P2 | [ ] | Mosh | `tc-mosh` |
 | P2 | [ ] | WSL distribution as local shell (Windows) | `tc-pty` |
 | P2 | [ ] | Custom shell-script bookmark | `tc-core` |
