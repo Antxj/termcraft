@@ -52,13 +52,18 @@ pub fn strip(ui: &mut egui::Ui, view: &ViewSettings, out: &mut Vec<Action>) {
     }
 }
 
+/// What the Macros tab shows.
+pub struct Macros<'a> {
+    pub list: &'a [tc_core::Macro],
+    pub recording: bool,
+}
+
 pub fn content(
     ui: &mut egui::Ui,
     quick_connect: &mut String,
     view: &ViewSettings,
     sessions: &[Session],
-    macros: &[tc_core::Macro],
-    recording: bool,
+    macros: Macros<'_>,
     active_tab: Option<&mut crate::tab::Tab>,
     out: &mut Vec<Action>,
 ) {
@@ -86,7 +91,7 @@ pub fn content(
         .show(ui, |ui| match view.sidebar_tab {
             SidebarTab::Sessions => session_tree(ui, sessions, &quick_connect.to_lowercase(), out),
             SidebarTab::Tools => tools(ui, out),
-            SidebarTab::Macros => macro_list(ui, macros, recording, has_tab, out),
+            SidebarTab::Macros => macro_list(ui, macros.list, macros.recording, has_tab, out),
             SidebarTab::Sftp => {}
         });
 }

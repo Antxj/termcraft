@@ -978,9 +978,11 @@ impl eframe::App for TermCraftApp {
                 .default_size(sidebar::PANEL_WIDTH)
                 .min_size(160.0)
                 .show(ui, |ui| {
-                    sidebar::content(
-                        ui, quick, &view, sessions, macros, recording, active_tab, &mut out,
-                    )
+                    let macros = sidebar::Macros {
+                        list: macros,
+                        recording,
+                    };
+                    sidebar::content(ui, quick, &view, sessions, macros, active_tab, &mut out)
                 });
         }
 

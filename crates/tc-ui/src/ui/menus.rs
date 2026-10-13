@@ -54,12 +54,10 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
             ui.separator();
             header(ui, "Saved macros");
             for m in cx.macros {
-                let run = cx.has_tab.then(|| {
-                    Action::Run(Command::MacroRun {
-                        id: m.id,
-                        tab: None,
-                    })
-                });
+                let run = cx.has_tab.then_some(Action::Run(Command::MacroRun {
+                    id: m.id,
+                    tab: None,
+                }));
                 item(ui, &m.name, run, out);
             }
         });
