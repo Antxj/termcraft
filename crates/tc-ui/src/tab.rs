@@ -1,7 +1,9 @@
 use crate::credentials::{Credentials, PromptAction};
+use crate::folder_hook::{self, FolderHook};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tc_core::settings::{LocalShell, SavePasswords};
 use tc_core::{Session, SessionKind, schema};
 use tc_pty::{PtyEvent, PtySession};
@@ -74,6 +76,8 @@ pub struct SftpView {
     pub follow: bool,
     /// The shell has reported its folder at least once (OSC 7).
     pub reports_seen: bool,
+    /// The prompt hook is about to be typed automatically.
+    pub auto_hook_pending: bool,
     listing: Option<u64>,
 }
 
@@ -124,11 +128,14 @@ pub struct Tab {
     credentials: Credentials,
     /// "Do you want to save this password?" questions waiting for an answer.
     pub offers: std::collections::VecDeque<(Target, String)>,
+    /// Automatic "Follow terminal folder" for bash / zsh logins.
+    folder_hook: Option<FolderHook>,
 }
 
 /// Prompt hook for bash and zsh that reports `$PWD` with OSC 7. Typed into
-/// the shell only when the user asks; the leading space keeps it out of
-/// bash history when `HISTCONTROL` ignores spaces.
+/// the shell after login when `$SHELL` is bash or zsh (see `folder_hook`),
+/// or from the SSH-browser button; the leading space keeps it out of bash
+/// history when `HISTCONTROL` ignores spaces.
 pub const FOLDER_TRACKING_HOOK: &str = concat!(
     r#" if [ -n "$ZSH_VERSION" ]; then _tc_osc7() { printf '\033]7;file://%s%s\007' "$HOST" "$PWD"; };"#,
     r#" precmd_functions+=(_tc_osc7);"#,
@@ -166,6 +173,7 @@ impl Tab {
             repaint: env.repaint.clone(),
             credentials: Credentials::new(env.vault.clone(), env.save_passwords),
             offers: Default::default(),
+            folder_hook: None,
         };
         let settings = crate::term_settings::for_session(tab.session.as_ref());
         tab.term.theme = settings.theme;
@@ -318,7 +326,7 @@ impl Tab {
                     .filter(|k| !k.is_empty())
                     .map(PathBuf::from),
             });
-        let params = ConnectParams {
+        let mut params = ConnectParams {
             host: host.clone(),
             port: *port,
             user,
@@ -340,7 +348,12 @@ impl Tab {
             sftp: self.ssh_settings.browser && opt("3_26") != Some("0"),
             keepalive: (self.ssh_settings.keepalive_secs > 0)
                 .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
+            detect_login_shell: false,
         };
+        // 3_18 "Try to follow SSH path in browser" (default on).
+        params.detect_login_shell =
+            params.sftp && params.command.is_none() && opt("3_18").is_none_or(schema::is_true);
+        self.folder_hook = params.detect_login_shell.then(FolderHook::new);
         if params.sftp {
             self.sftp = SftpStatus::Connecting;
         }
@@ -578,6 +591,10 @@ impl Tab {
         for event in events {
             match event {
                 SshEvent::Output(bytes) => {
+                    let bytes = match &mut self.folder_hook {
+                        Some(hook) => hook.filter(&bytes, Instant::now()),
+                        None => bytes,
+                    };
                     let reply = self.term.feed(&bytes);
                     if !reply.is_empty()
                         && let Backend::Ssh(ssh) = &self.backend
@@ -615,7 +632,13 @@ impl Tab {
                 SshEvent::Error(e) => self.message(&format!("\x1b[31m{e}\x1b[0m")),
                 SshEvent::Sftp(e) => self.on_sftp(e),
                 SshEvent::Listening(_) => {}
+                SshEvent::LoginShell(shell) => {
+                    if let Some(hook) = &mut self.folder_hook {
+                        hook.on_login_shell(&shell);
+                    }
+                }
                 SshEvent::Closed { exit_status } => {
+                    self.folder_hook = None;
                     self.backend = Backend::None;
                     self.sftp = SftpStatus::Off;
                     self.line = None;
@@ -629,7 +652,40 @@ impl Tab {
                 }
             }
         }
+        changed | self.poll_folder_hook()
+    }
+
+    /// Type the prompt hook when it is due, or show output held back.
+    fn poll_folder_hook(&mut self) -> bool {
+        let Some(hook) = &mut self.folder_hook else {
+            return false;
+        };
+        let changed = match hook.poll(Instant::now()) {
+            folder_hook::Action::None => false,
+            folder_hook::Action::Type => {
+                if let Backend::Ssh(ssh) = &self.backend {
+                    ssh.write(FOLDER_TRACKING_HOOK.as_bytes());
+                }
+                false
+            }
+            folder_hook::Action::Feed(bytes) => {
+                self.term.feed(&bytes);
+                true
+            }
+        };
+        let pending = !hook.is_done();
+        if !pending {
+            self.folder_hook = None;
+        }
+        if let SftpStatus::Ready(v) = &mut self.sftp {
+            v.auto_hook_pending = pending;
+        }
         changed
+    }
+
+    /// When the tab needs a frame even without new events (hook timers).
+    pub fn wakeup(&self) -> Option<std::time::Duration> {
+        self.folder_hook.as_ref()?.wakeup(Instant::now())
     }
 
     /// Auto-fill a saved password once per target; otherwise prompt in the
@@ -799,6 +855,9 @@ impl Tab {
             self.line_input(bytes);
             return;
         }
+        if let Some(hook) = &mut self.folder_hook {
+            hook.on_user_input();
+        }
         match &mut self.backend {
             Backend::None => {}
             Backend::Pty(pty) => {
@@ -941,11 +1000,7 @@ mod tests {
             let (mut s, _) = listener.accept().unwrap();
             // IAC WILL ECHO, then a banner.
             s.write_all(&[255, 251, 1]).unwrap();
-            s.write_all(
-                b"Welcome to telnet-test
-",
-            )
-            .unwrap();
+            s.write_all(b"Welcome to telnet-test\r\n").unwrap();
             std::thread::sleep(Duration::from_millis(300));
         });
         let dir = tempfile::tempdir().unwrap();
@@ -977,6 +1032,57 @@ mod tests {
         pump_until(&mut tab, |t| {
             t.term.contents().contains("connection closed")
         });
+    }
+
+    /// End to end: the login shell is bash, so the hook is typed after the
+    /// first prompt, the browser follows `cd`, and the hook never shows.
+    /// Skipped when bash is not installed.
+    #[test]
+    fn folder_tracking_is_automatic_and_hidden_for_bash() {
+        let Some(mut bash) = tc_pty::shells::locate(tc_pty::ShellKind::Bash) else {
+            return;
+        };
+        bash.args = vec!["--norc".into(), "--noprofile".into(), "-i".into()];
+        bash.env.push(("PS1".into(), "tc$ ".into()));
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("sub")).unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let config = tc_devserver::DevConfig {
+            shell: Some(bash),
+            login_shell: Some("/usr/bin/bash".into()),
+            sftp_root: root.path().to_path_buf(),
+            ..Default::default()
+        };
+        let (addr, fut) = rt.block_on(tc_devserver::bind(0, config)).unwrap();
+        rt.spawn(fut);
+        let dir = tempfile::tempdir().unwrap();
+        let env = TabEnv {
+            scrollback: 100,
+            known_hosts: dir.path().join("known_hosts"),
+            repaint: Arc::new(|| {}),
+            vault: Arc::new(Vault::open(
+                dir.path().join("index.toml"),
+                Box::new(tc_vault::MemoryStore::default()),
+            )),
+            save_passwords: SavePasswords::Never,
+            ssh: Default::default(),
+            backspace_ctrl_h: false,
+            paste_right_click: true,
+            local_shell: Default::default(),
+        };
+        let mut session = dev_session(addr.port());
+        session.options.remove("3_8");
+        session.options.remove("3_26");
+        let mut tab = Tab::open(1, Some(session), &env);
+        pump_until(&mut tab, |t| t.term.contents().contains("password:"));
+        tab.send(format!("{}\r", tc_devserver::DEV_PASSWORD).as_bytes());
+        pump_until(
+            &mut tab,
+            |t| matches!(&t.sftp, SftpStatus::Ready(v) if v.reports_seen),
+        );
+        pump_until(&mut tab, |t| t.term.contents().contains("tc$ "));
+        let screen = tab.term.contents();
+        assert!(!screen.contains("PROMPT_COMMAND"), "{screen}");
     }
 
     #[test]

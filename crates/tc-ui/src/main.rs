@@ -3,6 +3,7 @@
 mod app;
 mod credentials;
 mod external;
+mod folder_hook;
 mod snapshot;
 mod tab;
 mod term_settings;

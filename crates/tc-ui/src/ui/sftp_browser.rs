@@ -78,7 +78,7 @@ fn apply(tab: &mut Tab, action: BrowserAction) {
 fn follow_folder(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) {
     ui.checkbox(&mut view.follow, "Follow terminal folder")
         .on_hover_text("Automatically browse to SSH current folder");
-    if view.follow && !view.reports_seen {
+    if view.follow && !view.reports_seen && !view.auto_hook_pending {
         let install = ui
             .small_button("Enable for this shell")
             .on_hover_text(

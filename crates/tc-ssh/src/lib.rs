@@ -55,6 +55,9 @@ pub struct ConnectParams {
     pub sftp: bool,
     /// Send SSH keepalives at this interval.
     pub keepalive: Option<std::time::Duration>,
+    /// Ask for the login shell on a separate exec channel and report it as
+    /// `SshEvent::LoginShell` ("Follow terminal folder").
+    pub detect_login_shell: bool,
 }
 
 impl ConnectParams {
@@ -98,7 +101,12 @@ pub enum SshEvent {
         exit_status: Option<u32>,
     },
     Sftp(SftpEvent),
+    /// The account's login shell (`$SHELL`), empty if it could not be read.
+    LoginShell(String),
 }
+
+/// Command run on a separate exec channel to find the login shell.
+pub const LOGIN_SHELL_PROBE: &str = "echo \"$SHELL\"";
 
 /// What a `SecretNeeded` prompt is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -529,7 +537,10 @@ async fn run_shell(
     }
     .map_err(|e| format!("cannot start shell: {e}"))?;
 
-    let sftp = if params.sftp {
+    let open_sftp = async {
+        if !params.sftp {
+            return None;
+        }
         match sftp::open(session).await {
             Ok((sftp, home)) => {
                 events.send(SshEvent::Sftp(SftpEvent::Ready { home }));
@@ -540,9 +551,14 @@ async fn run_shell(
                 None
             }
         }
-    } else {
-        None
     };
+    let probe = async {
+        if params.detect_login_shell && params.command.is_none() {
+            let shell = login_shell(session).await.unwrap_or_default();
+            events.send(SshEvent::LoginShell(shell));
+        }
+    };
+    let (sftp, ()) = tokio::join!(open_sftp, probe);
 
     let mut exit_status = None;
     loop {
@@ -581,6 +597,32 @@ async fn run_shell(
         .disconnect(Disconnect::ByApplication, "", "en")
         .await;
     Ok(exit_status)
+}
+
+/// Run [`LOGIN_SHELL_PROBE`] on its own channel; the last non-empty line.
+async fn login_shell(session: &client::Handle<Handler>) -> Option<String> {
+    let mut channel = session.channel_open_session().await.ok()?;
+    channel.exec(true, LOGIN_SHELL_PROBE).await.ok()?;
+    let mut out = Vec::new();
+    let read = async {
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { data } => out.extend_from_slice(&data),
+                ChannelMsg::Eof | ChannelMsg::Close => break,
+                _ => {}
+            }
+            if out.len() > 4096 {
+                break;
+            }
+        }
+    };
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), read).await;
+    let _ = channel.close().await;
+    String::from_utf8_lossy(&out)
+        .lines()
+        .map(str::trim)
+        .rfind(|l| !l.is_empty())
+        .map(String::from)
 }
 
 async fn authenticate(

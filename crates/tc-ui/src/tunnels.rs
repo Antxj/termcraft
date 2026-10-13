@@ -151,7 +151,7 @@ impl RunningTunnel {
                         self.status = "Stopped".into();
                     }
                 }
-                SshEvent::Output(_) | SshEvent::Sftp(_) => {}
+                SshEvent::Output(_) | SshEvent::Sftp(_) | SshEvent::LoginShell(_) => {}
             }
         }
     }

@@ -39,6 +39,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         rows: 24,
         sftp: false,
         keepalive: None,
+        detect_login_shell: false,
     }
 }
 
@@ -71,7 +72,8 @@ fn drive(session: &SshSession, mut answer: impl FnMut(&SshEvent) -> Option<Reply
             SshEvent::Info(_)
             | SshEvent::Connected
             | SshEvent::Sftp(_)
-            | SshEvent::Listening(_) => {}
+            | SshEvent::Listening(_)
+            | SshEvent::LoginShell(_) => {}
         }
         if let Some(reply) = answer(&event) {
             session.reply(reply);

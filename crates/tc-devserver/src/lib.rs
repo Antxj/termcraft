@@ -30,6 +30,11 @@ pub struct DevConfig {
     pub authorized_keys: Vec<PublicKey>,
     /// Local directory served as SFTP `/` (created on demand).
     pub sftp_root: PathBuf,
+    /// Interactive shell; `None` = the platform default shell.
+    pub shell: Option<tc_pty::ShellCommand>,
+    /// `$SHELL` reported to exec requests that print it (`echo "$SHELL"`),
+    /// so clients can detect the login shell on any platform.
+    pub login_shell: Option<String>,
 }
 
 impl Default for DevConfig {
@@ -39,6 +44,8 @@ impl Default for DevConfig {
             password: DEV_PASSWORD.into(),
             authorized_keys: Vec::new(),
             sftp_root: std::env::temp_dir().join("termcraft-devserver"),
+            shell: None,
+            login_shell: None,
         }
     }
 }
@@ -161,7 +168,10 @@ impl russh::server::Handler for Conn {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         let (rows, cols) = self.sizes.get(&channel).copied().unwrap_or((24, 80));
-        let pty = PtySession::spawn(None, &[], rows, cols, Arc::new(|| {}))?;
+        let pty = match &self.config.shell {
+            Some(shell) => PtySession::spawn_command(shell, rows, cols, Arc::new(|| {}))?,
+            None => PtySession::spawn(None, &[], rows, cols, Arc::new(|| {}))?,
+        };
         let events = pty.events().clone();
         self.ptys.insert(channel, Arc::new(Mutex::new(pty)));
 
@@ -197,7 +207,17 @@ impl russh::server::Handler for Conn {
         let command = String::from_utf8_lossy(data).into_owned();
         let handle = session.handle();
         session.channel_success(channel)?;
+        let login_shell = self.config.login_shell.clone();
         tokio::spawn(async move {
+            if let Some(shell) = login_shell.filter(|_| command.contains("$SHELL")) {
+                let _ = handle
+                    .data(channel, format!("{shell}\n").into_bytes())
+                    .await;
+                let _ = handle.exit_status_request(channel, 0).await;
+                let _ = handle.eof(channel).await;
+                let _ = handle.close(channel).await;
+                return;
+            }
             let mut cmd = if cfg!(windows) {
                 let mut c = tokio::process::Command::new("cmd");
                 c.arg("/C").arg(&command);

@@ -994,6 +994,9 @@ impl eframe::App for TermCraftApp {
         }
         for tab in &mut self.core.tabs {
             tab.pump();
+            if let Some(after) = tab.wakeup() {
+                ctx.request_repaint_after(after);
+            }
             self.offers.extend(tab.offers.drain(..));
             // Like the reference: the SSH-browser shows up on SSH login.
             if std::mem::take(&mut tab.sftp_just_ready)

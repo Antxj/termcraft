@@ -93,7 +93,7 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [x] | SSH-browser (SFTP) in the sidebar, opened automatically on SSH login; same toolbar / columns as the reference | `tc-ssh` + `tc-ui` |
 | P0 | [~] | Upload (button or drop files from the OS) / download (save dialog); dragging files *out* to the OS pending | `tc-ssh` + `tc-ui` |
-| P1 | [x] | "Follow terminal folder": follows OSC 7 reports; one-click bash/zsh prompt hook when the shell reports nothing | `tc-term` + `tc-ui` |
+| P1 | [x] | "Follow terminal folder": follows OSC 7 reports. On login, `$SHELL` is read on a separate exec channel; for bash / zsh the prompt hook is typed once the prompt settles and its echo is hidden. Other shells: one-click button | `tc-ssh` + `tc-term` + `tc-ui` |
 | P1 | [x] | Transfers run in parallel with progress bars | `tc-ssh` |
 | P1 | [ ] | Open remote file in local editor, upload on save | `tc-sftp` |
 | P2 | [ ] | SCP mode (fast / legacy) when SFTP is unavailable | `tc-sftp` |
