@@ -47,9 +47,9 @@ refined against it.
 | P0 | [x] | Local shell tab (ConPTY on Windows, PTY on Unix) | `tc-pty` |
 | P0 | [~] | Scrollback (Shift+PgUp/PgDn/Home/End) | `tc-term` |
 | P0 | [ ] | Copy on select / right-click paste | `tc-ui` |
-| P1 | [ ] | Font / size / color scheme per session and global | `tc-core` |
+| P1 | [x] | Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size | `tc-term` + `tc-ui` |
 | P1 | [ ] | Charset selection (UTF-8, ISO-8859-x…) | `tc-term` |
-| P1 | [ ] | Backspace behavior (^H / ^?) | `tc-term` |
+| P1 | [x] | Backspace behavior (^H / ^?) and terminal type (TERM) per session | `tc-ui` |
 | P1 | [ ] | Find in terminal output | `tc-ui` |
 | P1 | [ ] | Output logging to file | `tc-term` |
 | P1 | [ ] | Multi-line paste warning | `tc-ui` |

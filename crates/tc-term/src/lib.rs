@@ -9,13 +9,14 @@ mod osc7;
 mod palette;
 
 pub use input::{Key, Modifiers, encode_key};
-pub use palette::{DEFAULT_BG, DEFAULT_FG, Rgb, color_to_rgb};
+pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};
 
 pub struct Terminal {
     parser: vt100::Parser,
     osc7: osc7::Osc7,
     /// Latest directory reported via OSC 7, not yet taken.
     cwd_report: Option<String>,
+    pub theme: Theme,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +37,7 @@ impl Terminal {
             parser: vt100::Parser::new(rows.max(1), cols.max(1), scrollback),
             osc7: osc7::Osc7::default(),
             cwd_report: None,
+            theme: Theme::default(),
         }
     }
 
@@ -107,8 +109,9 @@ impl Terminal {
 
     pub fn cell(&self, row: u16, col: u16) -> Option<CellView<'_>> {
         let cell = self.parser.screen().cell(row, col)?;
-        let mut fg = color_to_rgb(cell.fgcolor(), DEFAULT_FG);
-        let mut bg = color_to_rgb(cell.bgcolor(), DEFAULT_BG);
+        let t = &self.theme;
+        let mut fg = t.resolve(cell.fgcolor(), t.foreground, cell.bold());
+        let mut bg = t.resolve(cell.bgcolor(), t.background, false);
         if cell.inverse() {
             std::mem::swap(&mut fg, &mut bg);
         }
@@ -144,7 +147,7 @@ mod tests {
         assert!(t.contents().starts_with("hello red"));
         let r = t.cell(0, 6).unwrap();
         assert_eq!(r.text, "r");
-        assert_ne!(r.fg, DEFAULT_FG);
+        assert_ne!(r.fg, t.theme.foreground);
     }
 
     #[test]

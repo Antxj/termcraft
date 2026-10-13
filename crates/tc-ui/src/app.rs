@@ -326,12 +326,20 @@ impl TermCraftApp {
             Action::SelectTab(id) => return self.core.active = Some(id),
             Action::QuickConnect(target) => return self.run(Command::TabQuickConnect { target }),
             Action::ZoomIn | Action::ZoomOut => {
-                let t = &mut self.core.settings.terminal;
                 let delta = if matches!(action, Action::ZoomIn) {
                     1.0
                 } else {
                     -1.0
                 };
+                let active = self.core.active;
+                // Zoom the active tab when it has its own (session) font size.
+                if let Some(tab) = self.core.tabs.iter_mut().find(|t| Some(t.id) == active)
+                    && let Some(size) = &mut tab.font_size
+                {
+                    *size = (*size + delta).clamp(8.0, 40.0);
+                    return;
+                }
+                let t = &mut self.core.settings.terminal;
                 t.font_size = (t.font_size + delta).clamp(8.0, 32.0);
             }
             Action::ToggleSidebar => view.sidebar_visible = !view.sidebar_visible,

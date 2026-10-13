@@ -4,6 +4,7 @@ mod app;
 mod credentials;
 mod snapshot;
 mod tab;
+mod term_settings;
 mod term_view;
 mod tunnels;
 mod ui;

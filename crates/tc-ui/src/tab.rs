@@ -81,6 +81,10 @@ pub struct Tab {
     /// Session this tab was opened from (`None` = default local shell).
     pub session: Option<Session>,
     pub term: Terminal,
+    /// Font size from the session (px); `None` = global setting.
+    pub font_size: Option<f32>,
+    pub backspace_sends_ctrl_h: bool,
+    term_type: Option<String>,
     backend: Backend,
     pub status: Option<String>,
     pub host_key: Option<HostKeyPrompt>,
@@ -119,6 +123,9 @@ impl Tab {
             title,
             session,
             term: Terminal::new(INITIAL_ROWS, INITIAL_COLS, env.scrollback),
+            font_size: None,
+            backspace_sends_ctrl_h: false,
+            term_type: None,
             backend: Backend::None,
             status: None,
             host_key: None,
@@ -130,6 +137,11 @@ impl Tab {
             credentials: Credentials::new(env.vault.clone(), env.save_passwords),
             offers: Default::default(),
         };
+        let settings = crate::term_settings::for_session(tab.session.as_ref());
+        tab.term.theme = settings.theme;
+        tab.font_size = settings.font_px;
+        tab.backspace_sends_ctrl_h = settings.backspace_sends_ctrl_h;
+        tab.term_type = settings.term_type;
         match tab.session.as_ref().map(|s| s.kind.clone()) {
             None => tab.spawn_local(None),
             Some(SessionKind::LocalShell { program }) => tab.spawn_local(program.as_deref()),
@@ -220,7 +232,10 @@ impl Tab {
                 .map(str::trim)
                 .filter(|c| !c.is_empty())
                 .map(String::from),
-            term: "xterm-256color".into(),
+            term: self
+                .term_type
+                .clone()
+                .unwrap_or_else(|| "xterm-256color".into()),
             cols,
             rows,
             // 3_26 SSH-browser type: 0 = none.

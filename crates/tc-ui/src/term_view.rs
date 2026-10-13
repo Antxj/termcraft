@@ -4,14 +4,14 @@
 
 use crate::tab::Tab;
 use egui::{Color32, FontId, Rect, Sense, Stroke, Vec2, pos2, vec2};
-use tc_term::{DEFAULT_BG, Key, Modifiers, Rgb, encode_key};
+use tc_term::{CursorShape, Key, Modifiers, Rgb, encode_key};
 
 fn color(c: Rgb) -> Color32 {
     Color32::from_rgb(c.0, c.1, c.2)
 }
 
-pub fn show(ui: &mut egui::Ui, tab: &mut Tab, font_size: f32) {
-    let font = FontId::monospace(font_size);
+pub fn show(ui: &mut egui::Ui, tab: &mut Tab, global_font_size: f32) {
+    let font = FontId::monospace(tab.font_size.unwrap_or(global_font_size));
     let (cell_w, cell_h) = ui.fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
 
     let available = ui.available_size();
@@ -62,7 +62,8 @@ pub fn show(ui: &mut egui::Ui, tab: &mut Tab, font_size: f32) {
 
 fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focused: bool) {
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 0.0, color(DEFAULT_BG));
+    let background = tab.term.theme.background;
+    painter.rect_filled(rect, 0.0, color(background));
 
     let (rows, cols) = tab.term.size();
     let mut run = String::new();
@@ -95,7 +96,7 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
             let x = rect.left() + f32::from(start) * cell.x;
             let width = f32::from(col - start) * cell.x;
             let run_rect = Rect::from_min_size(pos2(x, y), vec2(width, cell.y));
-            if first.bg != DEFAULT_BG {
+            if first.bg != background {
                 painter.rect_filled(run_rect, 0.0, color(first.bg));
             }
             if !run.trim().is_empty() {
@@ -114,12 +115,27 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
             rect.left() + f32::from(col) * cell.x,
             rect.top() + f32::from(row) * cell.y,
         );
-        let cursor = Rect::from_min_size(min, cell);
-        let c = Color32::from_rgba_unmultiplied(220, 220, 220, 160);
-        if focused {
+        let theme = &tab.term.theme;
+        let Rgb(r, g, b) = theme.cursor;
+        let c = Color32::from_rgba_unmultiplied(r, g, b, 170);
+        // Blinking cursors toggle every 0.5 s while focused.
+        let visible = !(theme.cursor_blink && focused) || {
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(500));
+            (ui.input(|i| i.time) * 2.0) as i64 % 2 == 0
+        };
+        let cursor = match theme.cursor_shape {
+            CursorShape::Block => Rect::from_min_size(min, cell),
+            CursorShape::Underline => {
+                Rect::from_min_size(min + vec2(0.0, cell.y - 2.0), vec2(cell.x, 2.0))
+            }
+            CursorShape::Line => Rect::from_min_size(min, vec2(2.0, cell.y)),
+        };
+        if !focused {
+            let outline = Rect::from_min_size(min, cell);
+            painter.rect_stroke(outline, 0.0, Stroke::new(1.0, c), egui::StrokeKind::Inside);
+        } else if visible {
             painter.rect_filled(cursor, 0.0, c);
-        } else {
-            painter.rect_stroke(cursor, 0.0, Stroke::new(1.0, c), egui::StrokeKind::Inside);
         }
     }
 }
@@ -159,8 +175,10 @@ fn handle_input(ui: &egui::Ui, tab: &mut Tab) {
                         _ => {}
                     }
                 }
+                // Session "Backspace sends ^H" swaps DEL and ^H.
+                let swap_bs = key == egui::Key::Backspace && tab.backspace_sends_ctrl_h;
                 let mods = Modifiers {
-                    ctrl: modifiers.ctrl,
+                    ctrl: modifiers.ctrl != swap_bs,
                     alt: modifiers.alt,
                     shift: modifiers.shift,
                 };

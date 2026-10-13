@@ -1,6 +1,15 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
 
+impl Rgb {
+    /// Parse `"r,g,b"` (the session settings color format).
+    pub fn parse(s: &str) -> Option<Self> {
+        let mut it = s.split(',').map(|p| p.trim().parse::<u8>().ok());
+        let rgb = Self(it.next()??, it.next()??, it.next()??);
+        it.next().is_none().then_some(rgb)
+    }
+}
+
 pub const DEFAULT_FG: Rgb = Rgb(0xd8, 0xd8, 0xd8);
 pub const DEFAULT_BG: Rgb = Rgb(0x1a, 0x1b, 0x1e);
 
@@ -23,15 +32,56 @@ const ANSI16: [Rgb; 16] = [
     Rgb(0xff, 0xff, 0xff),
 ];
 
-pub fn color_to_rgb(color: vt100::Color, default: Rgb) -> Rgb {
-    match color {
-        vt100::Color::Default => default,
-        vt100::Color::Rgb(r, g, b) => Rgb(r, g, b),
-        vt100::Color::Idx(i) => indexed(i),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorShape {
+    Block,
+    Underline,
+    Line,
+}
+
+/// Terminal colors and cursor style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Theme {
+    pub foreground: Rgb,
+    pub background: Rgb,
+    pub cursor: Rgb,
+    pub cursor_shape: CursorShape,
+    pub cursor_blink: bool,
+    /// 0–7 normal, 8–15 bright ("bold") ANSI colors.
+    pub ansi: [Rgb; 16],
+    /// Render bold text with the bright variant of its color.
+    pub bold_is_bright: bool,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            foreground: DEFAULT_FG,
+            background: DEFAULT_BG,
+            cursor: Rgb(0xdc, 0xdc, 0xdc),
+            cursor_shape: CursorShape::Block,
+            cursor_blink: false,
+            ansi: ANSI16,
+            bold_is_bright: true,
+        }
     }
 }
 
-/// xterm 256-color palette: 16 ANSI, 6×6×6 cube, 24 grays.
+impl Theme {
+    pub fn resolve(&self, color: vt100::Color, default: Rgb, bold: bool) -> Rgb {
+        match color {
+            vt100::Color::Default => default,
+            vt100::Color::Rgb(r, g, b) => Rgb(r, g, b),
+            vt100::Color::Idx(i) if i < 8 && bold && self.bold_is_bright => {
+                self.ansi[i as usize + 8]
+            }
+            vt100::Color::Idx(i) if i < 16 => self.ansi[i as usize],
+            vt100::Color::Idx(i) => indexed(i),
+        }
+    }
+}
+
+/// xterm 256-color palette beyond the 16 ANSI colors: 6×6×6 cube, 24 grays.
 fn indexed(i: u8) -> Rgb {
     match i {
         0..=15 => ANSI16[i as usize],
@@ -57,5 +107,19 @@ mod tests {
         assert_eq!(indexed(231), Rgb(255, 255, 255));
         assert_eq!(indexed(232), Rgb(8, 8, 8));
         assert_eq!(indexed(255), Rgb(238, 238, 238));
+    }
+
+    #[test]
+    fn parse_and_bold_brightening() {
+        assert_eq!(Rgb::parse("30, 30,30"), Some(Rgb(30, 30, 30)));
+        assert_eq!(Rgb::parse("1,2"), None);
+        assert_eq!(Rgb::parse("1,2,3,4"), None);
+        assert_eq!(Rgb::parse("300,0,0"), None);
+        let t = Theme::default();
+        assert_eq!(t.resolve(vt100::Color::Idx(1), DEFAULT_FG, true), t.ansi[9]);
+        assert_eq!(
+            t.resolve(vt100::Color::Idx(1), DEFAULT_FG, false),
+            t.ansi[1]
+        );
     }
 }
