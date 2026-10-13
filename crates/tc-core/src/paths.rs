@@ -48,4 +48,9 @@ impl Paths {
     pub fn settings_file(&self) -> PathBuf {
         self.config_dir.join("settings.toml")
     }
+
+    /// OpenSSH-format known_hosts used by the native SSH client.
+    pub fn known_hosts_file(&self) -> PathBuf {
+        self.data_dir.join("known_hosts")
+    }
 }

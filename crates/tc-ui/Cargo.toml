@@ -16,6 +16,7 @@ tc-commands.workspace = true
 tc-term.workspace = true
 tc-pty.workspace = true
 tc-update.workspace = true
+tc-ssh.workspace = true
 eframe.workspace = true
 egui.workspace = true
 serde_json.workspace = true

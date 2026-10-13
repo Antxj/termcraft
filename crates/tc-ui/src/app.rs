@@ -1,4 +1,4 @@
-use crate::tab::Tab;
+use crate::tab::{Tab, TabEnv};
 use crate::term_view;
 use crate::ui::session_editor::SessionEditor;
 use crate::ui::{self, Action, home, menus, sidebar, tabbar, toolbar};
@@ -64,9 +64,12 @@ impl Host for Core {
     fn tab_open(&mut self, session: Option<Session>) -> Result<u64, CommandError> {
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        let scrollback = self.settings.terminal.scrollback_lines;
-        self.tabs
-            .push(Tab::open(id, session, scrollback, self.repaint.clone()));
+        let env = TabEnv {
+            scrollback: self.settings.terminal.scrollback_lines,
+            known_hosts: self.paths.known_hosts_file(),
+            repaint: self.repaint.clone(),
+        };
+        self.tabs.push(Tab::open(id, session, &env));
         self.active = Some(id);
         Ok(id)
     }
@@ -266,6 +269,7 @@ impl TermCraftApp {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
+        self.host_key_dialog(ctx);
         if let Some(editor) = &mut self.editor
             && !editor.show(ctx, out)
         {
@@ -372,6 +376,58 @@ impl TermCraftApp {
                     out.push(Action::Run(Command::SessionRemove { id }));
                 }
             }
+        }
+    }
+
+    /// "Host key validation" for the active tab's pending SSH connection.
+    fn host_key_dialog(&mut self, ctx: &egui::Context) {
+        let active = self.core.active;
+        let Some(tab) = self.core.tabs.iter_mut().find(|t| Some(t.id) == active) else {
+            return;
+        };
+        let Some(prompt) = &tab.host_key else {
+            return;
+        };
+        let mut answer = None;
+        egui::Window::new("Host key validation")
+            .id(egui::Id::new(("host-key", tab.id)))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(ui::icon::SHIELD_WARNING).size(40.0));
+                    ui.vertical(|ui| {
+                        ui.label(format!("The host key of {} is not known yet.", prompt.host));
+                        ui.label("Check the fingerprint before trusting this server.");
+                    });
+                });
+                ui.add_space(6.0);
+                egui::Grid::new("host-key-info")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("Key type:");
+                        ui.monospace(&prompt.algorithm);
+                        ui.end_row();
+                        ui.label("SHA256 fingerprint:");
+                        ui.monospace(&prompt.fingerprint);
+                        ui.end_row();
+                    });
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Accept and save").clicked() {
+                        answer = Some((true, true));
+                    }
+                    if ui.button("Accept once").clicked() {
+                        answer = Some((true, false));
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some((false, false));
+                    }
+                });
+            });
+        if let Some((accept, remember)) = answer {
+            tab.answer_host_key(accept, remember);
         }
     }
 

@@ -1,0 +1,41 @@
+# Development notes
+
+## Toolchain
+
+On Windows, use the MSVC toolchain (`rustup default stable-msvc`). The GNU
+toolchain needs `dlltool`. The SSH stack uses `ring` instead of `aws-lc-rs`,
+so NASM is not required.
+
+## Local SSH test server
+
+`tc-devserver` is a small SSH server for development and integration tests.
+It binds to **127.0.0.1 only** and serves the local shell (via `tc-pty`) and
+exec requests, with password and public-key authentication. Its host key is
+derived from a fixed seed, so a `known_hosts` entry stays valid across runs.
+
+```sh
+cargo run -p tc-devserver -- --port 2222
+```
+
+Test credentials (dev only, override with `TC_DEV_USER` / `TC_DEV_PASSWORD`):
+
+| User | Password |
+|---|---|
+| `termcraft` | `termcraft-dev` |
+
+Create a session for it:
+
+```sh
+cargo run -p tc-cli -- run session_add '{"session":{"name":"devserver","type":"ssh","host":"127.0.0.1","port":2222,"user":"termcraft"}}'
+```
+
+`cargo test -p tc-ssh` starts the same server in-process on a random port.
+That run covers host-key trust and change detection, password and
+public-key login, and a wrong password followed by cancel.
+
+## Driving the GUI in tests
+
+The reference app is never executed (see [CLEAN_ROOM.md](CLEAN_ROOM.md)).
+TermCraft itself can be driven with real mouse and keyboard events. Run it in
+portable mode from a scratch folder so your real configuration is never
+touched.

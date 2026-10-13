@@ -1,0 +1,22 @@
+[package]
+name = "tc-ssh"
+description = "Native SSH client (russh): shell channels, auth, host keys, SFTP"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+russh = { version = "0.64", default-features = false, features = ["flate2", "ring", "rsa"] }
+russh-sftp = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "io-util"] }
+anyhow.workspace = true
+thiserror.workspace = true
+crossbeam-channel.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tc-devserver.workspace = true
+tempfile.workspace = true

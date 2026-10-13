@@ -22,6 +22,8 @@
 | `tc-commands` | Command enum, catalog, `Host` trait, `execute` |
 | `tc-term` | VT emulation wrapper, palette, key encoding |
 | `tc-pty` | Local shell over ConPTY / PTY |
+| `tc-ssh` | Native SSH client (russh): auth, host keys, shell / exec channels |
+| `tc-devserver` | Loopback SSH server for tests and manual runs (docs/DEV.md) |
 | `tc-import` | MobaXterm (and later PuTTY, ssh_config) importers |
 | `tc-update` | Signed self-update |
 | `tc-mcp` | MCP server over stdio |

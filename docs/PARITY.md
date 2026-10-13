@@ -68,10 +68,10 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P0 | [~] | SSH (password, public key, keyboard-interactive) — stopgap via system `ssh` | `tc-ssh` |
-| P0 | [ ] | SSH remote command / keep-open after exit | `tc-ssh` |
+| P0 | [x] | Native SSH (russh): password, public key (incl. encrypted keys), keyboard-interactive; in-terminal `login as:` / password prompts | `tc-ssh` |
+| P0 | [~] | SSH remote command ("Execute command"); keep-open after exit pending | `tc-ssh` |
 | P0 | [ ] | SSH agent (Pageant / ssh-agent / OpenSSH agent pipe) | `tc-ssh` |
-| P1 | [ ] | SSH compression | `tc-ssh` |
+| P1 | [x] | SSH compression (zlib / zlib@openssh.com) | `tc-ssh` |
 | P1 | [ ] | SSH gateway / jump host (multi-hop) | `tc-ssh` |
 | P1 | [ ] | SOCKS / HTTP proxy for SSH | `tc-ssh` |
 | P1 | [ ] | Telnet | `tc-telnet` |
@@ -122,6 +122,7 @@ refined against it.
 | P0 | [ ] | Save passwords in OS keychain (`keyring`) | `tc-vault` |
 | P1 | [ ] | Master password (encrypted vault, Argon2id + XChaCha20) | `tc-vault` |
 | P1 | [ ] | Key generator (ed25519 / RSA, OpenSSH + PPK formats) | `tc-vault` |
+| P1 | [x] | Host key validation dialog, known_hosts (OpenSSH format), changed-key refusal | `tc-ssh` |
 | P2 | [ ] | known_hosts management UI | `tc-ssh` |
 
 ## 7. Tunnels and networking
@@ -152,7 +153,7 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P1 | [ ] | SSH X11 forwarding (DISPLAY set automatically) | `tc-ssh` |
+| P1 | [ ] | SSH X11 forwarding (DISPLAY set automatically) — not in the native client yet | `tc-ssh` |
 | P2 | [ ] | Windows: bundle and manage VcXsrv (MIT/X11 license) | `tc-x11` |
 | P2 | [ ] | macOS: detect / launch XQuartz | `tc-x11` |
 | P2 | [ ] | Linux: use native X / XWayland | `tc-x11` |

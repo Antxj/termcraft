@@ -1,0 +1,21 @@
+[package]
+name = "tc-devserver"
+description = "Local SSH test server for TermCraft development and integration tests (127.0.0.1 only)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "tc-devserver"
+path = "src/main.rs"
+
+[dependencies]
+tc-pty.workspace = true
+russh = { version = "0.64", default-features = false, features = ["flate2", "ring", "rsa"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "io-util", "process"] }
+anyhow.workspace = true
+
+[lints]
+workspace = true
