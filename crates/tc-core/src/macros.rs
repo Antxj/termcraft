@@ -49,7 +49,7 @@ impl Macro {
         let mut out = String::new();
         for ch in self.keys.chars() {
             match ch {
-                '\r' | '\n' => out.push_str("⏎"),
+                '\r' | '\n' => out.push('⏎'),
                 '\x1b' => out.push_str("<Esc>"),
                 '\t' => out.push_str("<Tab>"),
                 c if (c as u32) < 0x20 => {
