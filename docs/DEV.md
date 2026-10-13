@@ -53,7 +53,7 @@ settings are never touched.
 
 ## Driving the GUI in tests
 
-The reference app is never executed (see [CLEAN_ROOM.md](CLEAN_ROOM.md)).
-TermCraft itself can be driven with real mouse and keyboard events. Run it in
-portable mode from a scratch folder so your real configuration is never
-touched.
+Prefer UI snapshots (above). Never inject OS mouse or keyboard events while
+someone is using the machine: if another window is in front, the clicks and
+keystrokes go to that window. The reference app is never executed (see
+[CLEAN_ROOM.md](CLEAN_ROOM.md)).
