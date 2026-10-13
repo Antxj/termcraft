@@ -51,6 +51,8 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                             size: m.size.unwrap_or(0),
                             modified: m.mtime.map(u64::from),
                             permissions: m.permissions.map(|p| p & 0o7777),
+                            owner: m.user.clone().or_else(|| m.uid.map(|u| u.to_string())),
+                            group: m.group.clone().or_else(|| m.gid.map(|g| g.to_string())),
                         }
                     })
                     .collect();

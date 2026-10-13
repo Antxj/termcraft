@@ -1,5 +1,5 @@
 //! SSH-browser side panel (reference `sTabSFTP`): toolbar, path box, file
-//! list (Name, Size (KB), Last modified, Access), transfers, and
+//! list (Name, Size (KB), Last modified, Owner, Group, Access), transfers, and
 //! "Follow terminal folder". Files dropped from the OS are uploaded.
 
 use super::{NOT_YET, icon};
@@ -303,11 +303,18 @@ fn file_list(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction
         .auto_shrink([false, false])
         .show(ui, |ui| {
             egui::Grid::new("sftp-grid")
-                .num_columns(4)
+                .num_columns(6)
                 .striped(true)
                 .spacing([10.0, 2.0])
                 .show(ui, |ui| {
-                    for h in ["Name", "Size (KB)", "Last modified", "Access"] {
+                    for h in [
+                        "Name",
+                        "Size (KB)",
+                        "Last modified",
+                        "Owner",
+                        "Group",
+                        "Access",
+                    ] {
                         ui.strong(h);
                     }
                     ui.end_row();
@@ -358,6 +365,8 @@ fn row(ui: &mut egui::Ui, view: &mut SftpView, e: &RemoteEntry, out: &mut Vec<Br
         format!("{}", e.size.div_ceil(1024))
     });
     ui.label(e.modified.map(format_time).unwrap_or_default());
+    ui.label(e.owner.as_deref().unwrap_or(""));
+    ui.label(e.group.as_deref().unwrap_or(""));
     ui.monospace(e.permissions.map(access_string).unwrap_or_default());
     ui.end_row();
 }
@@ -496,25 +505,20 @@ fn access_string(mode: u32) -> String {
     s
 }
 
-/// `YYYY-MM-DD HH:MM` (UTC) from Unix seconds, without a date library.
+/// `YYYY-MM-DD HH:MM` in the local time zone, from Unix seconds.
 fn format_time(secs: u64) -> String {
-    let days = (secs / 86_400) as i64;
-    let rem = secs % 86_400;
-    // Civil-from-days (H. Hinnant).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    format!(
-        "{y:04}-{m:02}-{d:02} {:02}:{:02}",
-        rem / 3600,
-        (rem % 3600) / 60
-    )
+    format_time_in(secs, &chrono::Local)
+}
+
+fn format_time_in<Tz: chrono::TimeZone>(secs: u64, tz: &Tz) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    i64::try_from(secs)
+        .ok()
+        .and_then(|s| chrono::DateTime::from_timestamp(s, 0))
+        .map(|t| t.with_timezone(tz).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -525,8 +529,13 @@ mod tests {
     fn formats() {
         assert_eq!(access_string(0o755), "rwxr-xr-x");
         assert_eq!(access_string(0o640), "rw-r-----");
-        assert_eq!(format_time(0), "1970-01-01 00:00");
-        assert_eq!(format_time(1_791_914_134), "2026-10-13 17:55");
+        assert_eq!(format_time_in(0, &chrono::Utc), "1970-01-01 00:00");
+        assert_eq!(
+            format_time_in(1_791_914_134, &chrono::Utc),
+            "2026-10-13 17:55"
+        );
+        let brt = chrono::FixedOffset::west_opt(3 * 3600).unwrap();
+        assert_eq!(format_time_in(1_791_914_134, &brt), "2026-10-13 14:55");
         assert_eq!(shell_quote("/home/u/a.txt"), "/home/u/a.txt");
         assert_eq!(shell_quote("/tmp/it's here"), "'/tmp/it'\\''s here'");
     }

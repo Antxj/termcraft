@@ -239,5 +239,7 @@ fn entry(f: &File) -> RemoteEntry {
             .map(|d| d.as_secs())
             .filter(|&secs| secs > 0),
         permissions: Some(perms),
+        owner: f.uid().map(|u| u.to_string()),
+        group: f.gid().map(|g| g.to_string()),
     }
 }

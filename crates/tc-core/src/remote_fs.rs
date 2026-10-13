@@ -12,6 +12,9 @@ pub struct RemoteEntry {
     pub modified: Option<u64>,
     /// Unix mode bits (permissions part).
     pub permissions: Option<u32>,
+    /// Owner and group: names when the server sends them, else numeric ids.
+    pub owner: Option<String>,
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
