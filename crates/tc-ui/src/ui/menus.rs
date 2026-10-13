@@ -84,7 +84,7 @@ fn terminal_menu(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
 }
 
 pub fn sessions_menu(ui: &mut egui::Ui, sessions: &[Session], out: &mut Vec<Action>) {
-    item(ui, "New session", None, out);
+    item(ui, "New session", Some(Action::NewSession), out);
     ui.separator();
     if sessions.is_empty() {
         ui.weak("No saved sessions");

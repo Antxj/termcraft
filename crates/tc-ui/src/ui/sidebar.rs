@@ -142,10 +142,10 @@ fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
     item(ui, "SFTP session", None, out);
     item(ui, "Ping host", None, out);
     ui.separator();
-    item(ui, "New session", None, out);
+    item(ui, "New session", Some(Action::NewSession), out);
     item(ui, "New folder", None, out);
     item(ui, "Rename", Some(Action::RenameSession(s.id)), out);
-    item(ui, "Edit", None, out);
+    item(ui, "Edit", Some(Action::EditSession(s.id)), out);
     item(ui, "Delete", Some(Action::DeleteSession(s.id)), out);
     item(
         ui,

@@ -195,7 +195,34 @@ fn parse_bookmark(name: &str, value: &str, folder: &str, report: &mut ImportRepo
 
     let mut session = Session::new(name, kind);
     session.folder = folder.into();
+    copy_options(&b, index, &mut session);
     report.sessions.push(session);
+}
+
+/// Keep every schema parameter present in the bookmark (lossless import);
+/// typed fields are skipped and defaults are dropped by `set_option`.
+fn copy_options(b: &Bookmark<'_>, type_index: usize, session: &mut Session) {
+    use tc_core::schema;
+    let typed = session.kind.typed_ids();
+    let params = schema::type_params(type_index)
+        .iter()
+        .chain(schema::network_params(type_index))
+        .chain(schema::terminal_params())
+        .chain(schema::bookmark_params());
+    for param in params {
+        if typed.contains(&param.id) {
+            continue;
+        }
+        let Some((part, field)) = param.id.split_once('_') else {
+            continue;
+        };
+        let (Ok(part), Ok(field)) = (part.parse(), field.parse()) else {
+            continue;
+        };
+        if let Some(value) = b.get(part, field) {
+            session.set_option(param, value.to_string());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -307,6 +334,18 @@ broken=not a bookmark
             .map(|u| (u.name.as_str(), u.session_type.as_str()))
             .collect();
         assert_eq!(got, [("mosh box", "Mosh"), ("broken", "")]);
+    }
+
+    #[test]
+    fn keeps_non_default_options() {
+        let r = parse("[Bookmarks]\nbox=#109#0%h%22%u%%-1%-1%%%%%0%0%0%%%-1#MobaFont%12#0#\n");
+        let s = &r.sessions[0];
+        // 3_7 compression = -1 differs from default 0 → kept; 4_1 font name kept.
+        assert_eq!(s.options.get("3_7").map(String::as_str), Some("-1"));
+        assert_eq!(s.options.get("4_2").map(String::as_str), Some("12"));
+        // typed fields never duplicated into options
+        assert!(!s.options.contains_key("3_2"));
+        assert!(!s.options.contains_key("3_6"));
     }
 
     #[test]

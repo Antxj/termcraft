@@ -7,6 +7,7 @@
 mod dfm;
 mod inventory;
 mod pe;
+mod schema;
 
 use anyhow::{Context as _, Result, bail};
 use clap::{Parser, Subcommand};
@@ -29,6 +30,8 @@ enum Cmd {
     },
     /// Generate docs/inventory/*.md from the reference app.
     Inventory { input: Option<PathBuf> },
+    /// Generate crates/tc-core/src/schema_gen.rs (session parameter schema).
+    Schema { input: Option<PathBuf> },
 }
 
 pub struct Reference {
@@ -54,6 +57,13 @@ fn main() -> Result<()> {
             let reference = load(input)?;
             let out = root().join("docs/inventory");
             inventory::write_all(&reference, &out)?;
+            println!("wrote {}", out.display());
+            Ok(())
+        }
+        Cmd::Schema { input } => {
+            let code = schema::generate(&load(input)?)?;
+            let out = root().join("crates/tc-core/src/schema_gen.rs");
+            std::fs::write(&out, code)?;
             println!("wrote {}", out.display());
             Ok(())
         }

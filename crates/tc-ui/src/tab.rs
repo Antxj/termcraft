@@ -53,10 +53,21 @@ impl Tab {
                 if *x11_forwarding {
                     args.push("-X".into());
                 }
+                let options = &tab.session.as_ref().expect("ssh tab has a session").options;
+                let opt = |id: &str| options.get(id).map(String::as_str);
+                // 3_7 Compression, 3_8 Execute command (parameter schema ids).
+                if opt("3_7").is_some_and(tc_core::schema::is_true) {
+                    args.push("-C".into());
+                }
+                let command = opt("3_8").map(str::trim).filter(|c| !c.is_empty());
+                if command.is_some() {
+                    args.push("-t".into());
+                }
                 args.push(match user {
                     Some(u) => format!("{u}@{host}"),
                     None => host.clone(),
                 });
+                args.extend(command.map(String::from));
                 (Some("ssh".to_string()), args)
             }
             Some(other) => {

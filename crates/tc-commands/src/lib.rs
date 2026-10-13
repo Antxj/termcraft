@@ -31,6 +31,10 @@ pub enum Command {
     SessionDuplicate {
         id: SessionId,
     },
+    /// Replace a saved session (matched by `session.id`) with new settings.
+    SessionUpdate {
+        session: Session,
+    },
     TabList {},
     TabOpen {
         /// Session name or id; omitted = local shell.
@@ -82,6 +86,7 @@ impl Command {
             Self::SessionImportMobaxterm { .. } => "session_import_mobaxterm",
             Self::SessionRename { .. } => "session_rename",
             Self::SessionDuplicate { .. } => "session_duplicate",
+            Self::SessionUpdate { .. } => "session_update",
             Self::TabList {} => "tab_list",
             Self::TabOpen { .. } => "tab_open",
             Self::TabSend { .. } => "tab_send",
@@ -219,6 +224,30 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             let new_id = store.add(copy);
             host.persist()?;
             Ok(json!({ "id": new_id }))
+        }
+        Command::SessionUpdate { session } => {
+            let name = session.name.trim();
+            if name.is_empty() {
+                return Err(CommandError::InvalidArgs("name must not be empty".into()));
+            }
+            if host
+                .store()
+                .sessions
+                .iter()
+                .any(|s| s.name == name && s.id != session.id)
+            {
+                return Err(CommandError::InvalidArgs(format!(
+                    "a session named {name:?} already exists"
+                )));
+            }
+            let slot = session_mut(host.store(), session.id)?;
+            *slot = Session {
+                name: name.to_string(),
+                last_used: slot.last_used,
+                ..session
+            };
+            host.persist()?;
+            Ok(json!({ "ok": true }))
         }
         Command::TabList {} => to_json(&host.tab_list()?),
         Command::TabOpen { session } => {
@@ -451,6 +480,29 @@ mod tests {
         let recent = recent_sessions(&host.store, 9);
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].name, "web-1");
+    }
+
+    #[test]
+    fn update_replaces_and_keeps_last_used() {
+        let mut host = MemHost::default();
+        let args = json!({ "session": { "name": "a", "type": "ssh", "host": "h1" } });
+        let out = execute(&mut host, Command::from_call("session_add", args).unwrap()).unwrap();
+        let id: SessionId = serde_json::from_value(out["id"].clone()).unwrap();
+        host.store.sessions[0].last_used = Some(42);
+
+        let mut edited = host.store.sessions[0].clone();
+        edited.name = " b ".into();
+        edited.last_used = None;
+        edited.options.insert("3_7".into(), "-1".into());
+        execute(&mut host, Command::SessionUpdate { session: edited }).unwrap();
+        let s = host.store.get(id).unwrap();
+        assert_eq!(s.name, "b");
+        assert_eq!(s.last_used, Some(42));
+        assert_eq!(s.options["3_7"], "-1");
+
+        let mut ghost = s.clone();
+        ghost.id = SessionId::new();
+        assert!(execute(&mut host, Command::SessionUpdate { session: ghost }).is_err());
     }
 
     #[test]

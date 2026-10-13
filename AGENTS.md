@@ -34,7 +34,9 @@
    git-ignored and nothing in it is ever executed.
 2. Run `cargo xtask extract` to get forms (`.dfm` text), embedded files and
    strings in `reference/extracted/`.
-3. Run `cargo xtask inventory` to regenerate `docs/inventory/`.
+3. Run `cargo xtask inventory` to regenerate `docs/inventory/`, and
+   `cargo xtask schema` to regenerate `crates/tc-core/src/schema_gen.rs`
+   (session parameter schema). Never edit generated files by hand.
 4. Implement against the inventory: same menus, labels, shortcuts, dialog
    layout and parameters. Use TermCraft's own icons.
 

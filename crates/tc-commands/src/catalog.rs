@@ -75,6 +75,15 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "session_update",
+        title: "Update session",
+        description: "Replace a saved session's settings; `session.id` selects which one. \
+                      Same shape as session_add, plus optional `options` (schema id → value).",
+        input_schema: r#"{"type":"object","required":["session"],"properties":{"session":{"type":"object","required":["id","name","type"]}}}"#,
+        example_args: r#"{"session":{"id":"67e55044-10b1-426f-9247-bb680e5fe0c8","name":"web","type":"ssh","host":"10.0.0.2","options":{"3_7":"-1"}}}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "tab_list",
         title: "List tabs",
         description: "List open tabs in the running app.",

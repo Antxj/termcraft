@@ -214,7 +214,7 @@ fn toolbar(r: &Reference) -> String {
 }
 
 /// Minimal ordered INI reader for SEPARAMS.
-fn ini(text: &str) -> Vec<(String, Vec<(String, String)>)> {
+pub fn ini(text: &str) -> Vec<(String, Vec<(String, String)>)> {
     let mut out: Vec<(String, Vec<(String, String)>)> = Vec::new();
     for line in text.lines() {
         let line = line.trim();

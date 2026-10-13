@@ -6,6 +6,7 @@
 
 pub mod home;
 pub mod menus;
+pub mod session_editor;
 pub mod sidebar;
 pub mod tabbar;
 pub mod toolbar;
@@ -26,6 +27,8 @@ pub enum Action {
     About,
     CheckUpdates,
     ImportDialog,
+    NewSession,
+    EditSession(SessionId),
     RenameTab(u64),
     RenameSession(SessionId),
     DeleteSession(SessionId),

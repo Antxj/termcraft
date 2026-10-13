@@ -1,5 +1,6 @@
 use crate::tab::Tab;
 use crate::term_view;
+use crate::ui::session_editor::SessionEditor;
 use crate::ui::{self, Action, home, menus, sidebar, tabbar, toolbar};
 use crate::updates::{UpdateState, Updates};
 use std::sync::Arc;
@@ -122,6 +123,7 @@ pub struct TermCraftApp {
     show_about: bool,
     rename: Option<(Rename, String)>,
     confirm_delete: Option<SessionId>,
+    editor: Option<SessionEditor>,
     status: String,
 }
 
@@ -169,6 +171,7 @@ impl TermCraftApp {
             show_about: false,
             rename: None,
             confirm_delete: None,
+            editor: None,
             status,
         }
     }
@@ -205,6 +208,11 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
+            Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
+            Action::EditSession(id) => {
+                self.editor = self.core.store.get(id).map(SessionEditor::edit);
+                return;
+            }
             Action::RenameTab(id) => {
                 let current = self.core.tabs.iter().find(|t| t.id == id);
                 self.rename = current.map(|t| (Rename::Tab(id), t.title.clone()));
@@ -258,6 +266,12 @@ impl TermCraftApp {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
+        if let Some(editor) = &mut self.editor
+            && !editor.show(ctx, out)
+        {
+            self.editor = None;
+        }
+
         if self.show_import {
             let mut open = true;
             egui::Window::new("Import MobaXterm sessions")

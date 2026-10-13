@@ -104,7 +104,8 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [x] | Session model (host, port, user, kind, folder) | `tc-core` |
 | P0 | [x] | Save / load sessions (TOML) | `tc-core` |
-| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, RDP, VNC, FTP, SFTP, Serial, Shell (layout from inventory) | `tc-import` |
+| P0 | [~] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (8 types editable; Rsh, Xdmcp, File, Browser, Mosh, Aws S3, WSL pending) | `tc-ui` |
+| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, RDP, VNC, FTP, SFTP, Serial, Shell; lossless (every non-default parameter kept in `options`) | `tc-import` |
 | P1 | [~] | Folders tree, rename / duplicate / delete from context menu (drag and drop pending) | `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [ ] | Import `~/.ssh/config` | `tc-import` |

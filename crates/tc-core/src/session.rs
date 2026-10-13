@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -113,6 +114,224 @@ impl SessionKind {
             Self::Ftp { .. } => "FTP",
         }
     }
+
+    /// Reference session type index (`[1_N]` in the parameter schema).
+    pub fn type_index(&self) -> usize {
+        match self {
+            Self::Ssh { .. } => 0,
+            Self::Telnet { .. } => 1,
+            Self::Rdp { .. } => 4,
+            Self::Vnc { .. } => 5,
+            Self::Ftp { .. } => 6,
+            Self::Sftp { .. } => 7,
+            Self::Serial { .. } => 8,
+            Self::LocalShell { .. } => 10,
+        }
+    }
+
+    /// Default kind for a type index, if TermCraft supports that type yet.
+    pub fn default_for(type_index: usize) -> Option<Self> {
+        Some(match type_index {
+            0 => Self::Ssh {
+                host: String::new(),
+                port: 22,
+                user: None,
+                private_key: None,
+                x11_forwarding: true,
+            },
+            1 => Self::Telnet {
+                host: String::new(),
+                port: 23,
+            },
+            4 => Self::Rdp {
+                host: String::new(),
+                port: 3389,
+                user: None,
+            },
+            5 => Self::Vnc {
+                host: String::new(),
+                port: 5900,
+            },
+            6 => Self::Ftp {
+                host: String::new(),
+                port: 21,
+                user: None,
+            },
+            7 => Self::Sftp {
+                host: String::new(),
+                port: 22,
+                user: None,
+            },
+            8 => Self::Serial {
+                port_name: String::new(),
+                baud: 115_200,
+            },
+            10 => Self::LocalShell { program: None },
+            _ => return None,
+        })
+    }
+
+    /// Schema parameter ids that live in typed fields of this kind rather
+    /// than in `Session::options`.
+    pub fn typed_ids(&self) -> &'static [&'static str] {
+        match self {
+            Self::Ssh { .. } => &["3_2", "3_3", "3_4", "3_6", "3_15"],
+            Self::Telnet { .. } | Self::Vnc { .. } => &["3_2", "3_3"],
+            Self::Rdp { .. } | Self::Ftp { .. } | Self::Sftp { .. } => &["3_2", "3_3", "3_4"],
+            Self::Serial { .. } => &["3_9", "3_3"],
+            Self::LocalShell { .. } => &[],
+        }
+    }
+
+    /// Read a typed field by schema id, in the schema's string encoding.
+    pub fn typed_get(&self, id: &str) -> Option<String> {
+        let opt = |v: &Option<String>| v.clone().unwrap_or_default();
+        Some(match (self, id) {
+            (
+                Self::Ssh { host, .. }
+                | Self::Telnet { host, .. }
+                | Self::Rdp { host, .. }
+                | Self::Vnc { host, .. }
+                | Self::Ftp { host, .. }
+                | Self::Sftp { host, .. },
+                "3_2",
+            ) => host.clone(),
+            (
+                Self::Ssh { port, .. }
+                | Self::Telnet { port, .. }
+                | Self::Rdp { port, .. }
+                | Self::Vnc { port, .. }
+                | Self::Ftp { port, .. }
+                | Self::Sftp { port, .. },
+                "3_3",
+            ) => port.to_string(),
+            (
+                Self::Ssh { user, .. }
+                | Self::Rdp { user, .. }
+                | Self::Ftp { user, .. }
+                | Self::Sftp { user, .. },
+                "3_4",
+            ) => opt(user),
+            (Self::Ssh { x11_forwarding, .. }, "3_6") => {
+                crate::schema::bool_value(*x11_forwarding).to_string()
+            }
+            (Self::Ssh { private_key, .. }, "3_15") => opt(private_key),
+            (Self::Serial { port_name, .. }, "3_9") => port_name.clone(),
+            (Self::Serial { baud, .. }, "3_3") => baud.to_string(),
+            _ => return None,
+        })
+    }
+
+    /// Write a typed field by schema id. Returns an error message for values
+    /// that do not fit the field (e.g. a port outside 1–65535).
+    pub fn typed_set(&mut self, id: &str, value: &str) -> Result<(), String> {
+        let value = value.trim();
+        let opt = || (!value.is_empty()).then(|| value.to_string());
+        match (self, id) {
+            (
+                Self::Ssh { host, .. }
+                | Self::Telnet { host, .. }
+                | Self::Rdp { host, .. }
+                | Self::Vnc { host, .. }
+                | Self::Ftp { host, .. }
+                | Self::Sftp { host, .. },
+                "3_2",
+            ) => *host = value.to_string(),
+            (
+                Self::Ssh { port, .. }
+                | Self::Telnet { port, .. }
+                | Self::Rdp { port, .. }
+                | Self::Vnc { port, .. }
+                | Self::Ftp { port, .. }
+                | Self::Sftp { port, .. },
+                "3_3",
+            ) => {
+                *port = value
+                    .parse()
+                    .ok()
+                    .filter(|&p| p > 0)
+                    .ok_or_else(|| format!("invalid port {value:?}"))?;
+            }
+            (
+                Self::Ssh { user, .. }
+                | Self::Rdp { user, .. }
+                | Self::Ftp { user, .. }
+                | Self::Sftp { user, .. },
+                "3_4",
+            ) => *user = opt(),
+            (Self::Ssh { x11_forwarding, .. }, "3_6") => {
+                *x11_forwarding = crate::schema::is_true(value);
+            }
+            (Self::Ssh { private_key, .. }, "3_15") => *private_key = opt(),
+            (Self::Serial { port_name, .. }, "3_9") => *port_name = value.to_string(),
+            (Self::Serial { baud, .. }, "3_3") => {
+                *baud = value
+                    .parse()
+                    .ok()
+                    .filter(|&b| b > 0)
+                    .ok_or_else(|| format!("invalid speed {value:?}"))?;
+            }
+            (_, other) => return Err(format!("{other} is not a typed field")),
+        }
+        Ok(())
+    }
+
+    /// Hostname-like target used for default session names.
+    pub fn target(&self) -> Option<&str> {
+        match self {
+            Self::Ssh { host, .. }
+            | Self::Telnet { host, .. }
+            | Self::Rdp { host, .. }
+            | Self::Vnc { host, .. }
+            | Self::Ftp { host, .. }
+            | Self::Sftp { host, .. } => Some(host.as_str()),
+            Self::Serial { port_name, .. } => Some(port_name.as_str()),
+            Self::LocalShell { .. } => None,
+        }
+        .filter(|s| !s.is_empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_ids_roundtrip() {
+        for index in 0..15 {
+            let Some(mut kind) = SessionKind::default_for(index) else {
+                continue;
+            };
+            assert_eq!(kind.type_index(), index);
+            for id in kind.typed_ids() {
+                let v = kind
+                    .typed_get(id)
+                    .unwrap_or_else(|| panic!("{index}:{id} get"));
+                kind.typed_set(id, &v)
+                    .unwrap_or_else(|e| panic!("{index}:{id} set: {e}"));
+            }
+        }
+    }
+
+    #[test]
+    fn typed_set_validates() {
+        let mut kind = SessionKind::default_for(0).unwrap();
+        kind.typed_set("3_2", " box ").unwrap();
+        kind.typed_set("3_4", "").unwrap();
+        assert!(kind.typed_set("3_3", "0").is_err());
+        assert!(kind.typed_set("3_3", "99999").is_err());
+        kind.typed_set("3_6", "0").unwrap();
+        assert_eq!(
+            kind,
+            SessionKind::Ssh {
+                host: "box".into(),
+                port: 22,
+                user: None,
+                private_key: None,
+                x11_forwarding: false
+            }
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +347,10 @@ pub struct Session {
     pub last_used: Option<u64>,
     #[serde(flatten)]
     pub kind: SessionKind,
+    /// Remaining parameters by schema id (`"3_7"` = SSH compression, …);
+    /// only values that differ from the schema default are stored.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, String>,
 }
 
 impl Session {
@@ -138,6 +361,23 @@ impl Session {
             folder: String::new(),
             last_used: None,
             kind,
+            options: BTreeMap::new(),
+        }
+    }
+
+    /// Value of a schema parameter: stored option, else the schema default.
+    pub fn option<'a>(&'a self, param: &'a crate::schema::Param) -> &'a str {
+        self.options
+            .get(param.id)
+            .map_or(param.default, String::as_str)
+    }
+
+    /// Store a parameter, dropping it when it equals the schema default.
+    pub fn set_option(&mut self, param: &crate::schema::Param, value: String) {
+        if value == param.default {
+            self.options.remove(param.id);
+        } else {
+            self.options.insert(param.id.to_string(), value);
         }
     }
 }

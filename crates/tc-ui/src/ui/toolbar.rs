@@ -93,7 +93,7 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             icon::MONITOR_PLAY,
             "Session",
             "Start a new remote session",
-            Kind::Action(None),
+            Kind::Action(Some(Action::NewSession)),
         ),
         (
             icon::HARD_DRIVES,

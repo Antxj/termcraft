@@ -1,6 +1,9 @@
 //! TermCraft core model. Pure data + persistence; must never depend on UI crates.
 
 pub mod paths;
+pub mod schema;
+#[rustfmt::skip]
+mod schema_gen;
 pub mod session;
 pub mod settings;
 pub mod store;
