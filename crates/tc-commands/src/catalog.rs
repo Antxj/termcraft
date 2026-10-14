@@ -115,6 +115,14 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "session_desktop_shortcut",
+        title: "Create a desktop shortcut",
+        description: "Create a launcher (Windows .lnk, Linux .desktop, macOS .command) that opens the session in TermCraft; optionally minimized and closing TermCraft when the session ends. Never replaces an existing file.",
+        input_schema: r#"{"type":"object","required":["session"],"properties":{"session":{"type":"string"},"hide_terminal":{"type":"boolean"},"close_on_exit":{"type":"boolean"},"folder":{"type":"string"}}}"#,
+        example_args: r#"{"session":"web01","close_on_exit":true}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "session_rename",
         title: "Rename session",
         description: "Rename a saved session (names are unique).",

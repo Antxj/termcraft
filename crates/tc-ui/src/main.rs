@@ -26,13 +26,16 @@ fn main() -> eframe::Result<()> {
     let startup = match control_server::commands_from_args(&args, &|name| {
         macros.macros.iter().find(|m| m.name == name).map(|m| m.id)
     }) {
-        Ok(cmds) => cmds,
+        Ok(startup) => startup,
         Err(e) => {
             eprintln!("termcraft: {e}");
             std::process::exit(2);
         }
     };
-    if !startup.is_empty() && forward(&paths, &startup) {
+    // A running window gets the commands; the startup flags only apply to
+    // a window this process opens (so --exitwhendone never closes the
+    // user's other sessions).
+    if !startup.commands.is_empty() && forward(&paths, &startup.commands) {
         return Ok(());
     }
 

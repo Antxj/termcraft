@@ -217,11 +217,19 @@ pub struct TermCraftApp {
     syntax_window: Option<crate::ui::syntax_window::SyntaxWindow>,
     /// Configuration › Terminal › "Expert settings".
     show_expert: bool,
+    /// "Shortcut options" for this session (hide terminal, close on exit).
+    shortcut_dialog: Option<(String, tc_core::shortcut::ShortcutOptions)>,
     known_hosts: crate::ui::known_hosts_window::KnownHostsWindow,
     /// Loopback control channel (other processes send commands).
     control: Option<crate::control_server::ControlServer>,
     /// Commands from the command line, run on the first frame.
     startup: Vec<Command>,
+    /// `--exitwhendone`: quit once the startup sessions ended (and whether
+    /// one of them has been seen running).
+    exit_when_done: bool,
+    startup_seen_alive: bool,
+    /// `--hideterm`: minimize on the first frame.
+    start_minimized: bool,
     show_config: bool,
     config_tab: crate::ui::config_window::ConfigTab,
     /// "Close prompt" waiting for an answer.
@@ -246,7 +254,7 @@ pub struct TermCraftApp {
 }
 
 impl TermCraftApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, startup: Vec<Command>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, startup: crate::control_server::Startup) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
@@ -305,9 +313,13 @@ impl TermCraftApp {
             keygen: Default::default(),
             syntax_window: None,
             show_expert: false,
+            shortcut_dialog: None,
             known_hosts: Default::default(),
             control: None,
-            startup,
+            startup: startup.commands,
+            exit_when_done: startup.exit_when_done,
+            startup_seen_alive: false,
+            start_minimized: startup.minimized,
             show_config: false,
             config_tab: Default::default(),
             confirm_exit: false,
@@ -386,6 +398,12 @@ impl TermCraftApp {
                     value["unsupported"].as_array().map_or(0, Vec::len)
                 );
             }
+            Ok(value) if name == "session_desktop_shortcut" => {
+                self.status = format!(
+                    "Desktop shortcut created: {}",
+                    value["path"].as_str().unwrap_or("?")
+                );
+            }
             Ok(_) => {}
             Err(e) => self.status = format!("{name}: {e}"),
         }
@@ -422,6 +440,10 @@ impl TermCraftApp {
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
             Action::ExportSessions(one) => return self.export_sessions(one),
+            Action::DesktopShortcut(name) => {
+                self.shortcut_dialog = Some((name, Default::default()));
+                return;
+            }
             Action::SaveTerminalText => return self.save_terminal_text(),
             Action::PrintTerminalText => return self.print_terminal_text(),
             Action::FindInTerminal => {
@@ -661,6 +683,65 @@ impl TermCraftApp {
         }
     }
 
+    /// Reference `TFORMDESKTOPSHORTCUT`: options, then the shortcut is
+    /// created on the desktop.
+    fn shortcut_options_dialog(&mut self, ctx: &egui::Context) {
+        let Some((name, opts)) = &mut self.shortcut_dialog else {
+            return;
+        };
+        let mut answer = None;
+        egui::Window::new("Shortcut options")
+            .id(egui::Id::new("shortcut-options"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(format!("Desktop shortcut to \"{name}\""));
+                ui.add_space(6.0);
+                ui.checkbox(&mut opts.hide_terminal, "Hide terminal on startup")
+                    .on_hover_text("TermCraft starts minimized");
+                ui.checkbox(&mut opts.close_on_exit, "Close TermCraft on exit")
+                    .on_hover_text("TermCraft quits when this session ends");
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("OK").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        match answer {
+            Some(true) => {
+                let (name, opts) = self.shortcut_dialog.take().expect("open");
+                self.run(Command::SessionDesktopShortcut {
+                    session: name,
+                    hide_terminal: opts.hide_terminal,
+                    close_on_exit: opts.close_on_exit,
+                    folder: None,
+                });
+            }
+            Some(false) => self.shortcut_dialog = None,
+            None => {}
+        }
+    }
+
+    /// `--exitwhendone` ("Close … on exit" shortcuts): once the sessions
+    /// opened at startup ran and none is alive any more, quit.
+    fn exit_when_done(&mut self, ctx: &egui::Context) {
+        if !self.exit_when_done || !self.startup.is_empty() {
+            return;
+        }
+        let alive = self.core.tabs.iter().any(|t| t.is_alive());
+        if alive {
+            self.startup_seen_alive = true;
+        } else if self.startup_seen_alive {
+            self.exit_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
     /// Keys pressed at a "Session stopped" prompt: close, restart, save.
     fn ended_actions(&mut self) {
         let chosen: Vec<(u64, crate::tab::EndedAction)> = self
@@ -832,6 +913,7 @@ impl TermCraftApp {
         self.paste_confirm_dialog(ctx);
         self.upload_edited_dialog(ctx);
         self.keygen.show(ctx);
+        self.shortcut_options_dialog(ctx);
         if self.show_expert
             && crate::ui::expert_window::show(
                 ctx,
@@ -1642,6 +1724,10 @@ impl eframe::App for TermCraftApp {
             }
         }
         self.ended_actions();
+        self.exit_when_done(&ctx);
+        if std::mem::take(&mut self.start_minimized) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+        }
         if let Some(on) = monitoring {
             self.core.settings.ssh.remote_monitoring = on;
             self.apply_remote_monitoring();

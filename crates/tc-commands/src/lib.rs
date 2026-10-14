@@ -46,6 +46,20 @@ pub enum Command {
         #[serde(default)]
         overwrite: bool,
     },
+    /// "Create a desktop shortcut": a launcher that opens the session.
+    SessionDesktopShortcut {
+        /// Session name or id.
+        session: String,
+        /// "Hide terminal on startup" (start minimized).
+        #[serde(default)]
+        hide_terminal: bool,
+        /// "Close … on exit": quit when the session ends.
+        #[serde(default)]
+        close_on_exit: bool,
+        /// Where to create it (default: the desktop).
+        #[serde(default)]
+        folder: Option<String>,
+    },
     SessionRename {
         id: SessionId,
         name: String,
@@ -180,6 +194,7 @@ impl Command {
             Self::SessionImportWsl {} => "session_import_wsl",
             Self::SessionImportSshConfig { .. } => "session_import_ssh_config",
             Self::SessionExportMobaxterm { .. } => "session_export_mobaxterm",
+            Self::SessionDesktopShortcut { .. } => "session_desktop_shortcut",
             Self::SessionRename { .. } => "session_rename",
             Self::SessionDuplicate { .. } => "session_duplicate",
             Self::SessionFolderAdd { .. } => "session_folder_add",
@@ -399,6 +414,35 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             std::fs::write(path, tc_import::mobaxterm::export(&chosen))
                 .map_err(|e| CommandError::Failed(format!("{}: {e}", path.display())))?;
             Ok(json!({ "exported": chosen.len() }))
+        }
+        Command::SessionDesktopShortcut {
+            session,
+            hide_terminal,
+            close_on_exit,
+            folder,
+        } => {
+            let session = resolve_session(host.store(), &session)?;
+            let dir = match folder {
+                Some(f) => std::path::PathBuf::from(f),
+                None => tc_core::shortcut::desktop_dir()
+                    .ok_or_else(|| CommandError::Failed("no desktop folder".into()))?,
+            };
+            if !dir.is_dir() {
+                return Err(CommandError::InvalidArgs(format!(
+                    "{} is not a folder",
+                    dir.display()
+                )));
+            }
+            let exe = tc_core::shortcut::gui_exe().ok_or_else(|| {
+                CommandError::Failed("the TermCraft program was not found".into())
+            })?;
+            let opts = tc_core::shortcut::ShortcutOptions {
+                hide_terminal,
+                close_on_exit,
+            };
+            let path = tc_core::shortcut::create(&dir, &exe, &session.name, opts)
+                .map_err(|e| CommandError::Failed(format!("{}: {e}", dir.display())))?;
+            Ok(json!({ "path": path.display().to_string() }))
         }
         Command::SessionRename { id, name } => {
             let name = name.trim().to_string();

@@ -291,7 +291,12 @@ fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
         Some(Action::ExportSessions(Some(s.id))),
         out,
     );
-    item(ui, "Create a desktop shortcut", None, out);
+    item(
+        ui,
+        "Create a desktop shortcut",
+        Some(Action::DesktopShortcut(s.name.clone())),
+        out,
+    );
     ui.separator();
     root_menu(ui, out);
 }

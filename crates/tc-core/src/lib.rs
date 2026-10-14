@@ -13,6 +13,7 @@ pub mod schema;
 mod schema_gen;
 pub mod session;
 pub mod settings;
+pub mod shortcut;
 pub mod store;
 pub mod syntax;
 pub mod tunnel;

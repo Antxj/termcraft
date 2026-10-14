@@ -121,7 +121,7 @@ refined against it.
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |
 | P1 | [x] | Import PuTTY sessions (Windows registry, `~/.putty/sessions` on Unix: SSH, Telnet, rlogin, serial) and WSL sessions | `tc-import` |
 | P1 | [x] | "Export MobaXterm sessions" / "Save session to file" (.mxtsessions, folders kept, reserved characters escaped; round-trip tested). PuTTYCM / SuperPuTTY / mRemote / Exceed / SCRT / RDM / CSV importers pending | `tc-import` |
-| P2 | [ ] | Desktop shortcut for a session | `tc-cli` |
+| P2 | [x] | "Create a desktop shortcut" (session menu, `session_desktop_shortcut` command): "Shortcut options" Hide terminal on startup (`--hideterm`, starts minimized) / Close on exit (`--exitwhendone`); Windows `.lnk`, Linux `.desktop`, macOS `.command`, arguments quoted per platform, never overwrites | `tc-core` + `tc-commands` + `tc-ui` |
 | P2 | [ ] | URL protocol handler (`termcraft://`) | `tc-cli` |
 | P2 | [ ] | Shared sessions (folder / HTTPS / SFTP backend) | `tc-core` |
 

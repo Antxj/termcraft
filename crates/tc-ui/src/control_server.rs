@@ -111,14 +111,26 @@ fn serve(
     }
 }
 
+/// What the command line asks for.
+#[derive(Debug, Default)]
+pub struct Startup {
+    pub commands: Vec<Command>,
+    /// `--hideterm`: start minimized ("Hide terminal on startup").
+    pub minimized: bool,
+    /// `--exitwhendone`: quit once the sessions opened at startup ended.
+    pub exit_when_done: bool,
+}
+
 /// Commands for the command-line options (reference style `-bookmark`
 /// also accepted): `--bookmark NAME`, `--newtab CMD` / `--exec CMD` (a
-/// local terminal running CMD), `--runmacro NAME`.
+/// local terminal running CMD), `--runmacro NAME`, `--hideterm`,
+/// `--exitwhendone`.
 pub fn commands_from_args(
     args: &[String],
     macro_id: &dyn Fn(&str) -> Option<tc_core::MacroId>,
-) -> Result<Vec<Command>, String> {
-    let mut out = Vec::new();
+) -> Result<Startup, String> {
+    let mut startup = Startup::default();
+    let out = &mut startup.commands;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let flag = arg.trim_start_matches('-').to_ascii_lowercase();
@@ -145,10 +157,12 @@ pub fn commands_from_args(
                     macro_id(&name).ok_or_else(|| format!("there is no macro named {name:?}"))?;
                 out.push(Command::MacroRun { id, tab: None });
             }
+            "hideterm" => startup.minimized = true,
+            "exitwhendone" => startup.exit_when_done = true,
             _ => return Err(format!("unknown option {arg}")),
         }
     }
-    Ok(out)
+    Ok(startup)
 }
 
 #[cfg(test)]
@@ -168,7 +182,9 @@ mod tests {
         .map(String::from)
         .to_vec();
         let id = tc_core::MacroId::default();
-        let cmds = commands_from_args(&args, &|n| (n == "deploy").then_some(id)).unwrap();
+        let cmds = commands_from_args(&args, &|n| (n == "deploy").then_some(id))
+            .unwrap()
+            .commands;
         assert_eq!(cmds.len(), 4);
         assert!(matches!(&cmds[0], Command::TabOpen { session: Some(s) } if s == "web01"));
         assert!(matches!(&cmds[2], Command::TabSend { text, .. } if text == "top\r"));
@@ -176,5 +192,8 @@ mod tests {
         assert!(commands_from_args(&["--bookmark".into()], &|_| None).is_err());
         assert!(commands_from_args(&["--runmacro".into(), "x".into()], &|_| None).is_err());
         assert!(commands_from_args(&["--evil".into()], &|_| None).is_err());
+        let s =
+            commands_from_args(&["-hideterm".into(), "--exitwhendone".into()], &|_| None).unwrap();
+        assert!(s.minimized && s.exit_when_done && s.commands.is_empty());
     }
 }

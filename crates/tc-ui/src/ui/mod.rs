@@ -58,6 +58,9 @@ pub enum Action {
     FindNext,
     /// "Export MobaXterm sessions" (all) / "Save session to file" (one).
     ExportSessions(Option<SessionId>),
+    /// "Create a desktop shortcut" to the named session ("Shortcut
+    /// options" first).
+    DesktopShortcut(String),
     NewSession,
     EditSession(SessionId),
     RenameTab(u64),
