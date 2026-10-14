@@ -5026,6 +5026,7 @@ dependencies = [
  "tc-mcp",
  "tc-update",
  "tc-vault",
+ "tempfile",
 ]
 
 [[package]]

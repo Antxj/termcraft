@@ -26,3 +26,6 @@ ed25519-dalek.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
