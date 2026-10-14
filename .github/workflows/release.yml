@@ -44,7 +44,7 @@ jobs:
       TERMCRAFT_UPDATE_PUBKEY: ${{ vars.TERMCRAFT_UPDATE_PUBKEY }}
       TERMCRAFT_UPDATE_BASE_URL: https://github.com/${{ github.repository }}/releases/latest/download
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -69,7 +69,7 @@ jobs:
         shell: bash
         run: |
           cargo run --locked -p xtask -- package --bin-dir "target/${{ matrix.target }}/release" --platform "${{ matrix.platform }}" --version "${GITHUB_REF_NAME#v}" --out dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.platform }}
           path: dist/*
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: dist-*
           merge-multiple: true
