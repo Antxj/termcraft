@@ -15,21 +15,81 @@ mod strip;
 
 pub use charset::TermCharset;
 pub use highlight::{CustomRules, Syntax};
-pub use input::{Key, Modifiers, encode_key};
+pub use input::{Key, Modifiers, encode_key, is_single_key, key_name_matches};
 pub use mouse::{MouseAction, MouseButton, MouseEvent};
 pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};
-pub use selection::{DEFAULT_WORD_DELIMITERS, Point, Selection, SelectionMode};
+pub use selection::{DEFAULT_WORD_DELIMITERS, Delimiters, Point, Selection, SelectionMode};
 pub use strip::AnsiStripper;
 
+/// Events the parser reports that the emulator acts on.
+#[derive(Default)]
+struct Events {
+    bells: u32,
+    /// ^E (ENQ) inquiries waiting for the answerback.
+    enquiries: u32,
+}
+
+impl vt100::Callbacks for Events {
+    fn audible_bell(&mut self, _: &mut vt100::Screen) {
+        self.bells = self.bells.saturating_add(1);
+    }
+
+    fn unhandled_control(&mut self, _: &mut vt100::Screen, b: u8) {
+        if b == 0x05 {
+            self.enquiries = self.enquiries.saturating_add(1);
+        }
+    }
+}
+
+/// Expert terminal options ("Expert settings").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TermOptions {
+    /// "Implicit CR in every LF".
+    pub implicit_cr_in_lf: bool,
+    /// "Implicit LF in every CR".
+    pub implicit_lf_in_cr: bool,
+    /// "Enable xterm-style mouse reporting".
+    pub mouse_reporting: bool,
+    /// "Enable bracketed-paste".
+    pub bracketed_paste: bool,
+    /// Force application cursor keys on / off (`None` = the program).
+    pub app_cursor: Option<bool>,
+    /// "Answerback to ^E" (empty = no answer).
+    pub answerback: String,
+    /// Double-click word delimiters.
+    pub delimiters: Delimiters,
+}
+
+impl Default for TermOptions {
+    fn default() -> Self {
+        Self {
+            implicit_cr_in_lf: false,
+            implicit_lf_in_cr: false,
+            mouse_reporting: true,
+            bracketed_paste: true,
+            app_cursor: None,
+            answerback: String::new(),
+            delimiters: Delimiters::default(),
+        }
+    }
+}
+
+/// The answerback is sent to the remote side: printable ASCII only.
+fn answerback_bytes(s: &str) -> Vec<u8> {
+    s.bytes()
+        .filter(|b| (0x20..0x7f).contains(b))
+        .take(64)
+        .collect()
+}
+
 pub struct Terminal {
-    parser: vt100::Parser,
+    parser: vt100::Parser<Events>,
     osc7: osc7::Osc7,
     /// Latest directory reported via OSC 7, not yet taken.
     cwd_report: Option<String>,
     pub theme: Theme,
     selection: Option<Selection>,
-    /// Characters that end a word on double click (empty = the default set).
-    pub word_delimiters: String,
+    pub options: TermOptions,
     /// Syntax highlighting of default-colored output.
     pub highlighter: Highlighter,
 }
@@ -72,12 +132,17 @@ pub struct CellView<'a> {
 impl Terminal {
     pub fn new(rows: u16, cols: u16, scrollback: usize) -> Self {
         Self {
-            parser: vt100::Parser::new(rows.max(1), cols.max(1), scrollback),
+            parser: vt100::Parser::new_with_callbacks(
+                rows.max(1),
+                cols.max(1),
+                scrollback,
+                Events::default(),
+            ),
             osc7: osc7::Osc7::default(),
             cwd_report: None,
             theme: Theme::default(),
             selection: None,
-            word_delimiters: String::new(),
+            options: TermOptions::default(),
             highlighter: Highlighter::default(),
         }
     }
@@ -85,11 +150,37 @@ impl Terminal {
     /// Feed bytes from the PTY/connection. Returns bytes that must be written
     /// back (answers to terminal queries such as cursor-position reports).
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<u8> {
-        self.parser.process(bytes);
+        let o = &self.options;
+        if o.implicit_cr_in_lf || o.implicit_lf_in_cr {
+            let mut fixed = Vec::with_capacity(bytes.len() + bytes.len() / 8);
+            for &b in bytes {
+                match b {
+                    b'\n' if o.implicit_cr_in_lf => fixed.extend_from_slice(b"\r\n"),
+                    b'\r' if o.implicit_lf_in_cr => fixed.extend_from_slice(b"\r\n"),
+                    _ => fixed.push(b),
+                }
+            }
+            self.parser.process(&fixed);
+        } else {
+            self.parser.process(bytes);
+        }
         if let Some(dir) = self.osc7.scan(bytes) {
             self.cwd_report = Some(dir);
         }
-        self.query_replies(bytes)
+        let mut replies = self.query_replies(bytes);
+        let enquiries = std::mem::take(&mut self.parser.callbacks_mut().enquiries);
+        let answer = answerback_bytes(&self.options.answerback);
+        if !answer.is_empty() {
+            for _ in 0..enquiries.min(4) {
+                replies.extend_from_slice(&answer);
+            }
+        }
+        replies
+    }
+
+    /// Bells (^G) received since the last call.
+    pub fn take_bells(&mut self) -> u32 {
+        std::mem::take(&mut self.parser.callbacks_mut().bells)
     }
 
     fn query_replies(&self, bytes: &[u8]) -> Vec<u8> {
@@ -141,7 +232,9 @@ impl Terminal {
     }
 
     pub fn application_cursor(&self) -> bool {
-        self.parser.screen().application_cursor()
+        self.options
+            .app_cursor
+            .unwrap_or_else(|| self.parser.screen().application_cursor())
     }
 
     /// Full-screen programs (less, vim…) use the alternate screen.
@@ -150,7 +243,7 @@ impl Terminal {
     }
 
     pub fn bracketed_paste(&self) -> bool {
-        self.parser.screen().bracketed_paste()
+        self.options.bracketed_paste && self.parser.screen().bracketed_paste()
     }
 
     pub fn cell(&self, row: u16, col: u16) -> Option<CellView<'_>> {
@@ -275,7 +368,8 @@ impl Terminal {
             SelectionMode::Word => {
                 let cells = self.line_cells(line).map(|(c, _)| c).unwrap_or_default();
                 let refs: Vec<&str> = cells.iter().map(String::as_str).collect();
-                let (a, b) = selection::word_bounds(&refs, usize::from(col), &self.word_delimiters);
+                let (a, b) =
+                    selection::word_bounds(&refs, usize::from(col), &self.options.delimiters);
                 let to = |v: usize| u16::try_from(v).unwrap_or(u16::MAX);
                 (point(to(a)), point(to(b)))
             }
@@ -361,6 +455,9 @@ impl Terminal {
 
     fn mouse_mode(&self) -> mouse::Mode {
         use vt100::MouseProtocolMode as M;
+        if !self.options.mouse_reporting {
+            return mouse::Mode::Off;
+        }
         match self.parser.screen().mouse_protocol_mode() {
             M::None => mouse::Mode::Off,
             M::Press => mouse::Mode::Press,
@@ -524,6 +621,28 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expert_options() {
+        let mut t = Terminal::new(4, 20, 0);
+        t.options.implicit_cr_in_lf = true;
+        t.feed(b"ab\ncd");
+        assert!(t.contents().starts_with("ab\ncd"), "{:?}", t.contents());
+        assert!(t.feed(b"\x05").is_empty(), "no answerback by default");
+        t.options.answerback = "tc\x1b[A".into();
+        assert_eq!(t.feed(b"\x05"), b"tc[A", "control bytes are dropped");
+        t.feed(b"\x07\x07");
+        assert_eq!(t.take_bells(), 2);
+        assert_eq!(t.take_bells(), 0);
+        t.feed(b"\x1b]0;title\x07");
+        assert_eq!(t.take_bells(), 0, "an OSC terminator is not a bell");
+        t.feed(b"\x1b[?1h\x1b[?2004h\x1b[?1000h");
+        assert!(t.application_cursor() && t.bracketed_paste() && t.mouse_reporting());
+        t.options.app_cursor = Some(false);
+        t.options.bracketed_paste = false;
+        t.options.mouse_reporting = false;
+        assert!(!t.application_cursor() && !t.bracketed_paste() && !t.mouse_reporting());
+    }
 
     #[test]
     fn highlighting_only_touches_default_colored_cells() {

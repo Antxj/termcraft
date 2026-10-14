@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
-use tc_core::settings::{LocalShell, SavePasswords};
+use tc_core::settings::{ExpertTerminal, LocalShell, SavePasswords};
 use tc_core::{Session, SessionKind, schema};
 use tc_pty::{PtyEvent, PtySession};
 use tc_ssh::{
@@ -56,12 +56,30 @@ pub enum EndedAction {
 }
 
 /// What a key does at the "Session stopped" prompt.
-fn ended_key(bytes: &[u8]) -> Option<EndedAction> {
-    match bytes {
-        b"\r" | b"\n" => Some(EndedAction::Close),
-        b"r" | b"R" => Some(EndedAction::Restart),
-        b"s" | b"S" => Some(EndedAction::Save),
-        _ => None,
+fn ended_key(bytes: &[u8], keys: &ExpertTerminal) -> Option<EndedAction> {
+    if !tc_term::is_single_key(bytes) {
+        return None; // a paste is not a key
+    }
+    if tc_term::key_name_matches(&keys.reconnect_key, bytes) {
+        Some(EndedAction::Restart)
+    } else if tc_term::key_name_matches(&keys.save_key, bytes) {
+        Some(EndedAction::Save)
+    } else if keys.exit_key == tc_core::settings::ANY_OTHER_KEY
+        || tc_term::key_name_matches(&keys.exit_key, bytes)
+    {
+        Some(EndedAction::Close)
+    } else {
+        None
+    }
+}
+
+/// How a reconnection key is named in the "Session stopped" message.
+fn key_label(name: &str) -> String {
+    match name {
+        tc_core::settings::ANY_OTHER_KEY => "any other key".into(),
+        "RETURN" => "<Return>".into(),
+        n if n.chars().count() == 1 => n.to_string(),
+        n => format!("<{n}>"),
     }
 }
 
@@ -341,6 +359,11 @@ pub struct Tab {
     paste_queue: std::collections::VecDeque<Vec<u8>>,
     paste_delay: std::time::Duration,
     next_paste: Instant,
+    /// "Expert settings" (reconnection keys, log flushing), from the
+    /// configuration.
+    pub expert: ExpertTerminal,
+    /// "Visual" bell: flash the terminal until then.
+    pub bell_flash: Option<Instant>,
     /// 4_36 "Syntax highlighting" (`None` = the global setting).
     pub syntax: Option<usize>,
     /// Telnet / RDP / VNC waiting for its tunnel through the jump hosts.
@@ -434,6 +457,8 @@ impl Tab {
             via_gateway: None,
             gateway_tunnel: None,
             syntax: None,
+            expert: ExpertTerminal::default(),
+            bell_flash: None,
             next_paste: Instant::now(),
             log: None,
             find: None,
@@ -782,8 +807,11 @@ impl Tab {
     fn output(&mut self, bytes: &[u8]) -> Vec<u8> {
         let decoded = self.charset.decode(bytes);
         let bytes: &[u8] = &decoded;
+        let flush = self.expert.flush_logs;
         if let Some(log) = &mut self.log
-            && let Err(e) = log.write(bytes)
+            && let Err(e) = log
+                .write(bytes)
+                .and_then(|()| if flush { log.flush() } else { Ok(()) })
         {
             let path = log.path().display().to_string();
             self.log = None;
@@ -820,9 +848,21 @@ impl Tab {
     fn session_ended(&mut self, detail: &str) {
         self.message(&format!("\r\n\x1b[90m[{detail}]\x1b[0m"));
         self.message("\x1b[1mSession stopped\x1b[0m");
-        self.message("    - Press <Return> to exit tab");
-        self.message("    - Press R to restart session");
-        self.message("    - Press S to save terminal output to file");
+        let keys = &self.expert;
+        let lines = [
+            format!("    - Press {} to exit tab", key_label(&keys.exit_key)),
+            format!(
+                "    - Press {} to restart session",
+                key_label(&keys.reconnect_key)
+            ),
+            format!(
+                "    - Press {} to save terminal output to file",
+                key_label(&keys.save_key)
+            ),
+        ];
+        for line in lines {
+            self.message(&line);
+        }
         self.ended = true;
     }
 
@@ -1758,7 +1798,7 @@ impl Tab {
 
     pub fn send(&mut self, bytes: &[u8]) {
         if self.ended {
-            if let Some(action) = ended_key(bytes) {
+            if let Some(action) = ended_key(bytes, &self.expert) {
                 self.ended_action = Some(action);
             }
             return;
@@ -1983,11 +2023,25 @@ mod tests {
 
     #[test]
     fn session_stopped_keys() {
-        assert_eq!(ended_key(b"\r"), Some(EndedAction::Close));
-        assert_eq!(ended_key(b"R"), Some(EndedAction::Restart));
-        assert_eq!(ended_key(b"s"), Some(EndedAction::Save));
-        assert_eq!(ended_key(b"x"), None);
-        assert_eq!(ended_key(b"rr"), None, "a paste is not a key");
+        let keys = ExpertTerminal::default();
+        assert_eq!(ended_key(b"\r", &keys), Some(EndedAction::Close));
+        assert_eq!(ended_key(b"R", &keys), Some(EndedAction::Restart));
+        assert_eq!(ended_key(b"s", &keys), Some(EndedAction::Save));
+        assert_eq!(
+            ended_key(b"x", &keys),
+            Some(EndedAction::Close),
+            "any other key"
+        );
+        assert_eq!(ended_key(b"rr", &keys), None, "a paste is not a key");
+        let keys = ExpertTerminal {
+            exit_key: "RETURN".into(),
+            reconnect_key: "F5".into(),
+            ..ExpertTerminal::default()
+        };
+        assert_eq!(ended_key(b"x", &keys), None);
+        assert_eq!(ended_key(b"\x1b[15~", &keys), Some(EndedAction::Restart));
+        assert_eq!(key_label("F5"), "<F5>");
+        assert_eq!(key_label("Any other key"), "any other key");
     }
 
     #[test]

@@ -76,23 +76,58 @@ impl Selection {
     }
 }
 
+/// Characters that end a word on double click, on each side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delimiters {
+    pub left: String,
+    pub right: String,
+}
+
+impl Default for Delimiters {
+    fn default() -> Self {
+        Self::new("", "", "", "", "")
+    }
+}
+
+impl Delimiters {
+    /// `base` (empty = the default set), plus / minus the expert settings'
+    /// "Add / Remove left / right delimiters".
+    pub fn new(base: &str, add_left: &str, add_right: &str, rm_left: &str, rm_right: &str) -> Self {
+        let base = if base.is_empty() {
+            DEFAULT_WORD_DELIMITERS
+        } else {
+            base
+        };
+        let side = |add: &str, rm: &str| -> String {
+            let mut set: String = base.chars().filter(|c| !rm.contains(*c)).collect();
+            for c in add.chars() {
+                if !set.contains(c) && !c.is_control() {
+                    set.push(c);
+                }
+            }
+            set
+        };
+        Self {
+            left: side(add_left, rm_left),
+            right: side(add_right, rm_right),
+        }
+    }
+}
+
 /// Word bounds around `col` in a row (`chars[i]` = cell text).
-pub(crate) fn word_bounds(chars: &[&str], col: usize, delimiters: &str) -> (usize, usize) {
-    let delimiters = if delimiters.is_empty() {
-        DEFAULT_WORD_DELIMITERS
-    } else {
-        delimiters
-    };
-    let is_delim = |s: &str| s.is_empty() || s.chars().all(|c| delimiters.contains(c));
-    if col >= chars.len() || is_delim(chars[col]) {
+pub(crate) fn word_bounds(chars: &[&str], col: usize, delimiters: &Delimiters) -> (usize, usize) {
+    let is_delim = |s: &str, set: &str| s.is_empty() || s.chars().all(|c| set.contains(c));
+    if col >= chars.len()
+        || (is_delim(chars[col], &delimiters.left) && is_delim(chars[col], &delimiters.right))
+    {
         return (col, col);
     }
     let mut start = col;
-    while start > 0 && !is_delim(chars[start - 1]) {
+    while start > 0 && !is_delim(chars[start - 1], &delimiters.left) {
         start -= 1;
     }
     let mut end = col;
-    while end + 1 < chars.len() && !is_delim(chars[end + 1]) {
+    while end + 1 < chars.len() && !is_delim(chars[end + 1], &delimiters.right) {
         end += 1;
     }
     (start, end)
@@ -131,11 +166,21 @@ mod tests {
             .map(String::from)
             .collect();
         let row: Vec<&str> = text.iter().map(String::as_str).collect();
-        assert_eq!(word_bounds(&row, 8, ""), (7, 16));
+        let d = Delimiters::default();
+        assert_eq!(word_bounds(&row, 8, &d), (7, 16));
         let row = ["a", "b", "(", "c", ")"];
-        assert_eq!(word_bounds(&row, 3, ""), (3, 3));
-        assert_eq!(word_bounds(&row, 0, ""), (0, 1));
-        assert_eq!(word_bounds(&row, 2, ""), (2, 2), "a delimiter alone");
-        assert_eq!(word_bounds(&row, 3, "x"), (0, 4), "custom delimiters");
+        assert_eq!(word_bounds(&row, 3, &d), (3, 3));
+        assert_eq!(word_bounds(&row, 0, &d), (0, 1));
+        assert_eq!(word_bounds(&row, 2, &d), (2, 2), "a delimiter alone");
+        let custom = Delimiters::new("x", "", "", "", "");
+        assert_eq!(word_bounds(&row, 3, &custom), (0, 4), "custom delimiters");
+        // "Remove left delimiters: (" keeps the parenthesis on the left only.
+        let asym = Delimiters::new("", "", "", "(", "");
+        assert_eq!(word_bounds(&row, 3, &asym), (0, 3));
+        // "Add right delimiters: /" stops at a slash on the right only.
+        let text: Vec<String> = "/etc/hosts".chars().map(String::from).collect();
+        let row: Vec<&str> = text.iter().map(String::as_str).collect();
+        let slash = Delimiters::new("", "", "/", "", "");
+        assert_eq!(word_bounds(&row, 1, &slash), (0, 3));
     }
 }

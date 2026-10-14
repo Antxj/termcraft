@@ -288,6 +288,156 @@ pub struct TerminalSettings {
     pub syntax_highlighting: usize,
     /// "Customize": the 8 user syntax definitions.
     pub custom_syntaxes: [crate::syntax::CustomSyntax; crate::syntax::SLOTS],
+    /// "Expert settings".
+    pub expert: ExpertTerminal,
+}
+
+/// Configuration › Terminal › "Expert settings" (reference
+/// `TFORMADVANCEDTERMSETTINGS`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ExpertTerminal {
+    /// "Implicit CR in every LF".
+    pub implicit_cr_in_lf: bool,
+    /// "Implicit LF in every CR".
+    pub implicit_lf_in_cr: bool,
+    /// "Flush log files frequently": every write reaches the disk.
+    pub flush_logs: bool,
+    /// "Enable xterm-style mouse reporting".
+    pub mouse_reporting: bool,
+    /// "Enable bracketed-paste".
+    pub bracketed_paste: bool,
+    /// "Force application cursor keys mode on / off" (`None` = the
+    /// program decides).
+    pub app_cursor: Option<bool>,
+    /// "Answerback to ^E".
+    pub answerback: String,
+    /// "Bell Type".
+    pub bell: BellType,
+    /// "Reconnection keys" of the "Session stopped" message, by key name
+    /// (`Any other key`, `RETURN`, `F1`, `R` …).
+    pub exit_key: String,
+    pub reconnect_key: String,
+    pub save_key: String,
+    /// Double-click word delimiters added to / removed from the default
+    /// set, on each side of the word.
+    pub add_left_delimiters: String,
+    pub add_right_delimiters: String,
+    pub remove_left_delimiters: String,
+    pub remove_right_delimiters: String,
+}
+
+impl Default for ExpertTerminal {
+    fn default() -> Self {
+        Self {
+            implicit_cr_in_lf: false,
+            implicit_lf_in_cr: false,
+            flush_logs: false,
+            mouse_reporting: true,
+            bracketed_paste: true,
+            app_cursor: None,
+            answerback: "xterm-256color".into(),
+            bell: BellType::default(),
+            exit_key: ANY_OTHER_KEY.into(),
+            reconnect_key: "R".into(),
+            save_key: "S".into(),
+            add_left_delimiters: String::new(),
+            add_right_delimiters: String::new(),
+            remove_left_delimiters: String::new(),
+            remove_right_delimiters: String::new(),
+        }
+    }
+}
+
+/// The "Exit" reconnection key that accepts any key but the other two.
+pub const ANY_OTHER_KEY: &str = "Any other key";
+
+/// Key names of the reconnection key lists, in reference order.
+pub const RECONNECTION_KEYS: &[&str] = &[
+    "F1",
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8",
+    "F9",
+    "F10",
+    "F12",
+    "SPACE",
+    "HOME",
+    "END",
+    "PAGE_UP",
+    "PAGE_DOWN",
+    "DEL",
+    "ESC",
+    "TAB",
+    "RETURN",
+    "SUBTRACT",
+    "DIVIDE",
+    "ADD",
+    "MULTIPLY",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L",
+    "M",
+    "N",
+    "O",
+    "P",
+    "Q",
+    "R",
+    "S",
+    "T",
+    "U",
+    "V",
+    "W",
+    "X",
+    "Y",
+    "Z",
+];
+
+/// "Bell Type".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BellType {
+    #[default]
+    None,
+    Sound,
+    Visual,
+    Speaker,
+}
+
+impl BellType {
+    pub const ALL: [BellType; 4] = [Self::None, Self::Sound, Self::Visual, Self::Speaker];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Sound => "Default sound",
+            Self::Visual => "Visual",
+            Self::Speaker => "PC speakers",
+        }
+    }
 }
 
 /// "Local terminal environment" (Configuration › Terminal) and the Shell
@@ -363,6 +513,7 @@ impl Default for TerminalSettings {
             use_windows_path: true,
             syntax_highlighting: 1,
             custom_syntaxes: Default::default(),
+            expert: ExpertTerminal::default(),
         }
     }
 }

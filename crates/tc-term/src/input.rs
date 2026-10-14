@@ -103,6 +103,53 @@ pub fn encode_key(key: Key, mods: Modifiers, app_cursor: bool) -> Option<Vec<u8>
     Some(bytes)
 }
 
+/// Does `bytes` (what one key press sent) come from the key named `name`
+/// (`RETURN`, `F5`, `PAGE_UP`, `A`, `7` …, as in the reconnection key
+/// lists)? Letters match either case; cursor-mode variants of Home / End
+/// match too.
+pub fn key_name_matches(name: &str, bytes: &[u8]) -> bool {
+    let key = match name {
+        "RETURN" => return bytes == b"\r" || bytes == b"\n",
+        "SPACE" => Key::Char(' '),
+        "TAB" => Key::Tab,
+        "ESC" => Key::Escape,
+        "DEL" => Key::Delete,
+        "HOME" => Key::Home,
+        "END" => Key::End,
+        "PAGE_UP" => Key::PageUp,
+        "PAGE_DOWN" => Key::PageDown,
+        "ADD" => Key::Char('+'),
+        "SUBTRACT" => Key::Char('-'),
+        "MULTIPLY" => Key::Char('*'),
+        "DIVIDE" => Key::Char('/'),
+        n if n.len() > 1 && n.starts_with('F') => match n[1..].parse() {
+            Ok(f) => Key::F(f),
+            Err(_) => return false,
+        },
+        n => {
+            let mut chars = n.chars();
+            return match (chars.next(), chars.next()) {
+                (Some(c), None) if c.is_ascii_alphanumeric() => {
+                    bytes.len() == 1 && bytes[0].eq_ignore_ascii_case(&(c as u8))
+                }
+                _ => false,
+            };
+        }
+    };
+    [false, true]
+        .iter()
+        .any(|&app| encode_key(key, Modifiers::default(), app).as_deref() == Some(bytes))
+}
+
+/// One key press, not a paste: a single byte or one escape sequence.
+pub fn is_single_key(bytes: &[u8]) -> bool {
+    match bytes {
+        [_] => true,
+        [0x1b, rest @ ..] => !rest.is_empty() && !rest.contains(&0x1b) && rest.len() <= 7,
+        _ => std::str::from_utf8(bytes).is_ok_and(|s| s.chars().count() == 1),
+    }
+}
+
 fn ctrl_byte(c: char) -> Option<u8> {
     match c.to_ascii_lowercase() {
         c @ 'a'..='z' => Some(c as u8 - b'a' + 1),
@@ -123,6 +170,21 @@ mod tests {
 
     fn none() -> Modifiers {
         Modifiers::default()
+    }
+
+    #[test]
+    fn key_names() {
+        assert!(key_name_matches("RETURN", b"\r"));
+        assert!(key_name_matches("R", b"r") && key_name_matches("R", b"R"));
+        assert!(!key_name_matches("R", b"rr"));
+        assert!(key_name_matches("F5", b"\x1b[15~"));
+        assert!(key_name_matches("F1", b"\x1bOP"));
+        assert!(key_name_matches("HOME", b"\x1b[H") && key_name_matches("HOME", b"\x1bOH"));
+        assert!(key_name_matches("PAGE_DOWN", b"\x1b[6~"));
+        assert!(key_name_matches("7", b"7") && key_name_matches("ADD", b"+"));
+        assert!(!key_name_matches("F99", b"x") && !key_name_matches("Any other key", b"x"));
+        assert!(is_single_key(b"x") && is_single_key(b"\x1b[15~") && is_single_key("é".as_bytes()));
+        assert!(!is_single_key(b"ls\r") && !is_single_key(b"\x1b[A\x1b[A"));
     }
 
     #[test]

@@ -88,7 +88,16 @@ fn show_inner(
         );
     });
 
-    tab.term.word_delimiters.clone_from(&opts.word_delimiters);
+    let options = term_options(opts);
+    if tab.term.options != options {
+        tab.term.options = options;
+    }
+    if tab.expert != opts.expert {
+        tab.expert.clone_from(&opts.expert);
+    }
+    if tab.term.take_bells() > 0 && opts.expert.bell != tc_core::settings::BellType::None {
+        tab.bell_flash = Some(std::time::Instant::now() + std::time::Duration::from_millis(150));
+    }
     tab.term.highlighter = crate::ui::syntax_window::highlighter(
         ui.ctx(),
         tab.syntax.unwrap_or(opts.syntax_highlighting),
@@ -146,7 +155,42 @@ fn show_inner(
         vec2(cell_w, cell_h),
         response.has_focus(),
     );
+    // "Visual" bell: a short flash over the terminal.
+    if let Some(until) = tab.bell_flash {
+        let now = std::time::Instant::now();
+        if now < until {
+            let Rgb(r, g, b) = tab.term.theme.foreground;
+            ui.painter_at(rect).rect_filled(
+                rect,
+                0.0,
+                Color32::from_rgba_unmultiplied(r, g, b, 60),
+            );
+            ui.ctx().request_repaint_after(until - now);
+        } else {
+            tab.bell_flash = None;
+        }
+    }
     out
+}
+
+/// The expert settings as emulator options.
+fn term_options(opts: &TerminalSettings) -> tc_term::TermOptions {
+    let e = &opts.expert;
+    tc_term::TermOptions {
+        implicit_cr_in_lf: e.implicit_cr_in_lf,
+        implicit_lf_in_cr: e.implicit_lf_in_cr,
+        mouse_reporting: e.mouse_reporting,
+        bracketed_paste: e.bracketed_paste,
+        app_cursor: e.app_cursor,
+        answerback: e.answerback.clone(),
+        delimiters: tc_term::Delimiters::new(
+            &opts.word_delimiters,
+            &e.add_left_delimiters,
+            &e.add_right_delimiters,
+            &e.remove_left_delimiters,
+            &e.remove_right_delimiters,
+        ),
+    }
 }
 
 /// Scroll the view through the history by `lines` (positive = up).

@@ -5,6 +5,7 @@
 //! registry.
 
 pub mod config_window;
+pub mod expert_window;
 pub mod home;
 pub mod host_key_dialog;
 pub mod hotkeys_window;
@@ -44,6 +45,8 @@ pub enum Action {
     ManageCredentials,
     /// "Customize syntax highlighting".
     CustomizeSyntax,
+    /// Configuration › Terminal › "Expert settings".
+    ExpertTerminal,
     Configuration,
     Tunnels,
     CheckUpdates,

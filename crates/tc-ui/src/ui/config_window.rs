@@ -115,6 +115,13 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
             })
             .response
             .on_hover_text("Shell used by new local terminals (Start local terminal)");
+        if ui
+            .button("Expert settings")
+            .on_hover_text("Customize advanced terminal settings (for experts only)")
+            .clicked()
+        {
+            out.push(Action::ExpertTerminal);
+        }
     });
     ui.add_space(6.0);
     ui.horizontal(|ui| {

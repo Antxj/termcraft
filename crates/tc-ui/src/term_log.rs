@@ -87,6 +87,14 @@ impl TermLog {
     }
 }
 
+impl TermLog {
+    /// "Flush log files frequently": push buffered output to the disk now.
+    pub fn flush(&mut self) -> std::io::Result<()> {
+        self.last_flush = Instant::now();
+        self.file.flush()
+    }
+}
+
 impl Drop for TermLog {
     fn drop(&mut self) {
         let _ = self.file.flush();
