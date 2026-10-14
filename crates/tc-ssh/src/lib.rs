@@ -7,7 +7,8 @@
 //! [`SshSession::reply`]. Input and resizes are queued the same way, so the
 //! UI thread never blocks on the network.
 //!
-//! Both kinds of session can go through an SSH gateway (jump host).
+//! Both kinds of session can go through one or several SSH gateways
+//! (jump hosts).
 
 pub mod agent;
 pub mod keygen;
@@ -47,8 +48,8 @@ pub struct ConnectParams {
     pub port: u16,
     pub user: String,
     pub private_key: Option<PathBuf>,
-    /// SSH gateway (jump host) to go through, if any.
-    pub gateway: Option<Endpoint>,
+    /// SSH gateways (jump hosts) to go through, in order.
+    pub gateways: Vec<Endpoint>,
     /// OpenSSH-format known_hosts file used for host key verification.
     pub known_hosts: PathBuf,
     pub compression: bool,
@@ -564,17 +565,17 @@ impl Handler {
     }
 }
 
-/// An authenticated connection; the gateway session (if any) is kept alive
-/// for as long as the target session is used.
+/// An authenticated connection; the gateway sessions (if any) are kept
+/// alive for as long as the target session is used.
 pub(crate) struct Connection {
     pub(crate) handle: client::Handle<Handler>,
     pub(crate) forwards: RemoteForwards,
-    _gateway: Option<client::Handle<Handler>>,
+    _gateways: Vec<client::Handle<Handler>>,
 }
 
 pub(crate) struct ConnectOptions<'a> {
     pub target: &'a Endpoint,
-    pub gateway: Option<&'a Endpoint>,
+    pub gateways: &'a [Endpoint],
     pub known_hosts: &'a std::path::Path,
     pub compression: bool,
     pub keepalive: Option<std::time::Duration>,
@@ -601,7 +602,6 @@ fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> A
     Arc::new(config)
 }
 
-/// Connect (directly or through the gateway) and authenticate.
 /// TCP to the first SSH server, directly or through the session proxy.
 async fn first_hop(
     config: Arc<client::Config>,
@@ -666,68 +666,88 @@ pub(crate) async fn establish(
     let target = opts.target;
     let config = client_config(opts.compression, opts.keepalive);
 
-    let (mut handle, gateway) = match opts.gateway {
-        None => {
-            events.send(SshEvent::Info(format!(
-                "Connecting to {}:{} …",
-                target.host, target.port
-            )));
-            let handle = first_hop(
-                config,
-                target,
-                target_handler(target),
-                opts.proxy,
-                replies,
-                events,
-            )
-            .await
-            .map_err(|e| format!("connection failed: {e}"))?;
-            (handle, None)
+    // Each gateway is reached through the previous one (the first one
+    // directly or through the proxy), then the target through the last.
+    let mut chain: Vec<client::Handle<Handler>> = Vec::with_capacity(opts.gateways.len());
+    let count = opts.gateways.len();
+    for (i, gw) in opts.gateways.iter().enumerate() {
+        let which = if count > 1 {
+            format!("SSH gateway {}/{count}", i + 1)
+        } else {
+            "SSH gateway".to_string()
+        };
+        events.send(SshEvent::Info(format!(
+            "Connecting to {which} {}:{} …",
+            gw.host, gw.port
+        )));
+        let mut gw_handle = open_hop(
+            chain.last(),
+            client_config(false, opts.keepalive),
+            gw,
+            handler(gw),
+            opts.proxy,
+            replies,
+            events,
+        )
+        .await
+        .map_err(|e| format!("{which} connection failed: {e}"))?;
+        authenticate(&mut gw_handle, gw, &opts.agent, replies, events).await?;
+        chain.push(gw_handle);
+    }
+    events.send(SshEvent::Info(if chain.is_empty() {
+        format!("Connecting to {}:{} …", target.host, target.port)
+    } else {
+        format!(
+            "Connecting to {}:{} through the gateway …",
+            target.host, target.port
+        )
+    }));
+    let mut handle = open_hop(
+        chain.last(),
+        config,
+        target,
+        target_handler(target),
+        opts.proxy,
+        replies,
+        events,
+    )
+    .await
+    .map_err(|e| {
+        if chain.is_empty() {
+            format!("connection failed: {e}")
+        } else {
+            format!("connection through gateway failed: {e}")
         }
-        Some(gw) => {
-            events.send(SshEvent::Info(format!(
-                "Connecting to SSH gateway {}:{} …",
-                gw.host, gw.port
-            )));
-            let mut gw_handle = first_hop(
-                client_config(false, opts.keepalive),
-                gw,
-                handler(gw),
-                opts.proxy,
-                replies,
-                events,
-            )
-            .await
-            .map_err(|e| format!("gateway connection failed: {e}"))?;
-            authenticate(&mut gw_handle, gw, &opts.agent, replies, events).await?;
-            events.send(SshEvent::Info(format!(
-                "Connecting to {}:{} through the gateway …",
-                target.host, target.port
-            )));
-            let channel = gw_handle
-                .channel_open_direct_tcpip(
-                    target.host.clone(),
-                    u32::from(target.port),
-                    "127.0.0.1",
-                    0,
-                )
-                .await
-                .map_err(|e| {
-                    format!("gateway cannot reach {}:{}: {e}", target.host, target.port)
-                })?;
-            let handle =
-                client::connect_stream(config, channel.into_stream(), target_handler(target))
-                    .await
-                    .map_err(|e| format!("connection through gateway failed: {e}"))?;
-            (handle, Some(gw_handle))
-        }
-    };
+    })?;
     authenticate(&mut handle, target, &opts.agent, replies, events).await?;
     Ok(Connection {
         handle,
         forwards,
-        _gateway: gateway,
+        _gateways: chain,
     })
+}
+
+/// One SSH connection: the first one directly (or through the proxy),
+/// the next ones through a direct-tcpip channel of the previous gateway.
+async fn open_hop(
+    via: Option<&client::Handle<Handler>>,
+    config: Arc<client::Config>,
+    to: &Endpoint,
+    handler: Handler,
+    proxy: Option<&proxy::Proxy>,
+    replies: &Replies,
+    events: &Events,
+) -> Result<client::Handle<Handler>, String> {
+    let Some(gateway) = via else {
+        return first_hop(config, to, handler, proxy, replies, events).await;
+    };
+    let channel = gateway
+        .channel_open_direct_tcpip(to.host.clone(), u32::from(to.port), "127.0.0.1", 0)
+        .await
+        .map_err(|e| format!("gateway cannot reach {}:{}: {e}", to.host, to.port))?;
+    client::connect_stream(config, channel.into_stream(), handler)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 type SftpOpened = (Arc<russh_sftp::client::SftpSession>, String);
@@ -748,7 +768,7 @@ async fn run_shell(
     let conn = establish(
         ConnectOptions {
             target: &target,
-            gateway: params.gateway.as_ref(),
+            gateways: &params.gateways,
             known_hosts: &params.known_hosts,
             compression: params.compression,
             keepalive: params.keepalive,

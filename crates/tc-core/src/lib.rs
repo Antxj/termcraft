@@ -2,6 +2,7 @@
 
 pub mod backup;
 pub mod hotkeys;
+pub mod jump_hosts;
 pub mod known_hosts;
 pub mod macros;
 pub mod monitor;

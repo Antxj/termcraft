@@ -30,7 +30,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         port,
         user: DEV_USER.into(),
         private_key: None,
-        gateway: None,
+        gateways: Vec::new(),
         known_hosts: known_hosts.to_path_buf(),
         compression: false,
         command: Some(command.into()),
@@ -663,7 +663,7 @@ fn start_tunnel(server: &Server, spec: tc_ssh::TunnelSpec, known: &Path) -> (Ssh
         tc_ssh::TunnelParams {
             agent: Default::default(),
             ssh: endpoint(server.port),
-            gateway: None,
+            gateways: Vec::new(),
             known_hosts: known.to_path_buf(),
             spec,
         },
@@ -763,7 +763,7 @@ fn jump_host_shell() {
     let target = start(DevConfig::default());
     let dir = tempfile::tempdir().unwrap();
     let mut p = params(target.port, &dir.path().join("kh"), "echo via-gateway");
-    p.gateway = Some(endpoint(gateway.port));
+    p.gateways = vec![endpoint(gateway.port)];
     let s = SshSession::connect(p, noop());
     let out = drive(&s, accept_and_login);
     assert!(out.errors.is_empty(), "{out:?}");
@@ -773,4 +773,21 @@ fn jump_host_shell() {
     );
     assert_eq!(out.secret_prompts, 2, "one login per hop");
     assert!(out.output.contains("via-gateway"), "{out:?}");
+}
+
+#[test]
+fn two_jump_hosts_shell() {
+    let first = start(DevConfig::default());
+    let second = start(DevConfig::default());
+    let target = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(target.port, &dir.path().join("kh"), "echo via-two-gateways");
+    // The second gateway is reached from the first one, on its loopback.
+    p.gateways = vec![endpoint(first.port), endpoint(second.port)];
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.errors.is_empty(), "{out:?}");
+    assert_eq!(out.host_key_prompts, 3, "every hop's key is checked");
+    assert_eq!(out.secret_prompts, 3, "one login per hop");
+    assert!(out.output.contains("via-two-gateways"), "{out:?}");
 }

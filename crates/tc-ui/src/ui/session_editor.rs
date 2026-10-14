@@ -5,10 +5,12 @@
 //! Every field is drawn from the generated parameter schema; values are kept
 //! as strings in the schema encoding and written back on OK.
 
+use super::jump_hosts_dialog::{self, JumpHostsDialog};
 use super::session_icons::{self, Choice, IconChooser};
 use super::{Action, NOT_YET, icon};
 use std::collections::BTreeMap;
 use tc_commands::Command;
+use tc_core::jump_hosts::{self, GatewayIds, JumpHost};
 use tc_core::schema::{self, Param, SESSION_TYPES, Widget};
 use tc_core::{Session, SessionIcon, SessionKind};
 
@@ -64,6 +66,8 @@ pub struct SessionEditor {
     /// "Bookmark icon" and its chooser.
     icon: Option<SessionIcon>,
     chooser: Option<IconChooser>,
+    /// "SSH gateway (jump host)" dialog.
+    jump_hosts: Option<JumpHostsDialog>,
     /// Named credentials offered next to "Username" (set by the app).
     pub credentials: Vec<String>,
     manage_credentials: bool,
@@ -84,6 +88,25 @@ impl SessionEditor {
         editor
     }
 
+    /// Snapshots: an SSH session with two jump hosts, their dialog open.
+    pub fn jump_hosts_preview() -> Self {
+        let mut editor = Self::new_session();
+        editor.tab = Tab::Network;
+        let hop = |host: &str, user: &str, port: &str| JumpHost {
+            host: host.into(),
+            user: user.into(),
+            port: port.into(),
+            key: String::new(),
+        };
+        let hops = vec![
+            hop("bastion.example", "ops", ""),
+            hop("10.0.0.5", "", "2222"),
+        ];
+        editor.set_jump_hosts(&hops);
+        editor.jump_hosts = Some(JumpHostsDialog::new(hops));
+        editor
+    }
+
     pub fn edit(session: &Session) -> Self {
         Self::from_session(session.clone(), false)
     }
@@ -100,6 +123,7 @@ impl SessionEditor {
             tab: Tab::Advanced,
             error: None,
             chooser: None,
+            jump_hosts: None,
             credentials: Vec::new(),
             manage_credentials: false,
         };
@@ -233,6 +257,16 @@ impl SessionEditor {
                 Choice::Chosen(icon) => {
                     self.icon = icon;
                     self.chooser = None;
+                }
+            }
+        }
+        if let Some(dialog) = &mut self.jump_hosts {
+            match dialog.show(ctx) {
+                jump_hosts_dialog::Outcome::Pending => {}
+                jump_hosts_dialog::Outcome::Cancel => self.jump_hosts = None,
+                jump_hosts_dialog::Outcome::Done(hops) => {
+                    self.set_jump_hosts(&hops);
+                    self.jump_hosts = None;
                 }
             }
         }
@@ -388,7 +422,16 @@ impl SessionEditor {
                             schema::type_params(t).iter().filter(|p| !p.basic).collect()
                         }
                         Tab::Terminal => schema::terminal_params().iter().collect(),
-                        Tab::Network => schema::network_params(t).iter().collect(),
+                        Tab::Network => {
+                            let gateway = jump_hosts::ids_for(t);
+                            if let Some(ids) = gateway {
+                                self.jump_host_button(ui, ids);
+                            }
+                            schema::network_params(t)
+                                .iter()
+                                .filter(|p| gateway.is_none_or(|ids| !is_gateway_id(ids, p.id)))
+                                .collect()
+                        }
                         Tab::Bookmark => {
                             self.bookmark_header(ui);
                             // 2_1 is the reference icon number; the
@@ -415,6 +458,58 @@ impl SessionEditor {
                         });
                 });
         });
+    }
+
+    /// The current jump hosts, from the edited values.
+    fn jump_hosts(&self, ids: GatewayIds) -> Vec<JumpHost> {
+        let options = [ids.host, ids.port, ids.user, ids.key]
+            .iter()
+            .filter_map(|id| Some((id.to_string(), self.values.get(id)?.clone())))
+            .collect();
+        jump_hosts::parse(&options, ids)
+    }
+
+    fn set_jump_hosts(&mut self, hops: &[JumpHost]) {
+        let Some(ids) = jump_hosts::ids_for(self.type_index) else {
+            return;
+        };
+        let mut options = BTreeMap::new();
+        jump_hosts::store(&mut options, ids, hops);
+        for id in [ids.host, ids.port, ids.user, ids.key] {
+            if let Some(v) = options.remove(id) {
+                self.values.insert(id, v);
+            }
+        }
+    }
+
+    /// Reference `BtnJumpHost`: opens the jump hosts list.
+    fn jump_host_button(&mut self, ui: &mut egui::Ui, ids: GatewayIds) {
+        let hops = self.jump_hosts(ids);
+        ui.horizontal(|ui| {
+            let button =
+                egui::Button::new(format!("{}  SSH gateway (jump host)", icon::ARROWS_SPLIT))
+                    .min_size(egui::vec2(433.0, 36.0));
+            if ui
+                .add(button)
+                .on_hover_text(
+                    "Use a gateway SSH server in order to reach your end server: TermCraft \
+                     opens a SSH connection to the gateway, then connects to the end server \
+                     through it. Several gateways are used in order.",
+                )
+                .clicked()
+            {
+                self.jump_hosts = Some(JumpHostsDialog::new(hops.clone()));
+            }
+            if hops.is_empty() {
+                ui.weak("no gateway");
+            } else {
+                ui.label(jump_hosts::summary(&hops));
+            }
+            if self.type_index != 0 {
+                ui.weak("(used by SSH sessions for now)");
+            }
+        });
+        ui.add_space(6.0);
     }
 
     fn bookmark_header(&mut self, ui: &mut egui::Ui) {
@@ -566,4 +661,8 @@ impl SessionEditor {
             }
         }
     }
+}
+
+fn is_gateway_id(ids: GatewayIds, id: &str) -> bool {
+    [ids.host, ids.port, ids.user, ids.key].contains(&id)
 }

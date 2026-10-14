@@ -581,7 +581,7 @@ impl Tab {
             port: ssh_port,
             user,
             private_key: key,
-            gateway: None,
+            gateways: Vec::new(),
             known_hosts: self.known_hosts.clone(),
             compression: false,
             command: Some(server),
@@ -655,7 +655,7 @@ impl Tab {
             port,
             user,
             private_key: None,
-            gateway: None,
+            gateways: Vec::new(),
             known_hosts: self.known_hosts.clone(),
             compression: false,
             command: None,
@@ -839,30 +839,27 @@ impl Tab {
         let (rows, cols) = self.term.size();
         self.credentials.reset();
         let (user, credential_error) = self.credentials.use_named(&user, host, *port);
-        // Network settings: 3_9 gateway host, 3_10 port, 3_11 login, 3_16 key.
-        let gateway = opt("3_9")
-            .map(str::trim)
-            .filter(|h| !h.is_empty())
-            .map(|h| tc_ssh::Endpoint {
-                host: h.to_string(),
-                port: opt("3_10")
-                    .and_then(|p| p.trim().parse().ok())
-                    .unwrap_or(22),
-                user: opt("3_11")
-                    .map(str::trim)
-                    .filter(|u| !u.is_empty())
-                    .map_or_else(|| user.clone(), String::from),
-                private_key: opt("3_16")
-                    .map(str::trim)
-                    .filter(|k| !k.is_empty())
-                    .map(PathBuf::from),
-            });
+        // Network settings: the SSH jump hosts (3_9 host, 3_10 port,
+        // 3_11 login, 3_16 key), one or several.
+        let gateways = tc_core::jump_hosts::parse(options, tc_core::jump_hosts::SSH)
+            .into_iter()
+            .map(|hop| tc_ssh::Endpoint {
+                port: hop.port_number(),
+                user: if hop.user.is_empty() {
+                    user.clone()
+                } else {
+                    hop.user
+                },
+                private_key: (!hop.key.is_empty()).then(|| PathBuf::from(hop.key)),
+                host: hop.host,
+            })
+            .collect();
         let mut params = ConnectParams {
             host: host.clone(),
             port: *port,
             user,
             private_key: private_key.as_ref().map(PathBuf::from),
-            gateway,
+            gateways,
             known_hosts: self.known_hosts.clone(),
             compression: opt("3_7").is_some_and(schema::is_true),
             command: opt("3_8")
@@ -1998,7 +1995,12 @@ mod tests {
     fn folder_tracking_hook_reports_pwd_in_bash() {
         let hook = FOLDER_TRACKING_HOOK.trim_end_matches('\r');
         let script = format!("{hook}\ncd /tmp && eval \"$PROMPT_COMMAND\"");
-        let Ok(out) = std::process::Command::new("bash")
+        // Like the app: Git Bash / MSYS2 on Windows, never the WSL launcher.
+        let Some(bash) = tc_pty::shells::locate(tc_pty::ShellKind::Bash) else {
+            eprintln!("bash not available; skipping");
+            return;
+        };
+        let Ok(out) = std::process::Command::new(&bash.program)
             .args(["--norc", "--noprofile", "-c", &script])
             .output()
         else {

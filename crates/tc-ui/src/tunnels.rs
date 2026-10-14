@@ -57,7 +57,7 @@ pub fn params(t: &Tunnel, known_hosts: PathBuf, agent: tc_ssh::AgentConfig) -> T
             user: t.ssh_user.clone(),
             private_key: t.private_key.as_ref().map(PathBuf::from),
         },
-        gateway: None,
+        gateways: Vec::new(),
         known_hosts,
         spec,
     }

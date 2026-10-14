@@ -1623,6 +1623,7 @@ impl eframe::App for TermCraftApp {
                 Some("hotkeys") => self.show_hotkeys = true,
                 Some("keygen") => self.keygen.open = true,
                 Some("known_hosts") => self.known_hosts.open(),
+                Some("jump_hosts") => self.editor = Some(SessionEditor::jump_hosts_preview()),
                 Some(w) if w.starts_with("new_session") => {
                     let index = w
                         .split(':')

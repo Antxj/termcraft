@@ -34,7 +34,7 @@ pub enum TunnelSpec {
 #[derive(Debug, Clone)]
 pub struct TunnelParams {
     pub ssh: Endpoint,
-    pub gateway: Option<Endpoint>,
+    pub gateways: Vec<Endpoint>,
     pub known_hosts: std::path::PathBuf,
     pub spec: TunnelSpec,
     pub agent: crate::AgentConfig,
@@ -49,7 +49,7 @@ pub(crate) async fn run(
     let conn = establish(
         ConnectOptions {
             target: &params.ssh,
-            gateway: params.gateway.as_ref(),
+            gateways: &params.gateways,
             known_hosts: &params.known_hosts,
             compression: false,
             keepalive: Some(std::time::Duration::from_secs(30)),
