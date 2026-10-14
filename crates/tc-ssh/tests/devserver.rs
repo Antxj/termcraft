@@ -46,6 +46,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         shell: true,
         proxy: None,
         agent_forwarding: false,
+        x11_display: None,
     }
 }
 

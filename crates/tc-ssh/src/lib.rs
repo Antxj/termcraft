@@ -14,6 +14,7 @@ pub mod keygen;
 pub mod proxy;
 pub mod sftp;
 pub mod tunnel;
+pub mod x11;
 
 pub use agent::AgentConfig;
 pub use russh::keys::PrivateKey;
@@ -74,6 +75,8 @@ pub struct ConnectParams {
     pub proxy: Option<proxy::Proxy>,
     /// 3_35 "Allow agent forwarding".
     pub agent_forwarding: bool,
+    /// 3_6 "X11-Forwarding": the local display to forward to.
+    pub x11_display: Option<String>,
 }
 
 impl ConnectParams {
@@ -404,6 +407,8 @@ pub(crate) struct Handler {
     /// "Allow agent forwarding": where forwarded agent channels go. `None`
     /// = such channels are refused.
     agent_forward: Option<AgentConfig>,
+    /// X11 forwarding: `None` = X11 channels are refused.
+    x11: Option<Arc<x11::X11State>>,
 }
 
 impl client::Handler for Handler {
@@ -427,6 +432,30 @@ impl client::Handler for Handler {
             // Not recorded yet (or no known_hosts file): ask the user.
             Ok(false) | Err(_) => Ok(self.ask_host_key(key, None).await),
         }
+    }
+
+    /// A program on the server opens an X11 window: bridge it to the local
+    /// X server after checking the fake cookie.
+    async fn server_channel_open_x11(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let Some(state) = self.x11.clone() else {
+            drop(reply); // refuses
+            return Ok(());
+        };
+        reply.accept().await;
+        let events = self.events.clone();
+        tokio::spawn(async move {
+            if let Err(e) = x11::bridge(channel.into_stream(), &state).await {
+                events.send(SshEvent::Info(format!("X11: {e}")));
+            }
+        });
+        Ok(())
     }
 
     /// The server opens an agent channel (ssh / git there use our keys):
@@ -553,6 +582,8 @@ pub(crate) struct ConnectOptions<'a> {
     pub proxy: Option<&'a proxy::Proxy>,
     /// Bridge forwarded agent channels of the target server.
     pub agent_forward: bool,
+    /// X11 forwarding state of the target connection.
+    pub x11: Option<Arc<x11::X11State>>,
 }
 
 fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
@@ -625,9 +656,11 @@ pub(crate) async fn establish(
         replies: replies.clone(),
         forwards: forwards.clone(),
         agent_forward: None,
+        x11: None,
     };
     let target_handler = |e: &Endpoint| Handler {
         agent_forward: opts.agent_forward.then(|| opts.agent.clone()),
+        x11: opts.x11.clone(),
         ..handler(e)
     };
     let target = opts.target;
@@ -705,6 +738,12 @@ async fn run_shell(
     replies: Replies,
     events: Events,
 ) -> Result<Option<u32>, String> {
+    let x11 = params
+        .x11_display
+        .as_deref()
+        .filter(|_| params.shell)
+        .and_then(x11::X11State::new)
+        .map(Arc::new);
     let target = params.endpoint();
     let conn = establish(
         ConnectOptions {
@@ -716,6 +755,7 @@ async fn run_shell(
             agent: params.agent.clone(),
             proxy: params.proxy.as_ref(),
             agent_forward: params.agent_forwarding,
+            x11: x11.clone(),
         },
         &replies,
         &events,
@@ -743,6 +783,11 @@ async fn run_shell(
             .map_err(|e| format!("pty request failed: {e}"))?;
         if params.agent_forwarding {
             let _ = channel.agent_forward(false).await;
+        }
+        if let Some(x) = &x11 {
+            let _ = channel
+                .request_x11(false, false, x.protocol(), x.fake_hex(), x.display.screen)
+                .await;
         }
         match &params.command {
             Some(cmd) => channel.exec(true, cmd.as_str()).await,

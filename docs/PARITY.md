@@ -165,7 +165,7 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P1 | [ ] | SSH X11 forwarding (DISPLAY set automatically) — not in the native client yet | `tc-ssh` |
+| P1 | [~] | SSH X11 forwarding (3_6) to a local X server: $DISPLAY (or localhost:0 on Windows for VcXsrv / Xming); fake cookie checked and replaced with the real one from xauth, X11 channels refused when not requested. A built-in X server is pending | `tc-ssh` |
 | P2 | [ ] | Windows: bundle and manage VcXsrv (MIT/X11 license) | `tc-x11` |
 | P2 | [ ] | macOS: detect / launch XQuartz | `tc-x11` |
 | P2 | [ ] | Linux: use native X / XWayland | `tc-x11` |

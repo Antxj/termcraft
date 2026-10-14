@@ -56,6 +56,7 @@ pub(crate) async fn run(
             agent: params.agent.clone(),
             proxy: None,
             agent_forward: false,
+            x11: None,
         },
         &replies,
         &events,
