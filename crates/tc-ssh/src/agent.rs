@@ -19,6 +19,8 @@ pub struct AgentConfig {
     /// Agent to use instead of the default one (`SSH_AUTH_SOCK` on Unix,
     /// the OpenSSH pipe on Windows): a socket path or a pipe name.
     pub socket: Option<std::path::PathBuf>,
+    /// "Use internal SSH agent": key files offered to every server.
+    pub keys: Vec<std::path::PathBuf>,
 }
 
 /// Servers drop the connection after `MaxAuthTries` (6 by default), so

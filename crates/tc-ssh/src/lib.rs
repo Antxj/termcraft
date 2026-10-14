@@ -948,6 +948,58 @@ async fn authenticate(
         }
     }
 
+    // "Use internal SSH agent": its key files, before the external agents.
+    for path in agent_config.keys.iter().take(5) {
+        if endpoint.private_key.as_deref() == Some(path.as_path()) {
+            continue;
+        }
+        let key = match load_key_file(path, None) {
+            Ok(k) => k,
+            Err(KeyLoad::Encrypted) => {
+                let key_ep = Endpoint {
+                    private_key: Some(path.clone()),
+                    ..endpoint.clone()
+                };
+                let prompt = format!("Passphrase for key {}:", path.display());
+                let Some(pass) =
+                    ask_secret(events, replies, &key_ep, prompt, SecretKind::KeyPassphrase).await
+                else {
+                    continue;
+                };
+                match load_key_file(path, Some(&pass)) {
+                    Ok(k) => k,
+                    Err(_) => continue,
+                }
+            }
+            Err(KeyLoad::Failed(e)) => {
+                events.send(SshEvent::Info(format!(
+                    "cannot load key {}: {e}",
+                    path.display()
+                )));
+                continue;
+            }
+        };
+        let hash = session
+            .best_supported_rsa_hash()
+            .await
+            .map_err(err)?
+            .flatten();
+        let result = session
+            .authenticate_publickey(
+                user.clone(),
+                PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+            )
+            .await
+            .map_err(err)?;
+        if result.success() {
+            events.send(SshEvent::Info(format!(
+                "Authenticated with {} (internal agent)",
+                path.display()
+            )));
+            return Ok(());
+        }
+    }
+
     if agent::authenticate(session, &user, agent_config, events).await? {
         return Ok(());
     }

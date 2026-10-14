@@ -40,6 +40,8 @@ pub struct TabEnv {
     /// Configuration › Terminal "Log terminal output to the following
     /// directory" (sessions can log on their own: 4_12 / 4_13).
     pub log_dir: Option<PathBuf>,
+    /// "Use Windows PATH" in the local Bash / Zsh.
+    pub use_windows_path: bool,
 }
 
 /// Keys of the "Session stopped" prompt.
@@ -90,6 +92,16 @@ pub fn agent_config(ssh: &tc_core::settings::SshSettings) -> tc_ssh::AgentConfig
         system: ssh.use_system_agent,
         pageant: ssh.use_pageant,
         socket: None,
+        keys: if ssh.internal_agent {
+            ssh.agent_keys
+                .iter()
+                .map(|k| k.trim())
+                .filter(|k| !k.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        } else {
+            Vec::new()
+        },
     }
 }
 
@@ -380,7 +392,7 @@ impl Tab {
             }
         }
         match tab.session.as_ref().map(|s| s.kind.clone()) {
-            None => tab.spawn_local(None, env.local_shell),
+            None => tab.spawn_local(None, env.local_shell, env.use_windows_path),
             Some(SessionKind::LocalShell { program }) => {
                 // 3_2 "Terminal shell": 0 = the configured default.
                 let shell = tab
@@ -389,7 +401,7 @@ impl Tab {
                     .and_then(|s| s.options.get("3_2"))
                     .and_then(|v| LocalShell::from_option(v))
                     .unwrap_or(env.local_shell);
-                tab.spawn_local(program.as_deref(), shell)
+                tab.spawn_local(program.as_deref(), shell, env.use_windows_path)
             }
             Some(SessionKind::Ssh {
                 user: Some(user), ..
@@ -724,7 +736,7 @@ impl Tab {
         self.term.feed(format!("{text}\r\n").as_bytes());
     }
 
-    fn spawn_local(&mut self, program: Option<&str>, shell: LocalShell) {
+    fn spawn_local(&mut self, program: Option<&str>, shell: LocalShell, windows_path: bool) {
         let command = match program {
             Some(p) => tc_pty::ShellCommand {
                 program: p.to_string(),
@@ -751,6 +763,13 @@ impl Tab {
                 }
             },
         };
+        let mut command = command;
+        // Git for Windows and MSYS2 read MSYS2_PATH_TYPE in /etc/profile.
+        if cfg!(windows) && program.is_none() && matches!(shell, LocalShell::Bash | LocalShell::Zsh)
+        {
+            let kind = if windows_path { "inherit" } else { "minimal" };
+            command.env.push(("MSYS2_PATH_TYPE".into(), kind.into()));
+        }
         self.spawn_command(&command);
     }
 
@@ -1721,6 +1740,7 @@ mod tests {
             local_shell: Default::default(),
             save_key_passphrases: false,
             log_dir: None,
+            use_windows_path: true,
         };
         let session = Session::new(
             "t",
@@ -1775,6 +1795,7 @@ mod tests {
             local_shell: Default::default(),
             save_key_passphrases: false,
             log_dir: None,
+            use_windows_path: true,
         };
         let mut session = dev_session(addr.port());
         session.options.remove("3_8");
@@ -1815,6 +1836,7 @@ mod tests {
             local_shell: Default::default(),
             save_key_passphrases: false,
             log_dir: None,
+            use_windows_path: true,
         };
 
         // 1st connection: no saved password -> prompt in the terminal.

@@ -43,6 +43,7 @@ impl Core {
             log_dir: Some(self.settings.terminal.log_dir.trim())
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
+            use_windows_path: self.settings.terminal.use_windows_path,
         }
     }
 
@@ -322,6 +323,18 @@ impl TermCraftApp {
             app.core.paths.control_file(),
             app.core.repaint.clone(),
         );
+        if app.core.settings.general.auto_backup && app.snapshot.is_none() {
+            let p = &app.core.paths;
+            let files = [
+                p.sessions_file(),
+                p.settings_file(),
+                p.macros_file(),
+                p.tunnels_file(),
+            ];
+            if let Err(e) = tc_core::backup::run(&p.config_dir, &files) {
+                app.status = format!("configuration backup failed: {e}");
+            }
+        }
         app.unlock_vault_at_startup();
         app.autostart_tunnels();
         app

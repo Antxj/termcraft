@@ -8,9 +8,24 @@ pub struct Settings {
     pub view: ViewSettings,
     pub passwords: PasswordSettings,
     pub ssh: SshSettings,
+    pub general: GeneralSettings,
     /// Keyboard shortcuts changed from their defaults: action id →
     /// hotkey (`<none>` removes one). See `crate::hotkeys`.
     pub hotkeys: std::collections::BTreeMap<String, String>,
+}
+
+/// Configuration › General.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GeneralSettings {
+    /// "Automatically backup TermCraft configuration file".
+    pub auto_backup: bool,
+}
+
+impl Default for GeneralSettings {
+    fn default() -> Self {
+        Self { auto_backup: true }
+    }
 }
 
 /// Configuration › SSH.
@@ -29,6 +44,10 @@ pub struct SshSettings {
     pub use_system_agent: bool,
     /// "Use PuTTY agent" (Pageant, Windows).
     pub use_pageant: bool,
+    /// "Use internal SSH agent": these key files are offered to every
+    /// SSH server (passphrases asked, or taken from the saved ones).
+    pub internal_agent: bool,
+    pub agent_keys: Vec<String>,
 }
 
 impl Default for SshSettings {
@@ -40,6 +59,8 @@ impl Default for SshSettings {
             remote_monitoring: false,
             use_system_agent: true,
             use_pageant: true,
+            internal_agent: false,
+            agent_keys: Vec::new(),
         }
     }
 }
@@ -260,6 +281,8 @@ pub struct TerminalSettings {
     pub word_delimiters: String,
     /// "Log terminal output to the following directory" (empty = off).
     pub log_dir: String,
+    /// "Use Windows PATH" in the local Bash / Zsh (Git for Windows, MSYS2).
+    pub use_windows_path: bool,
 }
 
 /// "Local terminal environment" (Configuration › Terminal) and the Shell
@@ -332,6 +355,7 @@ impl Default for TerminalSettings {
             warn_multiline_paste: true,
             word_delimiters: String::new(),
             log_dir: String::new(),
+            use_windows_path: true,
         }
     }
 }

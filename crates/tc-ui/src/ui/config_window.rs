@@ -55,7 +55,7 @@ pub fn show(
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_min_size(egui::vec2(600.0, 260.0));
                 match tab {
-                    ConfigTab::General => general(ui, paths),
+                    ConfigTab::General => general(ui, settings, paths),
                     ConfigTab::Terminal => terminal(ui, settings),
                     ConfigTab::X11 => x11(ui),
                     ConfigTab::Ssh => ssh(ui, settings, out),
@@ -70,7 +70,7 @@ pub fn show(
     *settings != before
 }
 
-fn general(ui: &mut egui::Ui, paths: &Paths) {
+fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths) {
     egui::Grid::new("cfg-general")
         .num_columns(2)
         .spacing([12.0, 8.0])
@@ -90,7 +90,15 @@ fn general(ui: &mut egui::Ui, paths: &Paths) {
             ui.end_row();
         });
     ui.add_space(8.0);
-    disabled_check(ui, "Automatically backup TermCraft configuration file");
+    ui.checkbox(
+        &mut s.general.auto_backup,
+        "Automatically backup TermCraft configuration file",
+    )
+    .on_hover_text(format!(
+        "At start-up, changed configuration files are copied to {} (the last {} are kept)",
+        paths.config_dir.join("backups").display(),
+        tc_core::backup::KEEP
+    ));
     ui.weak("Tip: create an empty \"termcraft.portable\" file next to the executable for portable mode.");
 }
 
@@ -153,7 +161,8 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
             ui.add(egui::TextEdit::singleline(&mut t.log_dir).desired_width(260.0));
         }
     });
-    disabled_check(ui, "Use Windows PATH");
+    ui.checkbox(&mut t.use_windows_path, "Use Windows PATH")
+        .on_hover_text("Local Bash / Zsh terminals also find the Windows programs");
     ui.weak(
         "Per-session font, colors and terminal type are in each session's \"Terminal settings\".",
     );
@@ -201,7 +210,29 @@ fn ssh(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
          (CPU / RAM / network / disk…) of the server. Linux servers only.",
         );
     disabled_check(ui, "GSSAPI Kerberos");
-    disabled_check(ui, "Use internal SSH agent");
+    ui.checkbox(&mut ssh.internal_agent, "Use internal SSH agent")
+        .on_hover_text("Offer the key files below to every SSH server");
+    if ssh.internal_agent {
+        ui.indent("agent-keys", |ui| {
+            let mut remove = None;
+            for (i, key) in ssh.agent_keys.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.monospace(key);
+                    if ui.small_button("Remove").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            }
+            if let Some(i) = remove {
+                ssh.agent_keys.remove(i);
+            }
+            if ui.button("Add key file…").clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_file()
+            {
+                ssh.agent_keys.push(path.display().to_string());
+            }
+        });
+    }
     if cfg!(windows) {
         ui.checkbox(&mut ssh.use_pageant, "Use PuTTY agent")
             .on_hover_text("Log in with the keys loaded in Pageant");

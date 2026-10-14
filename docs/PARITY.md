@@ -34,7 +34,7 @@ refined against it.
 | P1 | [x] | Tab context menu: rename, set tab color (also session 7_1), duplicate, close / close left / right / others / all, pin / unpin (pinned tabs stay), save / print output, font size | `tc-ui` |
 | P1 | [x] | "Session stopped" prompt: Return closes the tab, R restarts the session, S saves the terminal output | `tc-ui` |
 | P1 | [x] | Configurable keyboard shortcuts ("Hotkeys edition": 20 actions, the reference list of combinations, conflict warning, restore defaults); shortcuts are taken before the terminal sees the keys | `tc-core` + `tc-ui` |
-| P1 | [~] | Settings › Configuration dialog (General / Terminal / X11 / SSH / Display / Toolbar / Misc); supported options live, others shown disabled | `tc-ui` |
+| P1 | [~] | Settings › Configuration dialog (General / Terminal / X11 / SSH / Display / Toolbar / Misc): automatic configuration backup, Use Windows PATH, internal SSH agent keys, agents, keepalive, remote monitoring, display and terminal options live; X11, GSSAPI and "Disable Quick connect" still disabled | `tc-ui` |
 | P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close buttons, rounded tabs, open-session dots, compact mode (tabs and terminals only; exit from the tab list or Ctrl+Shift+F11); transparency and colour saturation pending | `tc-ui` |
 | P1 | [x] | Skins: Light (default, like the reference), Dim, Dark, Follow system; own palettes, contrast checked by a test | `tc-ui` |
 | P1 | [x] | Chrome-style tab strip: rounded tabs, accent on the active tab, close button, middle-click closes, session icon | `tc-ui` |

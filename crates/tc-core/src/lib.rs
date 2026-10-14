@@ -1,5 +1,6 @@
 //! TermCraft core model. Pure data + persistence; must never depend on UI crates.
 
+pub mod backup;
 pub mod hotkeys;
 pub mod known_hosts;
 pub mod macros;
