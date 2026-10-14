@@ -504,6 +504,55 @@ impl Tab {
         }
     }
 
+    /// Telnet / VNC through the session proxy: a loopback port bridged
+    /// through it. Refused (never a direct connection) when that is not
+    /// possible.
+    pub(super) fn open_via_proxy(&mut self, proxy: tc_ssh::proxy::Proxy) {
+        let Some((host, port, telnet)) = (match &self.session.as_ref().map(|s| &s.kind) {
+            Some(SessionKind::Telnet { host, port }) => Some((host.clone(), *port, true)),
+            Some(SessionKind::Vnc { host, port }) => Some((host.clone(), *port, false)),
+            _ => None,
+        }) else {
+            return;
+        };
+        let refuse = |tab: &mut Self, why: &str| {
+            tab.message(&format!("\x1b[31mNot connected: {why}.\x1b[0m"));
+            tab.session_ended("proxy not available");
+        };
+        if matches!(proxy.kind, tc_ssh::proxy::ProxyKind::SshCommand(_)) {
+            return refuse(
+                self,
+                "the \"SSH command\" proxy type is only available for SSH sessions",
+            );
+        }
+        if via_gateway(self.session.as_ref()).is_some() {
+            return refuse(
+                self,
+                "a proxy together with an SSH gateway is only available for SSH sessions",
+            );
+        }
+        let (proxy_host, proxy_port) = (proxy.host.clone(), proxy.port);
+        let forward = match tc_ssh::proxy::forward_local(proxy, host.clone(), port) {
+            Ok(f) => f,
+            Err(e) => return refuse(self, &e.to_string()),
+        };
+        let local_port = forward.port;
+        self.proxy_forward = Some(forward);
+        self.message(&format!(
+            "\x1b[90mThrough proxy {proxy_host}:{proxy_port} …\x1b[0m"
+        ));
+        if telnet {
+            self.open_telnet("127.0.0.1".into(), local_port);
+        } else {
+            let result = crate::external::launch_vnc("127.0.0.1", local_port);
+            self.external_result("VNC", &host, port, result);
+            self.message(&format!(
+                "\x1b[90mThe proxy connection stays open on 127.0.0.1:{local_port} while \
+                 this tab is open.\x1b[0m"
+            ));
+        }
+    }
+
     pub(super) fn open_telnet(&mut self, host: String, port: u16) {
         self.message(&format!(
             "\x1b[90mConnecting to {host}:{port} (Telnet) …\x1b[0m"

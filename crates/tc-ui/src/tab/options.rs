@@ -148,3 +148,14 @@ pub(super) fn shell_kind(shell: LocalShell) -> tc_pty::ShellKind {
         LocalShell::Wsl => tc_pty::ShellKind::Wsl,
     }
 }
+
+/// The proxy of a Telnet (3_12 …) or VNC (3_14 …) session.
+pub(super) fn session_proxy(session: Option<&Session>) -> Option<tc_ssh::proxy::Proxy> {
+    let session = session?;
+    let ids = match session.kind {
+        SessionKind::Telnet { .. } => &tc_ssh::proxy::TELNET_IDS,
+        SessionKind::Vnc { .. } => &tc_ssh::proxy::VNC_IDS,
+        _ => return None,
+    };
+    tc_ssh::proxy::from_options_with(ids, &|id| session.options.get(id).cloned())
+}

@@ -396,12 +396,51 @@ pub fn telnet_command(template: &str, host: &str, port: u16, user: Option<&str>)
     out
 }
 
-/// From session options 3_20 (type), 3_21 host, 3_22 port, 3_23 login,
-/// 3_27 command (local proxy command, Telnet command or command run on an
-/// SSH proxy). `None` = direct connection.
+/// The session options of a proxy (they differ by session type).
+pub struct ProxyIds {
+    pub kind: &'static str,
+    pub host: &'static str,
+    pub port: &'static str,
+    pub login: &'static str,
+    pub command: &'static str,
+}
+
+/// SSH sessions: 3_20 type, 3_21 host, 3_22 port, 3_23 login, 3_27 command.
+pub const SSH_IDS: ProxyIds = ProxyIds {
+    kind: "3_20",
+    host: "3_21",
+    port: "3_22",
+    login: "3_23",
+    command: "3_27",
+};
+/// Telnet sessions: 3_12 … 3_16.
+pub const TELNET_IDS: ProxyIds = ProxyIds {
+    kind: "3_12",
+    host: "3_13",
+    port: "3_14",
+    login: "3_15",
+    command: "3_16",
+};
+/// VNC sessions: 3_14 … 3_18.
+pub const VNC_IDS: ProxyIds = ProxyIds {
+    kind: "3_14",
+    host: "3_15",
+    port: "3_16",
+    login: "3_17",
+    command: "3_18",
+};
+
+/// The proxy of an SSH session ([`SSH_IDS`]). `None` = direct connection.
 pub fn from_options(get: &dyn Fn(&str) -> Option<String>) -> Option<Proxy> {
-    let command = get("3_27").filter(|c| !c.trim().is_empty());
-    let kind = match get("3_20")?.trim() {
+    from_options_with(&SSH_IDS, get)
+}
+
+/// The proxy in the session options `ids`: type, host, port, login and
+/// command (local proxy command, Telnet command or command run on an SSH
+/// proxy). `None` = direct connection.
+pub fn from_options_with(ids: &ProxyIds, get: &dyn Fn(&str) -> Option<String>) -> Option<Proxy> {
+    let command = get(ids.command).filter(|c| !c.trim().is_empty());
+    let kind = match get(ids.kind)?.trim() {
         "1" => ProxyKind::Socks4,
         "2" => ProxyKind::Socks5,
         "3" => ProxyKind::Http,
@@ -411,20 +450,83 @@ pub fn from_options(get: &dyn Fn(&str) -> Option<String>) -> Option<Proxy> {
         "7" => ProxyKind::SshCommand(command.unwrap_or_else(|| DEFAULT_SSH_COMMAND.into())),
         _ => return None,
     };
-    let host = get("3_21").unwrap_or_default().trim().to_string();
+    let host = get(ids.host).unwrap_or_default().trim().to_string();
     if host.is_empty() && !matches!(kind, ProxyKind::Command(_)) {
         return None;
     }
     Some(Proxy {
         kind,
         host,
-        port: get("3_22")
+        port: get(ids.port)
             .and_then(|p| p.trim().parse().ok())
             .filter(|&p| p > 0)
             .unwrap_or(1080),
-        user: get("3_23")
+        user: get(ids.login)
             .map(|u| u.trim().to_string())
             .filter(|u| !u.is_empty()),
+    })
+}
+
+/// A loopback port that reaches one target through a proxy, for programs
+/// that cannot use the proxy themselves (Telnet, VNC viewers). It listens
+/// on 127.0.0.1 only and stops when dropped. Proxies that want a password
+/// are refused (there is nobody to ask).
+pub struct LocalForward {
+    pub port: u16,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+impl Drop for LocalForward {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+    }
+}
+
+/// Start a [`LocalForward`] to `host:port` through `proxy` (not an SSH
+/// proxy: those are opened by an SSH connection).
+pub fn forward_local(proxy: Proxy, host: String, port: u16) -> std::io::Result<LocalForward> {
+    if matches!(proxy.kind, ProxyKind::SshForward | ProxyKind::SshCommand(_)) {
+        return Err(err("an SSH proxy is opened by an SSH connection"));
+    }
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
+    listener.set_nonblocking(true)?;
+    let local_port = listener.local_addr()?.port();
+    let (stop, mut stopped) = tokio::sync::oneshot::channel();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    std::thread::Builder::new()
+        .name("proxy-forward".into())
+        .spawn(move || {
+            runtime.block_on(async move {
+                let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {
+                    return;
+                };
+                let proxy = std::sync::Arc::new(proxy);
+                loop {
+                    let accepted = tokio::select! {
+                        _ = &mut stopped => return,
+                        a = listener.accept() => a,
+                    };
+                    let Ok((mut local, _)) = accepted else {
+                        continue;
+                    };
+                    let (proxy, host) = (proxy.clone(), host.clone());
+                    tokio::spawn(async move {
+                        let mut no_password = || -> PasswordFuture { Box::pin(async { None }) };
+                        if let Ok(mut remote) = connect(&proxy, &host, port, &mut no_password).await
+                        {
+                            let _ = tokio::io::copy_bidirectional(&mut local, &mut remote).await;
+                        }
+                    });
+                }
+            });
+        })?;
+    Ok(LocalForward {
+        port: local_port,
+        stop: Some(stop),
     })
 }
 
@@ -586,6 +688,119 @@ mod tests {
             b"open h 1\r\n\\ \\q"
         );
         assert_eq!(telnet_command("  ", "h", 1, None), b"connect h 1\n");
+    }
+
+    #[test]
+    fn other_session_types_have_their_own_option_ids() {
+        let opts = |pairs: &'static [(&'static str, &'static str)]| {
+            move |id: &str| {
+                pairs
+                    .iter()
+                    .find(|(k, _)| *k == id)
+                    .map(|(_, v)| v.to_string())
+            }
+        };
+        let telnet = from_options_with(
+            &TELNET_IDS,
+            &opts(&[
+                ("3_12", "2"),
+                ("3_13", "socks"),
+                ("3_14", "1081"),
+                ("3_15", "u"),
+            ]),
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                telnet.kind,
+                telnet.host.as_str(),
+                telnet.port,
+                telnet.user.as_deref()
+            ),
+            (ProxyKind::Socks5, "socks", 1081, Some("u"))
+        );
+        let vnc = from_options_with(&VNC_IDS, &opts(&[("3_14", "3"), ("3_15", "web")])).unwrap();
+        assert_eq!((vnc.kind, vnc.port), (ProxyKind::Http, 1080));
+        // SSH ids do not leak into the others.
+        assert!(from_options_with(&TELNET_IDS, &opts(&[("3_20", "2"), ("3_21", "x")])).is_none());
+    }
+
+    /// A local port bridged through a SOCKS5 proxy to an echo server.
+    #[test]
+    fn local_forward_through_socks5() {
+        use std::io::{Read, Write};
+        let echo = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let echo_port = echo.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for mut c in echo.incoming().flatten() {
+                let mut buf = [0u8; 64];
+                let n = c.read(&mut buf).unwrap_or(0);
+                let _ = c.write_all(&buf[..n]);
+            }
+        });
+        // A minimal SOCKS5 proxy (no auth, IPv4 / domain).
+        let socks = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let socks_port = socks.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for mut c in socks.incoming().flatten() {
+                std::thread::spawn(move || {
+                    let mut b = [0u8; 262];
+                    c.read_exact(&mut b[..2]).unwrap();
+                    let n = usize::from(b[1]);
+                    c.read_exact(&mut b[..n]).unwrap();
+                    c.write_all(&[5, 0]).unwrap();
+                    c.read_exact(&mut b[..4]).unwrap();
+                    let host = match b[3] {
+                        1 => {
+                            c.read_exact(&mut b[..4]).unwrap();
+                            format!("{}.{}.{}.{}", b[0], b[1], b[2], b[3])
+                        }
+                        3 => {
+                            c.read_exact(&mut b[..1]).unwrap();
+                            let n = usize::from(b[0]);
+                            c.read_exact(&mut b[..n]).unwrap();
+                            String::from_utf8_lossy(&b[..n]).into_owned()
+                        }
+                        _ => return,
+                    };
+                    let mut p = [0u8; 2];
+                    c.read_exact(&mut p).unwrap();
+                    let t = std::net::TcpStream::connect((host.as_str(), u16::from_be_bytes(p)))
+                        .unwrap();
+                    c.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).unwrap();
+                    let (mut c2, mut t2) = (c.try_clone().unwrap(), t.try_clone().unwrap());
+                    std::thread::spawn(move || std::io::copy(&mut t2, &mut c2));
+                    let mut t = t;
+                    let _ = std::io::copy(&mut c, &mut t);
+                });
+            }
+        });
+        let proxy = Proxy {
+            kind: ProxyKind::Socks5,
+            host: "127.0.0.1".into(),
+            port: socks_port,
+            user: None,
+        };
+        let fwd = forward_local(proxy.clone(), "127.0.0.1".into(), echo_port).unwrap();
+        let mut c = std::net::TcpStream::connect(("127.0.0.1", fwd.port)).unwrap();
+        c.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        c.write_all(b"through the proxy").unwrap();
+        let mut got = [0u8; 17];
+        c.read_exact(&mut got).unwrap();
+        assert_eq!(&got, b"through the proxy");
+        let port = fwd.port;
+        drop(fwd);
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(
+            std::net::TcpStream::connect(("127.0.0.1", port)).is_err(),
+            "stopped when dropped"
+        );
+        let ssh = Proxy {
+            kind: ProxyKind::SshForward,
+            ..proxy
+        };
+        assert!(forward_local(ssh, "h".into(), 1).is_err());
     }
 
     #[tokio::test]

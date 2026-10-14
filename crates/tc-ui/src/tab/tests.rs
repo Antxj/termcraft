@@ -34,6 +34,28 @@ fn dev_session(port: u16) -> Session {
     s
 }
 
+/// A tab environment in `dir`, with an in-memory vault.
+fn test_env(dir: &std::path::Path) -> TabEnv {
+    TabEnv {
+        scrollback: 100,
+        known_hosts: dir.join("kh"),
+        repaint: Arc::new(|| {}),
+        vault: Arc::new(Vault::open(
+            dir.join("i.toml"),
+            Box::new(tc_vault::MemoryStore::default()),
+        )),
+        save_passwords: SavePasswords::Ask,
+        ssh: Default::default(),
+        backspace_ctrl_h: false,
+        paste_right_click: true,
+        local_shell: Default::default(),
+        save_key_passphrases: false,
+        log_dir: None,
+        use_windows_path: true,
+        home: None,
+    }
+}
+
 #[test]
 fn term_charset_choices_match_the_schema() {
     let param = schema::terminal_params()
@@ -138,24 +160,7 @@ fn telnet_tab_shows_server_output() {
         std::thread::sleep(Duration::from_millis(300));
     });
     let dir = tempfile::tempdir().unwrap();
-    let env = TabEnv {
-        scrollback: 100,
-        known_hosts: dir.path().join("kh"),
-        repaint: Arc::new(|| {}),
-        vault: Arc::new(Vault::open(
-            dir.path().join("i.toml"),
-            Box::new(tc_vault::MemoryStore::default()),
-        )),
-        save_passwords: SavePasswords::Ask,
-        ssh: Default::default(),
-        backspace_ctrl_h: false,
-        paste_right_click: true,
-        local_shell: Default::default(),
-        save_key_passphrases: false,
-        log_dir: None,
-        use_windows_path: true,
-        home: None,
-    };
+    let env = test_env(dir.path());
     let session = Session::new(
         "t",
         SessionKind::Telnet {
@@ -179,24 +184,7 @@ fn no_reconnection_message_closes_the_tab() {
     let port = listener.local_addr().unwrap().port();
     std::thread::spawn(move || drop(listener.accept()));
     let dir = tempfile::tempdir().unwrap();
-    let env = TabEnv {
-        scrollback: 100,
-        known_hosts: dir.path().join("kh"),
-        repaint: Arc::new(|| {}),
-        vault: Arc::new(Vault::open(
-            dir.path().join("i.toml"),
-            Box::new(tc_vault::MemoryStore::default()),
-        )),
-        save_passwords: SavePasswords::Ask,
-        ssh: Default::default(),
-        backspace_ctrl_h: false,
-        paste_right_click: true,
-        local_shell: Default::default(),
-        save_key_passphrases: false,
-        log_dir: None,
-        use_windows_path: true,
-        home: None,
-    };
+    let env = test_env(dir.path());
     let mut session = Session::new(
         "t",
         SessionKind::Telnet {
@@ -234,22 +222,8 @@ fn telnet_through_an_ssh_gateway() {
     rt.spawn(fut);
     let dir = tempfile::tempdir().unwrap();
     let env = TabEnv {
-        scrollback: 100,
-        known_hosts: dir.path().join("kh"),
-        repaint: Arc::new(|| {}),
-        vault: Arc::new(Vault::open(
-            dir.path().join("i.toml"),
-            Box::new(tc_vault::MemoryStore::default()),
-        )),
         save_passwords: SavePasswords::Never,
-        ssh: Default::default(),
-        backspace_ctrl_h: false,
-        paste_right_click: true,
-        local_shell: Default::default(),
-        save_key_passphrases: false,
-        log_dir: None,
-        use_windows_path: true,
-        home: None,
+        ..test_env(dir.path())
     };
     let mut session = Session::new(
         "t",
@@ -295,22 +269,9 @@ fn folder_tracking_is_automatic_and_hidden_for_bash() {
     rt.spawn(fut);
     let dir = tempfile::tempdir().unwrap();
     let env = TabEnv {
-        scrollback: 100,
         known_hosts: dir.path().join("known_hosts"),
-        repaint: Arc::new(|| {}),
-        vault: Arc::new(Vault::open(
-            dir.path().join("index.toml"),
-            Box::new(tc_vault::MemoryStore::default()),
-        )),
         save_passwords: SavePasswords::Never,
-        ssh: Default::default(),
-        backspace_ctrl_h: false,
-        paste_right_click: true,
-        local_shell: Default::default(),
-        save_key_passphrases: false,
-        log_dir: None,
-        use_windows_path: true,
-        home: None,
+        ..test_env(dir.path())
     };
     let mut session = dev_session(addr.port());
     session.options.remove("3_8");
@@ -340,19 +301,9 @@ fn saved_password_offer_and_autofill() {
         Box::new(tc_vault::MemoryStore::default()),
     ));
     let env = TabEnv {
-        scrollback: 100,
         known_hosts: dir.path().join("known_hosts"),
-        repaint: Arc::new(|| {}),
         vault: vault.clone(),
-        save_passwords: SavePasswords::Ask,
-        ssh: Default::default(),
-        backspace_ctrl_h: false,
-        paste_right_click: true,
-        local_shell: Default::default(),
-        save_key_passphrases: false,
-        log_dir: None,
-        use_windows_path: true,
-        home: None,
+        ..test_env(dir.path())
     };
 
     // 1st connection: no saved password -> prompt in the terminal.
@@ -424,24 +375,7 @@ fn local_line_editing_sends_edited_lines() {
         }
     });
     let dir = tempfile::tempdir().unwrap();
-    let env = TabEnv {
-        scrollback: 100,
-        known_hosts: dir.path().join("kh"),
-        repaint: Arc::new(|| {}),
-        vault: Arc::new(Vault::open(
-            dir.path().join("i.toml"),
-            Box::new(tc_vault::MemoryStore::default()),
-        )),
-        save_passwords: SavePasswords::Ask,
-        ssh: Default::default(),
-        backspace_ctrl_h: false,
-        paste_right_click: true,
-        local_shell: Default::default(),
-        save_key_passphrases: false,
-        log_dir: None,
-        use_windows_path: true,
-        home: None,
-    };
+    let env = test_env(dir.path());
     let session = Session::new(
         "t",
         SessionKind::Telnet {
@@ -467,4 +401,69 @@ fn local_line_editing_sends_edited_lines() {
     assert!(done(&got), "{got:?}");
     assert!(!got.windows(2).any(|w| w == b"lx"), "nothing before Enter");
     assert!(tab.term.contents().contains("ls -a"), "echoed locally");
+}
+
+/// Telnet session with a Telnet-type proxy (3_12 = 4): the proxy gets its
+/// command line, then carries the session.
+#[test]
+fn telnet_session_through_its_proxy() {
+    use std::io::{BufRead, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let proxy_port = listener.local_addr().unwrap().port();
+    let (tx, rx) = crossbeam_channel::bounded::<String>(1);
+    std::thread::spawn(move || {
+        let (s, _) = listener.accept().unwrap();
+        let mut reader = std::io::BufReader::new(s.try_clone().unwrap());
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let _ = tx.send(line);
+        let mut s = s;
+        s.write_all(&[255, 251, 1]).unwrap();
+        s.write_all(b"Welcome via proxy\r\n").unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::new(
+        "t",
+        SessionKind::Telnet {
+            host: "target.invalid".into(),
+            port: 23,
+        },
+    );
+    for (k, v) in [("3_12", "4"), ("3_13", "127.0.0.1")] {
+        session.options.insert(k.into(), v.into());
+    }
+    session
+        .options
+        .insert("3_14".into(), proxy_port.to_string());
+    let mut tab = Tab::open(1, Some(session), &test_env(dir.path()));
+    pump_until(&mut tab, |t| {
+        t.term.contents().contains("Welcome via proxy")
+    });
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+        "connect target.invalid 23\n"
+    );
+}
+
+/// A proxy that cannot be used for this session type stops it: never a
+/// direct connection instead.
+#[test]
+fn unusable_proxy_refuses_instead_of_connecting_directly() {
+    let target = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    target.set_nonblocking(true).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let mut session = Session::new(
+        "t",
+        SessionKind::Telnet {
+            host: "127.0.0.1".into(),
+            port: target.local_addr().unwrap().port(),
+        },
+    );
+    for (k, v) in [("3_12", "7"), ("3_13", "127.0.0.1")] {
+        session.options.insert(k.into(), v.into());
+    }
+    let mut tab = Tab::open(1, Some(session), &test_env(dir.path()));
+    pump_until(&mut tab, |t| t.term.contents().contains("Not connected"));
+    assert!(target.accept().is_err(), "no direct connection");
 }

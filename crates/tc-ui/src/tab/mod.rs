@@ -86,9 +86,27 @@ enum GatewayTarget {
 
 /// The jump hosts of a Telnet / RDP / VNC session, if it has any.
 fn via_gateway(session: Option<&Session>) -> Option<ViaGateway> {
+    let mut hops = session
+        .and_then(|s| {
+            let ids = tc_core::jump_hosts::ids_for(s.kind.type_index())?;
+            Some(tc_core::jump_hosts::parse(&s.options, ids))
+        })
+        .unwrap_or_default();
+    // An "SSH forwarding" proxy is one more gateway, the first one.
+    if let Some(p) = session_proxy(session)
+        && p.kind == tc_ssh::proxy::ProxyKind::SshForward
+    {
+        hops.insert(
+            0,
+            tc_core::jump_hosts::JumpHost {
+                host: p.host,
+                port: p.port.to_string(),
+                user: p.user.unwrap_or_default(),
+                key: String::new(),
+            },
+        );
+    }
     let session = session?;
-    let ids = tc_core::jump_hosts::ids_for(session.kind.type_index())?;
-    let hops = tc_core::jump_hosts::parse(&session.options, ids);
     if hops.is_empty() {
         return None;
     }
@@ -280,6 +298,8 @@ pub struct Tab {
     via_gateway: Option<ViaGateway>,
     /// That tunnel, kept open as long as the tab.
     gateway_tunnel: Option<SshSession>,
+    /// Telnet / VNC through a session proxy: the loopback port it listens on.
+    proxy_forward: Option<tc_ssh::proxy::LocalForward>,
     /// 4_6 "Term charset": remote bytes ↔ the emulator's UTF-8.
     charset: tc_term::TermCharset,
     /// "Log terminal output".
@@ -368,6 +388,7 @@ impl Tab {
             charset: tc_term::TermCharset::default(),
             via_gateway: None,
             gateway_tunnel: None,
+            proxy_forward: None,
             syntax: None,
             local_pane: None,
             open_in_editor: Vec::new(),
@@ -449,6 +470,14 @@ impl Tab {
             Some(SessionKind::Ssh { user: None, .. }) => {
                 tab.term.feed(b"login as: ");
                 tab.line = Some(LineInput::Login(String::new()));
+            }
+            // A session proxy (other than "SSH forwarding", which is a
+            // gateway) is never skipped: through it, or not at all.
+            Some(SessionKind::Telnet { .. } | SessionKind::Vnc { .. })
+                if let Some(proxy) = session_proxy(tab.session.as_ref())
+                    && proxy.kind != tc_ssh::proxy::ProxyKind::SshForward =>
+            {
+                tab.open_via_proxy(proxy);
             }
             Some(
                 SessionKind::Telnet { .. } | SessionKind::Rdp { .. } | SessionKind::Vnc { .. },
@@ -584,5 +613,6 @@ impl Tab {
         !matches!(self.backend, Backend::None)
             || self.line.is_some()
             || self.gateway_tunnel.is_some()
+            || self.proxy_forward.is_some()
     }
 }
