@@ -58,6 +58,8 @@ pub struct ConnectParams {
     /// Ask for the login shell on a separate exec channel and report it as
     /// `SshEvent::LoginShell` ("Follow terminal folder").
     pub detect_login_shell: bool,
+    /// "Remote monitoring": report `SshEvent::Monitor` samples.
+    pub remote_monitoring: bool,
 }
 
 impl ConnectParams {
@@ -71,7 +73,7 @@ impl ConnectParams {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SshEvent {
     /// Terminal output (stdout and stderr).
     Output(Vec<u8>),
@@ -101,6 +103,8 @@ pub enum SshEvent {
     Sftp(SftpEvent),
     /// The account's login shell (`$SHELL`), empty if it could not be read.
     LoginShell(String),
+    /// "Remote monitoring" reading (every 2 s while enabled).
+    Monitor(Box<tc_core::monitor::Sample>),
 }
 
 /// Command run on a separate exec channel to find the login shell.
@@ -197,6 +201,8 @@ enum Input {
     Data(Vec<u8>),
     Resize(u16, u16),
     Sftp(u64, SftpRequest),
+    /// Start or stop "Remote monitoring".
+    Monitoring(bool),
     /// Reopen the SSH-browser with or without sudo.
     SftpSudo {
         on: bool,
@@ -289,6 +295,11 @@ impl SshSession {
         let id = self.next_request.fetch_add(1, Ordering::Relaxed);
         let _ = self.input.send(Input::Sftp(id, request));
         id
+    }
+
+    /// Start or stop "Remote monitoring" on this connection.
+    pub fn set_monitoring(&self, on: bool) {
+        let _ = self.input.send(Input::Monitoring(on));
     }
 
     /// "Use SUDO for SSH-browser": reopen the browser elevated (or not).
@@ -654,6 +665,11 @@ async fn run_shell(
         Box<dyn std::future::Future<Output = Result<SftpOpened, sftp::SudoError>> + Send + 'a>,
     >;
     let mut reopening: Option<Reopen<'_>> = None;
+    let mut monitor = if params.remote_monitoring {
+        open_monitor(session).await
+    } else {
+        None
+    };
 
     let mut exit_status = None;
     loop {
@@ -684,6 +700,15 @@ async fn run_shell(
                         error: "SFTP is not available on this connection".into(),
                     })),
                 },
+                Some(Input::Monitoring(on)) => {
+                    if !on {
+                        if let Some((ch, _)) = monitor.take() {
+                            let _ = ch.close().await;
+                        }
+                    } else if monitor.is_none() {
+                        monitor = open_monitor(session).await;
+                    }
+                }
                 Some(Input::SftpSudo { on, password }) => {
                     reopening = Some(Box::pin(async move {
                         if on {
@@ -694,6 +719,18 @@ async fn run_shell(
                     }));
                 }
                 Some(Input::Close) | None => break,
+            },
+            msg = async { monitor.as_mut().expect("guarded").0.wait().await }, if monitor.is_some() => {
+                match msg {
+                    Some(ChannelMsg::Data { data }) => {
+                        let (_, parser) = monitor.as_mut().expect("guarded");
+                        for sample in parser.feed(&data, std::time::Instant::now()) {
+                            events.send(SshEvent::Monitor(Box::new(sample)));
+                        }
+                    }
+                    Some(ChannelMsg::Eof | ChannelMsg::Close) | None => monitor = None,
+                    Some(_) => {}
+                }
             },
             opened = async { reopening.as_mut().expect("guarded").await }, if reopening.is_some() => {
                 reopening = None;
@@ -716,6 +753,17 @@ async fn run_shell(
         .disconnect(Disconnect::ByApplication, "", "en")
         .await;
     Ok(exit_status)
+}
+
+/// Start the "Remote monitoring" script on its own channel (under `sh`,
+/// whatever the login shell is).
+async fn open_monitor(
+    session: &client::Handle<Handler>,
+) -> Option<(russh::Channel<client::Msg>, tc_core::monitor::MonitorParser)> {
+    let channel = session.channel_open_session().await.ok()?;
+    let script = tc_core::monitor::SCRIPT.replace('\'', "'\\''");
+    channel.exec(true, format!("sh -c '{script}'")).await.ok()?;
+    Some((channel, Default::default()))
 }
 
 /// Run [`LOGIN_SHELL_PROBE`] on its own channel; the last non-empty line.

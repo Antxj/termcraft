@@ -442,6 +442,14 @@ impl TermCraftApp {
         self.core.tabs.iter().filter(|t| t.is_alive()).count() + self.core.running.len()
     }
 
+    /// "Remote-monitoring" on or off in every SSH tab.
+    fn apply_remote_monitoring(&mut self) {
+        let on = self.core.settings.ssh.remote_monitoring;
+        for tab in &mut self.core.tabs {
+            tab.set_monitoring(on);
+        }
+    }
+
     /// Exit now, or ask first ("Close prompt") when sessions are open.
     fn request_exit(&mut self, ctx: &egui::Context) {
         if self.core.settings.terminal.confirm_exit
@@ -467,8 +475,11 @@ impl TermCraftApp {
                 out,
             );
             self.show_config = open;
-            if changed && let Err(e) = self.core.save_settings() {
-                self.status = format!("could not save settings: {e}");
+            if changed {
+                self.apply_remote_monitoring();
+                if let Err(e) = self.core.save_settings() {
+                    self.status = format!("could not save settings: {e}");
+                }
             }
         }
         if self.confirm_exit {
@@ -864,6 +875,13 @@ fn terminals(
             Some(tab) => {
                 let is_active = Some(tab.id) == active;
                 let id = tab.id;
+                if tab.monitor.is_some() {
+                    // "Remote monitoring" bar under the terminal.
+                    let (term_rect, bar) =
+                        rect.split_top_bottom_at_y(rect.bottom() - crate::ui::monitor_bar::HEIGHT);
+                    crate::ui::monitor_bar::show(&mut pane, bar, tab.monitor.as_deref());
+                    pane = ui.new_child(egui::UiBuilder::new().max_rect(term_rect));
+                }
                 outputs.push((id, term_view::show(&mut pane, tab, font_size, is_active)));
                 if split != S::Single && is_active {
                     pane.painter().rect_stroke(
@@ -923,8 +941,10 @@ impl eframe::App for TermCraftApp {
             t.pump();
             self.offers.extend(t.offers.drain(..));
         }
+        let mut monitoring = None;
         for tab in &mut self.core.tabs {
             tab.pump();
+            monitoring = monitoring.or(tab.monitoring_request.take());
             if let Some(after) = tab.wakeup() {
                 ctx.request_repaint_after(after);
             }
@@ -936,6 +956,13 @@ impl eframe::App for TermCraftApp {
             {
                 self.core.settings.view.sidebar_tab = tc_core::settings::SidebarTab::Sftp;
                 self.core.settings.view.sidebar_visible = true;
+            }
+        }
+        if let Some(on) = monitoring {
+            self.core.settings.ssh.remote_monitoring = on;
+            self.apply_remote_monitoring();
+            if let Err(e) = self.core.save_settings() {
+                self.status = format!("could not save settings: {e}");
             }
         }
 

@@ -40,6 +40,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         sftp: false,
         keepalive: None,
         detect_login_shell: false,
+        remote_monitoring: false,
     }
 }
 
@@ -73,7 +74,8 @@ fn drive(session: &SshSession, mut answer: impl FnMut(&SshEvent) -> Option<Reply
             | SshEvent::Connected
             | SshEvent::Sftp(_)
             | SshEvent::Listening(_)
-            | SshEvent::LoginShell(_) => {}
+            | SshEvent::LoginShell(_)
+            | SshEvent::Monitor(_) => {}
         }
         if let Some(reply) = answer(&event) {
             session.reply(reply);
@@ -257,6 +259,29 @@ fn wait_for(session: &SshSession, mut want: impl FnMut(&SshEvent) -> bool) -> Ss
             session.reply(reply);
         }
     }
+}
+
+/// The monitoring script reads `/proc`, so this runs on Linux only (the dev
+/// server's exec goes through `sh` there).
+#[cfg(target_os = "linux")]
+#[test]
+fn remote_monitoring_reports_samples() {
+    let server = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(server.port, &dir.path().join("known_hosts"), "sleep 10");
+    p.remote_monitoring = true;
+    let s = SshSession::connect(p, noop());
+    let SshEvent::Monitor(first) = wait_for(&s, |e| matches!(e, SshEvent::Monitor(_))) else {
+        unreachable!()
+    };
+    assert!(first.mem_total.is_some(), "{first:?}");
+    assert!(first.uptime_secs.is_some(), "{first:?}");
+    // The second reading has rates.
+    let SshEvent::Monitor(second) = wait_for(&s, |e| matches!(e, SshEvent::Monitor(_))) else {
+        unreachable!()
+    };
+    assert!(second.cpu_percent.is_some(), "{second:?}");
+    s.close();
 }
 
 #[test]

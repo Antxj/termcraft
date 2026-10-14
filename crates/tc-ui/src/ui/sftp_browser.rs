@@ -52,6 +52,18 @@ pub fn show(ui: &mut egui::Ui, tab: Option<&mut Tab>) {
         ui.separator();
         follow_folder(ui, view, &mut actions);
     }
+    let monitoring = tab.monitor.is_some();
+    let label = format!("{} Remote monitoring", icon::GAUGE);
+    if ui
+        .add(egui::Button::new(label).selected(monitoring))
+        .on_hover_text(
+            "Monitor resources usage (CPU / RAM / network / disk…) of the server in a \
+             small bar below the SSH terminal (Linux servers).",
+        )
+        .clicked()
+    {
+        tab.monitoring_request = Some(!monitoring);
+    }
     for action in actions {
         apply(tab, action);
     }

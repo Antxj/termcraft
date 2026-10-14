@@ -175,7 +175,11 @@ fn ssh(ui: &mut egui::Ui, s: &mut Settings) {
         }
     });
     ui.add_space(6.0);
-    disabled_check(ui, "Remote-monitoring");
+    ui.checkbox(&mut ssh.remote_monitoring, "Remote-monitoring")
+        .on_hover_text(
+            "Display the \"remote monitoring\" bar below each SSH session: resources usage \
+         (CPU / RAM / network / disk…) of the server. Linux servers only.",
+        );
     disabled_check(ui, "GSSAPI Kerberos");
     disabled_check(ui, "Use internal SSH agent");
     disabled_check(ui, "Use PuTTY agent");

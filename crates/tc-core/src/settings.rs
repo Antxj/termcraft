@@ -20,6 +20,8 @@ pub struct SshSettings {
     pub switch_to_browser: bool,
     /// "SSH keepalive" (seconds; 0 = off).
     pub keepalive_secs: u64,
+    /// "Remote-monitoring": resource bar below SSH terminals.
+    pub remote_monitoring: bool,
 }
 
 impl Default for SshSettings {
@@ -28,6 +30,7 @@ impl Default for SshSettings {
             browser: true,
             switch_to_browser: true,
             keepalive_secs: 0,
+            remote_monitoring: false,
         }
     }
 }

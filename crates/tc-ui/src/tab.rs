@@ -136,6 +136,11 @@ pub struct Tab {
     pub offers: std::collections::VecDeque<(Target, String)>,
     /// Automatic "Follow terminal folder" for bash / zsh logins.
     folder_hook: Option<FolderHook>,
+    /// Latest "Remote monitoring" reading (`Some` while monitoring is on).
+    pub monitor: Option<Box<tc_core::monitor::Sample>>,
+    /// The user toggled "Remote monitoring" here; the app applies it to
+    /// every SSH tab and saves the setting.
+    pub monitoring_request: Option<bool>,
     /// The SSH-browser runs through sudo.
     sftp_sudo: bool,
     /// Folder to return to once the browser has been reopened (sudo switch).
@@ -188,6 +193,8 @@ impl Tab {
             ),
             offers: Default::default(),
             folder_hook: None,
+            monitor: None,
+            monitoring_request: None,
             sftp_sudo: false,
             sftp_reopen_cwd: None,
         };
@@ -366,7 +373,11 @@ impl Tab {
             keepalive: (self.ssh_settings.keepalive_secs > 0)
                 .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
             detect_login_shell: false,
+            remote_monitoring: self.ssh_settings.remote_monitoring,
         };
+        if params.remote_monitoring {
+            self.monitor = Some(Box::default());
+        }
         // 3_18 "Try to follow SSH path in browser" (default on).
         params.detect_login_shell =
             params.sftp && params.command.is_none() && opt("3_18").is_none_or(schema::is_true);
@@ -645,6 +656,11 @@ impl Tab {
                 SshEvent::Error(e) => self.message(&format!("\x1b[31m{e}\x1b[0m")),
                 SshEvent::Sftp(e) => self.on_sftp(e),
                 SshEvent::Listening(_) => {}
+                SshEvent::Monitor(sample) => {
+                    if self.monitor.is_some() {
+                        self.monitor = Some(sample);
+                    }
+                }
                 SshEvent::LoginShell(shell) => {
                     if let Some(hook) = &mut self.folder_hook {
                         hook.on_login_shell(&shell);
@@ -652,6 +668,7 @@ impl Tab {
                 }
                 SshEvent::Closed { exit_status } => {
                     self.folder_hook = None;
+                    self.monitor = None;
                     self.backend = Backend::None;
                     self.sftp = SftpStatus::Off;
                     self.line = None;
@@ -844,6 +861,19 @@ impl Tab {
         if let Backend::Ssh(ssh) = &self.backend {
             ssh.write(FOLDER_TRACKING_HOOK.as_bytes());
         }
+    }
+
+    /// Start or stop "Remote monitoring" for this tab (SSH only).
+    pub fn set_monitoring(&mut self, on: bool) {
+        self.ssh_settings.remote_monitoring = on;
+        let Backend::Ssh(ssh) = &self.backend else {
+            return;
+        };
+        if on == self.monitor.is_some() {
+            return;
+        }
+        self.monitor = on.then(Box::default);
+        ssh.set_monitoring(on);
     }
 
     /// "Use SUDO for SSH-browser": reopen the browser elevated or not. The
