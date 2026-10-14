@@ -58,9 +58,10 @@ fn sessions(path: &Path) -> Result<tc_core::SessionStore> {
     for u in &report.unsupported {
         println!("skipped: {u:?}");
     }
-    let mut store = tc_core::SessionStore::default();
-    store.sessions = report.sessions;
-    Ok(store)
+    Ok(tc_core::SessionStore {
+        sessions: report.sessions,
+        ..Default::default()
+    })
 }
 
 #[cfg(test)]
