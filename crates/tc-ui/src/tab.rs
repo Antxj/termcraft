@@ -42,6 +42,27 @@ pub struct TabEnv {
     pub log_dir: Option<PathBuf>,
 }
 
+/// Keys of the "Session stopped" prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndedAction {
+    /// Return: close the tab.
+    Close,
+    /// R: open the same session again in this tab.
+    Restart,
+    /// S: save the terminal text to a file.
+    Save,
+}
+
+/// What a key does at the "Session stopped" prompt.
+fn ended_key(bytes: &[u8]) -> Option<EndedAction> {
+    match bytes {
+        b"\r" | b"\n" => Some(EndedAction::Close),
+        b"r" | b"R" => Some(EndedAction::Restart),
+        b"s" | b"S" => Some(EndedAction::Save),
+        _ => None,
+    }
+}
+
 /// "Find in terminal" bar of a tab.
 #[derive(Default)]
 pub struct FindBar {
@@ -70,6 +91,20 @@ pub fn agent_config(ssh: &tc_core::settings::SshSettings) -> tc_ssh::AgentConfig
         pageant: ssh.use_pageant,
         socket: None,
     }
+}
+
+/// A Delphi `TColor` (decimal, `0x00BBGGRR`); `-1` = none.
+fn delphi_color(value: &str) -> Option<[u8; 3]> {
+    let v: i64 = value.trim().parse().ok()?;
+    if !(0..=0x00ff_ffff).contains(&v) {
+        return None;
+    }
+    let v = v as u32;
+    Some([
+        (v & 0xff) as u8,
+        (v >> 8 & 0xff) as u8,
+        (v >> 16 & 0xff) as u8,
+    ])
 }
 
 /// 4_40 "Paste delay": 0 Auto, 1 none, then 10…100 ms, 200 ms, 360 ms.
@@ -210,6 +245,14 @@ pub struct Tab {
     folder_hook: Option<FolderHook>,
     /// A multi-line paste waiting for the user's OK.
     pub pending_paste: Option<String>,
+    /// "Set tab color" (session 7_1 "Custom tab color" to start with).
+    pub color: Option<[u8; 3]>,
+    /// "Pin/unpin this tab": kept by the "Close all…" commands.
+    pub pinned: bool,
+    /// The session stopped: keys choose what happens to the tab.
+    ended: bool,
+    /// What the user chose after the session stopped (the app applies it).
+    pub ended_action: Option<EndedAction>,
     /// Lines of a paste still to send (4_40 "Paste delay").
     paste_queue: std::collections::VecDeque<Vec<u8>>,
     paste_delay: std::time::Duration,
@@ -278,6 +321,10 @@ impl Tab {
             offers: Default::default(),
             folder_hook: None,
             pending_paste: None,
+            color: None,
+            pinned: false,
+            ended: false,
+            ended_action: None,
             paste_queue: Default::default(),
             paste_delay: std::time::Duration::ZERO,
             next_paste: Instant::now(),
@@ -299,6 +346,11 @@ impl Tab {
         };
         tab.term_type = settings.term_type;
         tab.paste_delay = paste_delay(tab.session.as_ref());
+        tab.color = tab
+            .session
+            .as_ref()
+            .and_then(|s| s.options.get("7_1"))
+            .and_then(|v| delphi_color(v));
         if let Some(folder) = log_folder(tab.session.as_ref(), env.log_dir.as_deref()) {
             match crate::term_log::TermLog::create(&folder, &tab.title) {
                 Ok(log) => tab.log = Some(log),
@@ -589,6 +641,17 @@ impl Tab {
             self.send(&line);
             self.next_paste = Instant::now() + self.paste_delay;
         }
+    }
+
+    /// The program or connection ended: say so and offer the next steps,
+    /// like the reference. Local terminals without a session just stop.
+    fn session_ended(&mut self, detail: &str) {
+        self.message(&format!("\r\n\x1b[90m[{detail}]\x1b[0m"));
+        self.message("\x1b[1mSession stopped\x1b[0m");
+        self.message("    - Press <Return> to exit tab");
+        self.message("    - Press R to restart session");
+        self.message("    - Press S to save terminal output to file");
+        self.ended = true;
     }
 
     fn message(&mut self, text: &str) {
@@ -905,9 +968,7 @@ impl Tab {
                     self.backend = Backend::None;
                     self.status = Some("connection closed".into());
                     let why = reason.map(|r| format!(": {r}")).unwrap_or_default();
-                    self.message(&format!(
-                        "\r\n\x1b[90m[connection closed{why} - close the tab or reopen the session]\x1b[0m"
-                    ));
+                    self.session_ended(&format!("connection closed{why}"));
                     break;
                 }
             }
@@ -938,9 +999,7 @@ impl Tab {
         if exited {
             self.backend = Backend::None;
             self.status = Some("process exited".into());
-            self.message(
-                "\r\n\x1b[90m[process exited - close the tab or reopen the session]\x1b[0m",
-            );
+            self.session_ended("process exited");
         }
         changed
     }
@@ -1025,9 +1084,7 @@ impl Tab {
                     let code =
                         exit_status.map_or_else(String::new, |c| format!(" (exit status {c})"));
                     self.status = Some("session closed".into());
-                    self.message(&format!(
-                        "\r\n\x1b[90m[session closed{code} - close the tab or reopen the session]\x1b[0m"
-                    ));
+                    self.session_ended(&format!("session closed{code}"));
                 }
             }
         }
@@ -1295,6 +1352,12 @@ impl Tab {
     }
 
     pub fn send(&mut self, bytes: &[u8]) {
+        if self.ended {
+            if let Some(action) = ended_key(bytes) {
+                self.ended_action = Some(action);
+            }
+            return;
+        }
         self.term.set_scrollback(0);
         if self.line.is_some() {
             self.line_input(bytes);
@@ -1473,6 +1536,23 @@ mod tests {
             log_folder(Some(&s), Some(global)),
             Some(PathBuf::from("/session-logs"))
         );
+    }
+
+    #[test]
+    fn delphi_colors() {
+        assert_eq!(delphi_color("255"), Some([255, 0, 0]), "red is 0x0000FF");
+        assert_eq!(delphi_color("16711680"), Some([0, 0, 255]));
+        assert_eq!(delphi_color("-1"), None);
+        assert_eq!(delphi_color("x"), None);
+    }
+
+    #[test]
+    fn session_stopped_keys() {
+        assert_eq!(ended_key(b"\r"), Some(EndedAction::Close));
+        assert_eq!(ended_key(b"R"), Some(EndedAction::Restart));
+        assert_eq!(ended_key(b"s"), Some(EndedAction::Save));
+        assert_eq!(ended_key(b"x"), None);
+        assert_eq!(ended_key(b"rr"), None, "a paste is not a key");
     }
 
     #[test]

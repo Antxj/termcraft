@@ -53,6 +53,8 @@ pub enum Action {
     DeleteSession(SessionId),
     /// Close several tabs (the "Close all …" family).
     CloseTabs(Vec<u64>),
+    SetTabColor(u64, Option<[u8; 3]>),
+    TogglePin(u64),
     SelectTab(u64),
     QuickConnect(String),
     ZoomIn,

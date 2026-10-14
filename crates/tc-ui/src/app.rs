@@ -27,6 +27,25 @@ struct Core {
 }
 
 impl Core {
+    /// What a new tab gets from the settings.
+    fn tab_env(&self) -> TabEnv {
+        TabEnv {
+            scrollback: self.settings.terminal.scrollback_lines,
+            known_hosts: self.paths.known_hosts_file(),
+            repaint: self.repaint.clone(),
+            vault: self.vault.clone(),
+            save_passwords: self.settings.passwords.save,
+            ssh: self.settings.ssh.clone(),
+            backspace_ctrl_h: self.settings.terminal.backspace_ctrl_h,
+            paste_right_click: self.settings.terminal.paste_right_click,
+            local_shell: self.settings.terminal.local_shell,
+            save_key_passphrases: self.settings.passwords.save_key_passphrases,
+            log_dir: Some(self.settings.terminal.log_dir.trim())
+                .filter(|d| !d.is_empty())
+                .map(std::path::PathBuf::from),
+        }
+    }
+
     fn active_tab_mut(&mut self) -> Option<&mut Tab> {
         let active = self.active?;
         self.tabs.iter_mut().find(|t| t.id == active)
@@ -75,21 +94,7 @@ impl Host for Core {
     fn tab_open(&mut self, session: Option<Session>) -> Result<u64, CommandError> {
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        let env = TabEnv {
-            scrollback: self.settings.terminal.scrollback_lines,
-            known_hosts: self.paths.known_hosts_file(),
-            repaint: self.repaint.clone(),
-            vault: self.vault.clone(),
-            save_passwords: self.settings.passwords.save,
-            ssh: self.settings.ssh.clone(),
-            backspace_ctrl_h: self.settings.terminal.backspace_ctrl_h,
-            paste_right_click: self.settings.terminal.paste_right_click,
-            local_shell: self.settings.terminal.local_shell,
-            save_key_passphrases: self.settings.passwords.save_key_passphrases,
-            log_dir: Some(self.settings.terminal.log_dir.trim())
-                .filter(|d| !d.is_empty())
-                .map(std::path::PathBuf::from),
-        };
+        let env = self.tab_env();
         self.tabs.push(Tab::open(id, session, &env));
         self.active = Some(id);
         Ok(id)
@@ -399,6 +404,18 @@ impl TermCraftApp {
                 return;
             }
             Action::SelectTab(id) => return self.core.active = Some(id),
+            Action::SetTabColor(id, color) => {
+                if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
+                    tab.color = color;
+                }
+                return;
+            }
+            Action::TogglePin(id) => {
+                if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
+                    tab.pinned = !tab.pinned;
+                }
+                return;
+            }
             Action::QuickConnect(target) => return self.run(Command::TabQuickConnect { target }),
             Action::ZoomIn | Action::ZoomOut => {
                 let delta = if matches!(action, Action::ZoomIn) {
@@ -494,6 +511,35 @@ impl TermCraftApp {
             ),
             Err(e) => format!("export failed: {e}"),
         };
+    }
+
+    /// Keys pressed at a "Session stopped" prompt: close, restart, save.
+    fn ended_actions(&mut self) {
+        let chosen: Vec<(u64, crate::tab::EndedAction)> = self
+            .core
+            .tabs
+            .iter_mut()
+            .filter_map(|t| t.ended_action.take().map(|a| (t.id, a)))
+            .collect();
+        for (id, action) in chosen {
+            use crate::tab::EndedAction as E;
+            match action {
+                E::Close => self.run(Command::TabClose { tab: Some(id) }),
+                E::Restart => {
+                    let env = self.core.tab_env();
+                    if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
+                        let session = tab.session.clone();
+                        let title = tab.title.clone();
+                        *tab = Tab::open(id, session, &env);
+                        tab.title = title;
+                    }
+                }
+                E::Save => {
+                    self.core.active = Some(id);
+                    self.save_terminal_text();
+                }
+            }
+        }
     }
 
     /// "Save terminal text": history and screen of the active tab.
@@ -1209,6 +1255,7 @@ impl eframe::App for TermCraftApp {
                 self.core.settings.view.sidebar_visible = true;
             }
         }
+        self.ended_actions();
         if let Some(on) = monitoring {
             self.core.settings.ssh.remote_monitoring = on;
             self.apply_remote_monitoring();
@@ -1332,6 +1379,8 @@ impl eframe::App for TermCraftApp {
                     .session
                     .as_ref()
                     .map_or(crate::ui::icon::TERMINAL_WINDOW, crate::ui::session_icon),
+                color: t.color,
+                pinned: t.pinned,
             })
             .collect();
         let font_size = self.core.settings.terminal.font_size;

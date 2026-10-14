@@ -12,7 +12,22 @@ pub struct TabView {
     pub alive: bool,
     /// Session icon glyph.
     pub icon: &'static str,
+    /// "Set tab color".
+    pub color: Option<[u8; 3]>,
+    pub pinned: bool,
 }
+
+/// Colours offered by "Set tab color".
+const TAB_COLORS: &[(&str, [u8; 3])] = &[
+    ("Red", [0xd7, 0x3a, 0x3a]),
+    ("Orange", [0xe0, 0x86, 0x1e]),
+    ("Yellow", [0xd6, 0xb1, 0x1a]),
+    ("Green", [0x2e, 0xa0, 0x43]),
+    ("Teal", [0x1f, 0x9e, 0x9e]),
+    ("Blue", [0x2f, 0x7f, 0xd8]),
+    ("Purple", [0x89, 0x57, 0xe5]),
+    ("Grey", [0x7d, 0x85, 0x90]),
+];
 
 const TAB_HEIGHT: f32 = 28.0;
 const TAB_MIN_WIDTH: f32 = 96.0;
@@ -119,7 +134,8 @@ fn chrome_tab(
     } else {
         palette.weak_text
     };
-    let close_w = if view.show_close_button { 20.0 } else { 0.0 };
+    let show_close = view.show_close_button && !tab.pinned;
+    let close_w = if show_close || tab.pinned { 20.0 } else { 0.0 };
     let icon_w = 20.0;
     let pad = 10.0;
     let full = ui
@@ -130,12 +146,20 @@ fn chrome_tab(
         ui.allocate_exact_size(egui::vec2(width, TAB_HEIGHT), egui::Sense::click());
     let response = response.on_hover_text(&tab.title);
 
-    let fill = if selected {
+    let base = if selected {
         palette.tab_active
     } else if response.hovered() {
         palette.tab_hover
     } else {
         palette.tab_inactive
+    };
+    // A tab colour tints the whole tab, more on the active one.
+    let fill = match tab.color {
+        Some([r, g, b]) => base.lerp_to_gamma(
+            egui::Color32::from_rgb(r, g, b),
+            if selected { 0.45 } else { 0.3 },
+        ),
+        None => base,
     };
     let radius = if view.rounded_tabs { 7 } else { 0 };
     let corners = egui::CornerRadius {
@@ -185,7 +209,16 @@ fn chrome_tab(
     );
 
     let mut close_clicked = false;
-    if view.show_close_button {
+    if tab.pinned {
+        painter.text(
+            egui::pos2(rect.right() - pad - 4.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon::PUSH_PIN,
+            egui::FontId::proportional(12.0),
+            palette.weak_text,
+        );
+    }
+    if show_close {
         let center = egui::pos2(rect.right() - pad - 4.0, rect.center().y);
         let close_rect = egui::Rect::from_center_size(center, egui::vec2(16.0, 16.0));
         let close = ui
@@ -206,7 +239,7 @@ fn chrome_tab(
         close_clicked = close.clicked();
     }
 
-    if close_clicked || response.middle_clicked() {
+    if close_clicked || (response.middle_clicked() && !tab.pinned) {
         out.push(Action::Run(Command::TabClose { tab: Some(tab.id) }));
     } else if response.clicked() {
         out.push(Action::SelectTab(tab.id));
@@ -229,10 +262,27 @@ fn tab_menu(
             .map(|(_, t)| t.id)
             .collect()
     };
+    // Pinned tabs stay when closing several.
+    let ids = |f: &dyn Fn(usize, &TabView) -> bool| ids(&|i, t| !t.pinned && f(i, t));
     let some = |v: Vec<u64>| (!v.is_empty()).then_some(Action::CloseTabs(v));
 
     item(ui, "Rename tab", Some(Action::RenameTab(tab.id)), out);
-    item(ui, "Set tab color", None, out);
+    ui.menu_button("Set tab color", |ui| {
+        for (name, rgb) in TAB_COLORS {
+            let [r, g, b] = *rgb;
+            let label = egui::RichText::new(format!("{}  {name}", icon::CIRCLE))
+                .color(egui::Color32::from_rgb(r, g, b));
+            if ui.button(label).clicked() {
+                out.push(Action::SetTabColor(tab.id, Some(*rgb)));
+                ui.close();
+            }
+        }
+        ui.separator();
+        if ui.button("Default color").clicked() {
+            out.push(Action::SetTabColor(tab.id, None));
+            ui.close();
+        }
+    });
     item(
         ui,
         "Duplicate tab",
@@ -274,7 +324,12 @@ fn tab_menu(
     ui.separator();
     item(ui, "Detach tab", None, out);
     item(ui, "Fullscreen", Some(Action::ToggleFullscreen), out);
-    item(ui, "Pin/unpin this tab", None, out);
+    item(
+        ui,
+        "Pin/unpin this tab",
+        Some(Action::TogglePin(tab.id)),
+        out,
+    );
     ui.separator();
     item(
         ui,

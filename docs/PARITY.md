@@ -31,7 +31,8 @@ refined against it.
 | P1 | [x] | Split view: 4 terminals (grid) | `tc-ui` |
 | P1 | [ ] | Detachable tabs (tab → own window) | `tc-ui` |
 | P1 | [x] | Fullscreen from tab menu and View menu | `tc-ui` |
-| P1 | [~] | Tab context menu: rename, duplicate, close / close left / right / others / all (reconnect pending) | `tc-ui` |
+| P1 | [x] | Tab context menu: rename, set tab color (also session 7_1), duplicate, close / close left / right / others / all, pin / unpin (pinned tabs stay), save / print output, font size | `tc-ui` |
+| P1 | [x] | "Session stopped" prompt: Return closes the tab, R restarts the session, S saves the terminal output | `tc-ui` |
 | P1 | [ ] | Configurable keyboard shortcuts | `tc-ui` |
 | P1 | [~] | Settings › Configuration dialog (General / Terminal / X11 / SSH / Display / Toolbar / Misc); supported options live, others shown disabled | `tc-ui` |
 | P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close buttons, rounded tabs, open-session dots (compact mode, transparency, colour saturation pending) | `tc-ui` |
