@@ -48,6 +48,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         proxy: None,
         agent_forwarding: false,
         x11_display: None,
+        refuse_trivial_auth: false,
     }
 }
 
@@ -1013,4 +1014,30 @@ fn ssh_command_proxy_refuses_odd_host_names() {
         out.errors.iter().any(|e| e.contains("cannot be passed")),
         "{out:?}"
     );
+}
+
+/// A hostile server that lets anyone in without asking anything (here:
+/// keyboard-interactive with no questions after the password is refused).
+#[test]
+fn trivial_authentication_is_refused_when_asked() {
+    let server = start(DevConfig {
+        trivial_auth: true,
+        ..DevConfig::default()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let kh = dir.path().join("known_hosts");
+
+    let s = SshSession::connect(params(server.port, &kh, "echo in"), noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.errors.is_empty(), "accepted by default: {out:?}");
+
+    let mut p = params(server.port, &kh, "echo in");
+    p.refuse_trivial_auth = true;
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(
+        out.errors.iter().any(|e| e.contains("without asking")),
+        "{out:?}"
+    );
+    assert!(!out.output.contains("in\r\n"), "no command ran: {out:?}");
 }

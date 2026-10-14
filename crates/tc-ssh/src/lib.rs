@@ -82,6 +82,9 @@ pub struct ConnectParams {
     pub agent_forwarding: bool,
     /// 3_6 "X11-Forwarding": the local display to forward to.
     pub x11_display: Option<String>,
+    /// 3_32 "Disconnect if authentication succeeds trivially": a server
+    /// that lets us in without any password, signature or answer is left.
+    pub refuse_trivial_auth: bool,
 }
 
 impl ConnectParams {
@@ -607,6 +610,8 @@ pub(crate) struct ConnectOptions<'a> {
     pub agent_forward: bool,
     /// X11 forwarding state of the target connection.
     pub x11: Option<Arc<x11::X11State>>,
+    /// See [`ConnectParams::refuse_trivial_auth`].
+    pub refuse_trivial_auth: bool,
 }
 
 fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
@@ -728,7 +733,15 @@ pub(crate) async fn establish(
         )
         .await
         .map_err(|e| format!("SSH proxy connection failed: {e}"))?;
-        authenticate(&mut proxy_handle, &ep, &opts.agent, replies, events).await?;
+        authenticate(
+            &mut proxy_handle,
+            &ep,
+            &opts.agent,
+            opts.refuse_trivial_auth,
+            replies,
+            events,
+        )
+        .await?;
         chain.push(proxy_handle);
         if let proxy::ProxyKind::SshCommand(cmd) = &p.kind {
             via_command = Some(cmd.as_str());
@@ -757,7 +770,15 @@ pub(crate) async fn establish(
         )
         .await
         .map_err(|e| format!("{which} connection failed: {e}"))?;
-        authenticate(&mut gw_handle, gw, &opts.agent, replies, events).await?;
+        authenticate(
+            &mut gw_handle,
+            gw,
+            &opts.agent,
+            opts.refuse_trivial_auth,
+            replies,
+            events,
+        )
+        .await?;
         chain.push(gw_handle);
     }
     events.send(SshEvent::Info(if chain.is_empty() {
@@ -786,7 +807,15 @@ pub(crate) async fn establish(
             format!("connection through gateway failed: {e}")
         }
     })?;
-    authenticate(&mut handle, target, &opts.agent, replies, events).await?;
+    authenticate(
+        &mut handle,
+        target,
+        &opts.agent,
+        opts.refuse_trivial_auth,
+        replies,
+        events,
+    )
+    .await?;
     Ok(Connection {
         handle,
         forwards,
@@ -875,6 +904,7 @@ async fn run_shell(
             proxy: params.proxy.as_ref(),
             agent_forward: params.agent_forwarding,
             x11: x11.clone(),
+            refuse_trivial_auth: params.refuse_trivial_auth,
         },
         &replies,
         &events,
@@ -1148,6 +1178,7 @@ async fn authenticate(
     session: &mut client::Handle<Handler>,
     endpoint: &Endpoint,
     agent_config: &AgentConfig,
+    refuse_trivial: bool,
     replies: &Replies,
     events: &Events,
 ) -> Result<(), String> {
@@ -1272,9 +1303,13 @@ async fn authenticate(
                 remaining_methods, ..
             } => {
                 if remaining_methods.contains(&MethodKind::KeyboardInteractive)
-                    && keyboard_interactive(session, endpoint, Some(password), replies, events)
-                        .await?
+                    && let Some(answered) =
+                        keyboard_interactive(session, endpoint, Some(password), replies, events)
+                            .await?
                 {
+                    if answered == 0 && refuse_trivial {
+                        return Err(TRIVIAL_AUTH.into());
+                    }
                     return Ok(());
                 }
                 events.send(SshEvent::Output(b"Access denied\r\n".to_vec()));
@@ -1284,15 +1319,22 @@ async fn authenticate(
     Err("authentication failed".into())
 }
 
+/// Why a session stops when the server let us in trivially.
+const TRIVIAL_AUTH: &str = "the server accepted the login without asking for any password, key \
+                            or answer; disconnected (\"Disconnect if authentication succeeds \
+                            trivially\")";
+
 /// Keyboard-interactive (PAM-style) login; the first hidden prompt reuses
-/// the password the user already typed.
+/// the password the user already typed. On success, how many prompts were
+/// answered (0 = the server asked for nothing).
 async fn keyboard_interactive(
     session: &mut client::Handle<Handler>,
     endpoint: &Endpoint,
     mut password: Option<String>,
     replies: &Replies,
     events: &Events,
-) -> Result<bool, String> {
+) -> Result<Option<usize>, String> {
+    let mut answered = 0;
     let err = |e: russh::Error| format!("authentication error: {e}");
     let mut response = session
         .authenticate_keyboard_interactive_start(endpoint.user.as_str(), None)
@@ -1300,8 +1342,8 @@ async fn keyboard_interactive(
         .map_err(err)?;
     loop {
         match response {
-            KeyboardInteractiveAuthResponse::Success => return Ok(true),
-            KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
+            KeyboardInteractiveAuthResponse::Success => return Ok(Some(answered)),
+            KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(None),
             KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
                 let mut answers = Vec::with_capacity(prompts.len());
                 for p in prompts {
@@ -1322,6 +1364,7 @@ async fn keyboard_interactive(
                     };
                     answers.push(answer);
                 }
+                answered += answers.len();
                 response = session
                     .authenticate_keyboard_interactive_respond(answers)
                     .await

@@ -40,6 +40,9 @@ pub struct DevConfig {
     pub exec_shell: Option<String>,
     /// Offer the SFTP subsystem (off = test clients' SCP fallback).
     pub sftp_subsystem: bool,
+    /// Behave like a hostile server for tests: refuse the password, then
+    /// accept keyboard-interactive without asking anything.
+    pub trivial_auth: bool,
 }
 
 impl Default for DevConfig {
@@ -53,6 +56,7 @@ impl Default for DevConfig {
             login_shell: None,
             exec_shell: None,
             sftp_subsystem: true,
+            trivial_auth: false,
         }
     }
 }
@@ -121,12 +125,28 @@ impl russh::server::Handler for Conn {
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         Ok(
-            if user == self.config.user && password == self.config.password {
+            if user == self.config.user
+                && password == self.config.password
+                && !self.config.trivial_auth
+            {
                 Auth::Accept
             } else {
                 reject()
             },
         )
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        _response: Option<russh::server::Response<'a>>,
+    ) -> Result<Auth, Self::Error> {
+        Ok(if self.config.trivial_auth {
+            Auth::Accept
+        } else {
+            reject()
+        })
     }
 
     async fn auth_publickey(&mut self, user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {

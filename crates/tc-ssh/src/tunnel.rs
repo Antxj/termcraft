@@ -57,6 +57,7 @@ pub(crate) async fn run(
             proxy: None,
             agent_forward: false,
             x11: None,
+            refuse_trivial_auth: false,
         },
         &replies,
         &events,

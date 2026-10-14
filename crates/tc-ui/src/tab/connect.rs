@@ -128,6 +128,7 @@ impl Tab {
             proxy: None,
             agent_forwarding: false,
             x11_display: None,
+            refuse_trivial_auth: false,
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -204,6 +205,7 @@ impl Tab {
             proxy: None,
             agent_forwarding: false,
             x11_display: None,
+            refuse_trivial_auth: false,
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -388,6 +390,7 @@ impl Tab {
             proxy: tc_ssh::proxy::from_options(&|id| opt(id).map(String::from)),
             agent_forwarding: opt("3_35").is_some_and(schema::is_true),
             x11_display: x11.0,
+            refuse_trivial_auth: opt("3_32").is_some_and(schema::is_true),
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());
