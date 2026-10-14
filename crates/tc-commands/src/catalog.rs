@@ -123,6 +123,14 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "url_handler_register",
+        title: "Register termcraft:// links",
+        description: "Make termcraft://session/<name> and termcraft://ssh/[user@]host[:port] links open TermCraft, for the current user (Windows registry HKCU, Linux desktop entry; macOS uses the app bundle).",
+        input_schema: r#"{"type":"object","properties":{}}"#,
+        example_args: r#"{}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "session_export_html",
         title: "Generate HTML web page",
         description: "Write a static HTML page listing the sessions by folder (name, type, host, port, user; no passwords). An existing file is only replaced with overwrite.",

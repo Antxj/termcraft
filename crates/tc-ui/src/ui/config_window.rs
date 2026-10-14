@@ -55,7 +55,7 @@ pub fn show(
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.set_min_size(egui::vec2(600.0, 260.0));
                 match tab {
-                    ConfigTab::General => general(ui, settings, paths),
+                    ConfigTab::General => general(ui, settings, paths, out),
                     ConfigTab::Terminal => terminal(ui, settings, out),
                     ConfigTab::X11 => x11(ui),
                     ConfigTab::Ssh => ssh(ui, settings, out),
@@ -70,7 +70,7 @@ pub fn show(
     *settings != before
 }
 
-fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths) {
+fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths, out: &mut Vec<Action>) {
     egui::Grid::new("cfg-general")
         .num_columns(2)
         .spacing([12.0, 8.0])
@@ -134,6 +134,15 @@ fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths) {
         paths.config_dir.join("backups").display(),
         tc_core::backup::KEEP
     ));
+    ui.horizontal(|ui| {
+        if ui
+            .button("Open termcraft:// links with TermCraft")
+            .on_hover_text("termcraft://session/<name> opens a saved session (current user only)")
+            .clicked()
+        {
+            out.push(Action::Run(tc_commands::Command::UrlHandlerRegister {}));
+        }
+    });
     ui.weak("Tip: create an empty \"termcraft.portable\" file next to the executable for portable mode.");
 }
 

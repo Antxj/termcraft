@@ -18,6 +18,7 @@ pub mod shortcut;
 pub mod store;
 pub mod syntax;
 pub mod tunnel;
+pub mod url;
 
 pub use macros::{Macro, MacroId, MacroStore};
 pub use paths::Paths;

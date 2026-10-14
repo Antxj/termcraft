@@ -60,6 +60,8 @@ pub enum Command {
         #[serde(default)]
         folder: Option<String>,
     },
+    /// Make `termcraft://` links open TermCraft (current user).
+    UrlHandlerRegister {},
     /// "Generate HTML web page": a static page listing the sessions.
     SessionExportHtml {
         path: String,
@@ -211,6 +213,7 @@ impl Command {
             Self::SessionExportMobaxterm { .. } => "session_export_mobaxterm",
             Self::SessionDesktopShortcut { .. } => "session_desktop_shortcut",
             Self::SessionExportHtml { .. } => "session_export_html",
+            Self::UrlHandlerRegister {} => "url_handler_register",
             Self::SessionRename { .. } => "session_rename",
             Self::SessionDuplicate { .. } => "session_duplicate",
             Self::SessionFolderAdd { .. } => "session_folder_add",
@@ -495,6 +498,13 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             let path = tc_core::shortcut::create(&dir, &exe, &session.name, opts)
                 .map_err(|e| CommandError::Failed(format!("{}: {e}", dir.display())))?;
             Ok(json!({ "path": path.display().to_string() }))
+        }
+        Command::UrlHandlerRegister {} => {
+            let exe = tc_core::shortcut::gui_exe().ok_or_else(|| {
+                CommandError::Failed("the TermCraft program was not found".into())
+            })?;
+            let done = tc_core::url::register(&exe).map_err(CommandError::Failed)?;
+            Ok(json!({ "done": done }))
         }
         Command::SessionExportHtml { path, overwrite } => {
             let path = std::path::Path::new(&path);

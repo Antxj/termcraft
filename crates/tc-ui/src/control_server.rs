@@ -111,6 +111,15 @@ fn serve(
     }
 }
 
+fn url_command(target: tc_core::url::UrlTarget) -> Command {
+    match target {
+        tc_core::url::UrlTarget::Session(name) => Command::TabOpen {
+            session: Some(name),
+        },
+        tc_core::url::UrlTarget::Connect(target) => Command::TabQuickConnect { target },
+    }
+}
+
 /// What the command line asks for.
 #[derive(Debug, Default)]
 pub struct Startup {
@@ -133,6 +142,16 @@ pub fn commands_from_args(
     let out = &mut startup.commands;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
+        // A link the system hands over (termcraft:// or ssh://).
+        if !arg.starts_with('-') {
+            match tc_core::url::parse(arg) {
+                Some(target) => {
+                    out.push(url_command(target));
+                    continue;
+                }
+                None => return Err(format!("unsupported link {arg:?}")),
+            }
+        }
         let flag = arg.trim_start_matches('-').to_ascii_lowercase();
         let mut value = || {
             it.next()
@@ -156,6 +175,12 @@ pub fn commands_from_args(
                 let id =
                     macro_id(&name).ok_or_else(|| format!("there is no macro named {name:?}"))?;
                 out.push(Command::MacroRun { id, tab: None });
+            }
+            "url" => {
+                let link = value()?;
+                let target = tc_core::url::parse(&link)
+                    .ok_or_else(|| format!("unsupported link {link:?}"))?;
+                out.push(url_command(target));
             }
             "hideterm" => startup.minimized = true,
             "exitwhendone" => startup.exit_when_done = true,
@@ -195,5 +220,18 @@ mod tests {
         let s =
             commands_from_args(&["-hideterm".into(), "--exitwhendone".into()], &|_| None).unwrap();
         assert!(s.minimized && s.exit_when_done && s.commands.is_empty());
+        let links = commands_from_args(
+            &[
+                "termcraft://session/web".into(),
+                "--url".into(),
+                "ssh://ops@h:2222".into(),
+            ],
+            &|_| None,
+        )
+        .unwrap()
+        .commands;
+        assert!(matches!(&links[0], Command::TabOpen { session: Some(s) } if s == "web"));
+        assert!(matches!(&links[1], Command::TabQuickConnect { target } if target == "ops@h:2222"));
+        assert!(commands_from_args(&["ssh://-x@h".into()], &|_| None).is_err());
     }
 }

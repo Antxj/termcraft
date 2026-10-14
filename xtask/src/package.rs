@@ -172,6 +172,13 @@ pub fn info_plist(version: &str) -> String {
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>TermCraft links</string>
+      <key>CFBundleURLSchemes</key><array><string>termcraft</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 "#

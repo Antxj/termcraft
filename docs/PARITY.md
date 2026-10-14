@@ -124,7 +124,7 @@ refined against it.
 | P1 | [x] | Import PuTTY sessions (Windows registry, `~/.putty/sessions` on Unix: SSH, Telnet, rlogin, serial) and WSL sessions | `tc-import` |
 | P1 | [x] | "Export MobaXterm sessions" / "Save session to file" (.mxtsessions, folders kept, reserved characters escaped; round-trip tested). PuTTYCM / SuperPuTTY / mRemote / Exceed / SCRT / RDM / CSV importers pending | `tc-import` |
 | P2 | [x] | "Create a desktop shortcut" (session menu, `session_desktop_shortcut` command): "Shortcut options" Hide terminal on startup (`--hideterm`, starts minimized) / Close on exit (`--exitwhendone`); Windows `.lnk`, Linux `.desktop`, macOS `.command`, arguments quoted per platform, never overwrites | `tc-core` + `tc-commands` + `tc-ui` |
-| P2 | [ ] | URL protocol handler (`termcraft://`) | `tc-cli` |
+| P2 | [x] | Links: `termcraft://session/<name>` (saved session) and `ssh://` / `termcraft://ssh/[user@]host[:port]` (quick connect) on the command line or from the OS, strictly validated (nothing is run); `url_handler_register` (Configuration › General button) registers termcraft:// for the current user (Windows HKCU, Linux desktop entry, macOS app bundle) | `tc-core` + `tc-ui` |
 | P2 | [~] | Shared sessions (TFORMSHAREDSESSIONS): locations with tree folder name and "shared folder" or "http / https" backend (Add / Edit / Delete / Move), read in the background at start-up and on "Refresh shared sessions" (≤ 8 MB), shown read-only under "Shared sessions" and opened as copies; "File" sessions are left out. FTP / SFTP backends, automatic refresh and modification rights pending | `tc-core` + `tc-ui` |
 
 ## 6. Credentials
