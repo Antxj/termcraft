@@ -30,6 +30,16 @@ pub struct TabEnv {
     pub save_key_passphrases: bool,
 }
 
+/// 3_12 "Do not exit after command ends": run the command, then the
+/// user's login shell in the same terminal.
+fn keep_open(command: &str, keep: bool) -> String {
+    if keep {
+        format!("{command}; exec \"${{SHELL:-/bin/sh}}\" -l")
+    } else {
+        command.to_string()
+    }
+}
+
 pub fn agent_config(ssh: &tc_core::settings::SshSettings) -> tc_ssh::AgentConfig {
     tc_ssh::AgentConfig {
         system: ssh.use_system_agent,
@@ -369,7 +379,7 @@ impl Tab {
             command: opt("3_8")
                 .map(str::trim)
                 .filter(|c| !c.is_empty())
-                .map(String::from),
+                .map(|c| keep_open(c, opt("3_12").is_some_and(schema::is_true))),
             term: self
                 .term_type
                 .clone()
@@ -382,7 +392,12 @@ impl Tab {
                 .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
             detect_login_shell: false,
             remote_monitoring: self.ssh_settings.remote_monitoring,
-            agent: agent_config(&self.ssh_settings),
+            // 3_34 "Attempt SSH agent authentication" (default on).
+            agent: if opt("3_34").is_none_or(schema::is_true) {
+                agent_config(&self.ssh_settings)
+            } else {
+                tc_ssh::AgentConfig::default()
+            },
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());
@@ -1085,6 +1100,12 @@ mod tests {
             .insert("3_8".into(), "echo saved-password-test".into());
         s.options.insert("3_26".into(), "0".into());
         s
+    }
+
+    #[test]
+    fn keep_open_runs_the_login_shell_after_the_command() {
+        assert_eq!(keep_open("top", false), "top");
+        assert_eq!(keep_open("top", true), "top; exec \"${SHELL:-/bin/sh}\" -l");
     }
 
     #[test]
