@@ -35,7 +35,7 @@ refined against it.
 | P1 | [x] | "Session stopped" prompt: Return closes the tab, R restarts the session, S saves the terminal output | `tc-ui` |
 | P1 | [x] | Configurable keyboard shortcuts ("Hotkeys edition": 20 actions, the reference list of combinations, conflict warning, restore defaults); shortcuts are taken before the terminal sees the keys | `tc-core` + `tc-ui` |
 | P1 | [~] | Settings › Configuration dialog (General / Terminal / X11 / SSH / Display / Toolbar / Misc); supported options live, others shown disabled | `tc-ui` |
-| P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close buttons, rounded tabs, open-session dots (compact mode, transparency, colour saturation pending) | `tc-ui` |
+| P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close buttons, rounded tabs, open-session dots, compact mode (tabs and terminals only; exit from the tab list or Ctrl+Shift+F11); transparency and colour saturation pending | `tc-ui` |
 | P1 | [x] | Skins: Light (default, like the reference), Dim, Dark, Follow system; own palettes, contrast checked by a test | `tc-ui` |
 | P1 | [x] | Chrome-style tab strip: rounded tabs, accent on the active tab, close button, middle-click closes, session icon | `tc-ui` |
 | P1 | [x] | Bookmark icon chooser: built-in icons by group (sessions, servers, systems, network, cloud, symbols), tint, custom PNG stored in the session (≤ 64 KiB, ≤ 256 px) | `tc-core` + `tc-ui` |
@@ -63,7 +63,7 @@ refined against it.
 | P2 | [x] | Column (block) selection (Ctrl+Alt drag) | `tc-term` |
 | P2 | [~] | Word delimiters for double-click (setting; Configuration field pending) | `tc-term` + `tc-core` |
 | P2 | [ ] | Syntax highlighting of output (keywords, errors, IPs…) | `tc-term` |
-| P2 | [ ] | Activity / silence tracking on tabs | `tc-ui` |
+| P2 | [~] | Activity on background tabs (accent dot); silence alerts pending | `tc-ui` |
 | P2 | [x] | Save / print terminal text (history included; printing through Notepad on Windows, `lp` elsewhere) | `tc-ui` |
 | P2 | [ ] | Separator line on Enter | `tc-term` |
 | P2 | [ ] | GPU renderer (wgpu glyph atlas) | `tc-ui` |

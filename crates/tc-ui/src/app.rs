@@ -468,6 +468,7 @@ impl TermCraftApp {
                 t.font_size = (t.font_size + delta).clamp(8.0, 32.0);
             }
             Action::ToggleSidebar => view.sidebar_visible = !view.sidebar_visible,
+            Action::ToggleCompact => view.compact = !view.compact,
             Action::SidebarRight(right) => view.sidebar_right = right,
             Action::SidebarTab(tab) => view.sidebar_tab = tab,
             Action::ToggleTheme => {
@@ -1395,8 +1396,14 @@ impl eframe::App for TermCraftApp {
             self.offers.extend(t.offers.drain(..));
         }
         let mut monitoring = None;
+        let active = self.core.active;
         for tab in &mut self.core.tabs {
-            tab.pump();
+            if tab.pump() && Some(tab.id) != active {
+                tab.activity = true;
+            }
+            if Some(tab.id) == active {
+                tab.activity = false;
+            }
             monitoring = monitoring.or(tab.monitoring_request.take());
             if let Some(after) = tab.wakeup() {
                 ctx.request_repaint_after(after);
@@ -1465,7 +1472,7 @@ impl eframe::App for TermCraftApp {
         let mut out = shortcuts;
         let view = self.core.settings.view.clone();
 
-        if view.show_menu_bar {
+        if view.show_menu_bar && !view.compact {
             let cx = menus::MenuCtx {
                 view: &view,
                 sessions: &self.core.store.sessions,
@@ -1476,13 +1483,15 @@ impl eframe::App for TermCraftApp {
             };
             egui::Panel::top("menu").show(ui, |ui| menus::menu_bar(ui, &cx, &mut out));
         }
-        if view.show_toolbar {
+        if view.show_toolbar && !view.compact {
             let sessions = &self.core.store.sessions;
             egui::Panel::top("toolbar")
                 .exact_size(toolbar::height(view.toolbar_style))
                 .show(ui, |ui| toolbar::show(ui, &view, sessions, &mut out));
         }
-        self.status_bar(ui);
+        if !view.compact {
+            self.status_bar(ui);
+        }
 
         let side = |id: &'static str| {
             if view.sidebar_right {
@@ -1491,11 +1500,13 @@ impl eframe::App for TermCraftApp {
                 egui::Panel::left(id)
             }
         };
-        side("sidebar-strip")
-            .exact_size(sidebar::STRIP_WIDTH)
-            .resizable(false)
-            .show(ui, |ui| sidebar::strip(ui, &view, &mut out));
-        if view.sidebar_visible {
+        if !view.compact {
+            side("sidebar-strip")
+                .exact_size(sidebar::STRIP_WIDTH)
+                .resizable(false)
+                .show(ui, |ui| sidebar::strip(ui, &view, &mut out));
+        }
+        if view.sidebar_visible && !view.compact {
             // Open sessions: connected if any of their tabs is.
             let mut open_sessions = std::collections::HashMap::new();
             for t in &self.core.tabs {
@@ -1540,6 +1551,7 @@ impl eframe::App for TermCraftApp {
                     .map_or(crate::ui::icon::TERMINAL_WINDOW, crate::ui::session_icon),
                 color: t.color,
                 pinned: t.pinned,
+                activity: t.activity,
             })
             .collect();
         let font_size = self.core.settings.terminal.font_size;

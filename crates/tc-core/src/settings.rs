@@ -214,6 +214,8 @@ pub struct ViewSettings {
     pub ui_size: UiSize,
     /// "Show green/orange buttons next to each open session in the sessions tree".
     pub session_dots: bool,
+    /// "Compact mode": only the tabs and terminals.
+    pub compact: bool,
 }
 
 impl Default for ViewSettings {
@@ -232,6 +234,7 @@ impl Default for ViewSettings {
             rounded_tabs: true,
             ui_size: UiSize::default(),
             session_dots: true,
+            compact: false,
         }
     }
 }

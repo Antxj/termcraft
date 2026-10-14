@@ -136,6 +136,7 @@ pub enum HotkeyAction {
     FindNext,
     SaveTerminalText,
     Fullscreen,
+    CompactMode,
     ToggleSidebar,
     MultiExec,
     SingleTerminal,
@@ -148,7 +149,7 @@ pub enum HotkeyAction {
 }
 
 impl HotkeyAction {
-    pub const ALL: [HotkeyAction; 20] = [
+    pub const ALL: [HotkeyAction; 21] = [
         Self::NewTab,
         Self::CloseTab,
         Self::NextTab,
@@ -160,6 +161,7 @@ impl HotkeyAction {
         Self::FindNext,
         Self::SaveTerminalText,
         Self::Fullscreen,
+        Self::CompactMode,
         Self::ToggleSidebar,
         Self::MultiExec,
         Self::SingleTerminal,
@@ -185,6 +187,7 @@ impl HotkeyAction {
             Self::FindNext => "find_next",
             Self::SaveTerminalText => "save_terminal_text",
             Self::Fullscreen => "fullscreen",
+            Self::CompactMode => "compact_mode",
             Self::ToggleSidebar => "toggle_sidebar",
             Self::MultiExec => "multiexec",
             Self::SingleTerminal => "single_terminal",
@@ -210,6 +213,7 @@ impl HotkeyAction {
             Self::FindNext => "Find next",
             Self::SaveTerminalText => "Save terminal text",
             Self::Fullscreen => "Fullscreen mode",
+            Self::CompactMode => "Compact mode",
             Self::ToggleSidebar => "Show / hide the sidebar",
             Self::MultiExec => "Write commands on all terminals",
             Self::SingleTerminal => "Single terminal mode",
@@ -237,6 +241,7 @@ impl HotkeyAction {
             Self::FindNext => "F3",
             Self::SaveTerminalText => NONE,
             Self::Fullscreen => "F11",
+            Self::CompactMode => "Ctrl + Shift + F11",
             Self::ToggleSidebar => NONE,
             Self::MultiExec => NONE,
             Self::SingleTerminal => NONE,

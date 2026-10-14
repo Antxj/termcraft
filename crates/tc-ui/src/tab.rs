@@ -258,6 +258,8 @@ pub struct Tab {
     pub pinned: bool,
     /// MultiExec: this terminal receives what is typed in the others.
     pub multiexec_on: bool,
+    /// Output arrived while another tab was shown.
+    pub activity: bool,
     /// The session stopped: keys choose what happens to the tab.
     ended: bool,
     /// What the user chose after the session stopped (the app applies it).
@@ -337,6 +339,7 @@ impl Tab {
             color: None,
             pinned: false,
             multiexec_on: true,
+            activity: false,
             ended: false,
             ended_action: None,
             paste_queue: Default::default(),

@@ -66,6 +66,7 @@ fn to_action(a: HotkeyAction, active_tab: Option<u64>) -> Option<Action> {
         H::FindNext => Action::FindNext,
         H::SaveTerminalText => Action::SaveTerminalText,
         H::Fullscreen => Action::ToggleFullscreen,
+        H::CompactMode => Action::ToggleCompact,
         H::ToggleSidebar => Action::ToggleSidebar,
         H::MultiExec => Action::ToggleMultiExec,
         H::SingleTerminal => Action::Split(SplitMode::Single),

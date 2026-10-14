@@ -15,6 +15,8 @@ pub struct TabView {
     /// "Set tab color".
     pub color: Option<[u8; 3]>,
     pub pinned: bool,
+    /// New output while the tab was in the background.
+    pub activity: bool,
 }
 
 /// Colours offered by "Set tab color".
@@ -74,7 +76,7 @@ pub fn show(
                         });
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    tab_list(ui, tabs, active, out);
+                    tab_list(ui, tabs, active, view.compact, out);
                 });
             });
         });
@@ -87,7 +89,13 @@ pub fn show(
     );
 }
 
-fn tab_list(ui: &mut egui::Ui, tabs: &[TabView], active: Option<u64>, out: &mut Vec<Action>) {
+fn tab_list(
+    ui: &mut egui::Ui,
+    tabs: &[TabView],
+    active: Option<u64>,
+    compact: bool,
+    out: &mut Vec<Action>,
+) {
     let list = ui
         .add(egui::Button::new(icon::LIST).frame(false))
         .on_hover_text("Show tab list");
@@ -101,6 +109,13 @@ fn tab_list(ui: &mut egui::Ui, tabs: &[TabView], active: Option<u64>, out: &mut 
                 .clicked()
             {
                 out.push(Action::SelectTab(tab.id));
+                ui.close();
+            }
+        }
+        if compact {
+            ui.separator();
+            if ui.button("Exit compact mode").clicked() {
+                out.push(Action::ToggleCompact);
                 ui.close();
             }
         }
@@ -179,6 +194,14 @@ fn chrome_tab(
         );
     }
 
+    // Background output: a small accent dot in the corner.
+    if tab.activity && !selected {
+        painter.circle_filled(
+            egui::pos2(rect.left() + 6.0, rect.top() + 7.0),
+            3.0,
+            palette.accent,
+        );
+    }
     // Icon, then the title cut to the room left.
     let mut x = rect.left() + pad;
     let dot = if tab.alive { palette.ok } else { palette.warn };

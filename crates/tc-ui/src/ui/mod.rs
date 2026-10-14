@@ -34,6 +34,8 @@ pub enum Action {
     Quit,
     Minimize,
     ToggleFullscreen,
+    /// View › Compact mode.
+    ToggleCompact,
     About,
     PasswordsSettings,
     /// Passwords settings on the Credentials tab.
