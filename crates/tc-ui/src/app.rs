@@ -208,8 +208,8 @@ pub struct TermCraftApp {
     confirm_exit: bool,
     exit_confirmed: bool,
     show_tunnels: bool,
-    /// MultiExec: keystrokes go to every open terminal.
-    multiexec: bool,
+    /// MultiExec: keystrokes go to every selected terminal.
+    multiexec: MultiExec,
     /// Macro being recorded: tab id and what was typed so far.
     recording: Option<(u64, String)>,
     tunnel_editor: Option<crate::ui::tunnels_window::TunnelEditor>,
@@ -284,7 +284,7 @@ impl TermCraftApp {
             confirm_exit: false,
             exit_confirmed: false,
             show_tunnels: false,
-            multiexec: false,
+            multiexec: MultiExec::default(),
             recording: None,
             tunnel_editor: None,
             offers: VecDeque::new(),
@@ -452,7 +452,7 @@ impl TermCraftApp {
             Action::ToolbarStyle(style) => view.toolbar_style = style,
             Action::ToggleTabNumbers => view.show_tab_numbers = !view.show_tab_numbers,
             Action::Split(mode) => view.split = mode,
-            Action::ToggleMultiExec => return self.multiexec = !self.multiexec,
+            Action::ToggleMultiExec => return self.multiexec.on = !self.multiexec.on,
             Action::StartRecording => {
                 if let Some(id) = self.core.active {
                     self.recording = Some((id, String::new()));
@@ -1014,23 +1014,58 @@ fn recording_banner(ui: &mut egui::Ui) -> bool {
 }
 
 /// Reference MultiExec bar.
-fn multiexec_banner(ui: &mut egui::Ui, multiexec: &mut bool) {
+/// "Write commands on all terminals" (MultiExec).
+#[derive(Default)]
+struct MultiExec {
+    on: bool,
+    /// "Synchronize mouse wheel scrolling".
+    sync_wheel: bool,
+}
+
+/// The MultiExec bar: which terminals take part (reference
+/// `PopupMultiExec`: activate all / none / invert, synchronized wheel).
+fn multiexec_banner(ui: &mut egui::Ui, multiexec: &mut MultiExec, tabs: &mut [Tab]) {
     egui::Frame::new()
         .fill(ui.visuals().selection.bg_fill)
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                let text = ui.visuals().selection.stroke.color;
                 ui.label(
-                    egui::RichText::new(
-                        "Multi-execution mode: commands are typed to all terminals",
-                    )
-                    .color(ui.visuals().selection.stroke.color),
+                    egui::RichText::new("Multi-execution mode: commands are typed to").color(text),
                 );
+                for tab in tabs.iter_mut().filter(|t| t.is_alive()) {
+                    let label = egui::RichText::new(&tab.title).color(text);
+                    ui.checkbox(&mut tab.multiexec_on, label);
+                }
+                ui.menu_button(ui::icon::DOTS_THREE, |ui| {
+                    if ui.button("Activate all").clicked() {
+                        tabs.iter_mut().for_each(|t| t.multiexec_on = true);
+                    }
+                    if ui.button("Activate none").clicked() {
+                        tabs.iter_mut().for_each(|t| t.multiexec_on = false);
+                    }
+                    if ui.button("Invert selection").clicked() {
+                        tabs.iter_mut()
+                            .for_each(|t| t.multiexec_on = !t.multiexec_on);
+                    }
+                    ui.separator();
+                    ui.checkbox(
+                        &mut multiexec.sync_wheel,
+                        "Synchronize mouse wheel scrolling",
+                    );
+                });
                 if ui.button("Exit multi-execution mode").clicked() {
-                    *multiexec = false;
+                    multiexec.on = false;
                 }
             });
         });
+}
+
+/// Tabs that receive input typed in `source`: the source itself, and in
+/// MultiExec mode every live terminal that takes part.
+fn receives(tab: &Tab, source: u64, multiexec: bool) -> bool {
+    tab.id == source || multiexec && tab.multiexec_on && tab.is_alive()
 }
 
 /// "Find next": the next match above the last one (or from the bottom).
@@ -1392,8 +1427,8 @@ impl eframe::App for TermCraftApp {
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| {
                 tabbar::show(ui, &tab_views, core.active, &view, &mut out);
-                if *multiexec {
-                    multiexec_banner(ui, multiexec);
+                if multiexec.on {
+                    multiexec_banner(ui, multiexec, &mut core.tabs);
                 }
                 if recording.is_some() && recording_banner(ui) {
                     out.push(Action::StopRecording);
@@ -1408,13 +1443,22 @@ impl eframe::App for TermCraftApp {
                     if output.clicked {
                         out.push(Action::SelectTab(id));
                     }
+                    let on = multiexec.on;
                     if let Some(text) = output.paste {
-                        if *multiexec {
-                            for tab in core.tabs.iter_mut().filter(|t| t.is_alive()) {
-                                tab.paste(&text);
-                            }
-                        } else if let Some(tab) = core.tabs.iter_mut().find(|t| t.id == id) {
+                        for tab in core.tabs.iter_mut().filter(|t| receives(t, id, on)) {
                             tab.paste(&text);
+                        }
+                    }
+                    if let Some(lines) = output.scrolled
+                        && on
+                        && multiexec.sync_wheel
+                    {
+                        for tab in core
+                            .tabs
+                            .iter_mut()
+                            .filter(|t| t.id != id && receives(t, id, on))
+                        {
+                            term_view::scroll_by(tab, lines);
                         }
                     }
                     for bytes in output.input {
@@ -1423,11 +1467,7 @@ impl eframe::App for TermCraftApp {
                         {
                             keys.push_str(&String::from_utf8_lossy(&bytes));
                         }
-                        if *multiexec {
-                            for tab in core.tabs.iter_mut().filter(|t| t.is_alive()) {
-                                tab.send(&bytes);
-                            }
-                        } else if let Some(tab) = core.tabs.iter_mut().find(|t| t.id == id) {
+                        for tab in core.tabs.iter_mut().filter(|t| receives(t, id, on)) {
                             tab.send(&bytes);
                         }
                     }

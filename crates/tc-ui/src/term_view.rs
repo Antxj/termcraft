@@ -26,6 +26,8 @@ pub struct TermOutput {
     pub input: Vec<Vec<u8>>,
     /// Text to paste (the tab applies bracketing and its paste delay).
     pub paste: Option<String>,
+    /// Lines scrolled with the wheel ("Synchronize mouse wheel scrolling").
+    pub scrolled: Option<isize>,
 }
 
 pub fn show(
@@ -125,8 +127,8 @@ fn show_inner(
                     }
                 }
             } else {
-                let target = (tab.term.scrollback() as isize + lines).max(0) as usize;
-                tab.term.set_scrollback(target);
+                scroll_by(tab, lines);
+                out.scrolled = Some(lines);
             }
         }
     }
@@ -140,6 +142,12 @@ fn show_inner(
         response.has_focus(),
     );
     out
+}
+
+/// Scroll the view through the history by `lines` (positive = up).
+pub fn scroll_by(tab: &mut Tab, lines: isize) {
+    let target = (tab.term.scrollback() as isize + lines).max(0) as usize;
+    tab.term.set_scrollback(target);
 }
 
 /// Mouse selection (char / Ctrl+Alt block drag, word double click, line

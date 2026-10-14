@@ -249,6 +249,8 @@ pub struct Tab {
     pub color: Option<[u8; 3]>,
     /// "Pin/unpin this tab": kept by the "Close all…" commands.
     pub pinned: bool,
+    /// MultiExec: this terminal receives what is typed in the others.
+    pub multiexec_on: bool,
     /// The session stopped: keys choose what happens to the tab.
     ended: bool,
     /// What the user chose after the session stopped (the app applies it).
@@ -323,6 +325,7 @@ impl Tab {
             pending_paste: None,
             color: None,
             pinned: false,
+            multiexec_on: true,
             ended: false,
             ended_action: None,
             paste_queue: Default::default(),
