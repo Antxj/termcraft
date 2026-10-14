@@ -65,6 +65,12 @@ fn ended_key(bytes: &[u8]) -> Option<EndedAction> {
     }
 }
 
+/// An FTPS certificate that did not verify.
+pub struct CertPrompt {
+    pub fingerprint: String,
+    pub reason: String,
+}
+
 /// "Find in terminal" bar of a tab.
 #[derive(Default)]
 pub struct FindBar {
@@ -284,6 +290,10 @@ pub struct Tab {
     log: Option<crate::term_log::TermLog>,
     /// "Find in terminal".
     pub find: Option<FindBar>,
+    /// FTPS certificate waiting for "trust it?".
+    pub cert_prompt: Option<CertPrompt>,
+    /// Parameters of the last FTP connection (to reconnect after trust).
+    last_ftp: Option<tc_net::ftp::FtpParams>,
     /// Remote files opened in a local program, watched for changes.
     edits: crate::remote_edit::RemoteEdits,
     /// Edited files waiting for "upload to the server?".
@@ -359,6 +369,8 @@ impl Tab {
             next_paste: Instant::now(),
             log: None,
             find: None,
+            cert_prompt: None,
+            last_ftp: None,
             edits: crate::remote_edit::RemoteEdits::new(id),
             upload_prompts: Default::default(),
             monitor: None,
@@ -955,6 +967,17 @@ impl Tab {
             passive: opt("3_5").is_none_or(|v| schema::is_true(&v)),
             ascii: opt("3_9").is_some_and(|v| schema::is_true(&v)),
             start_dir: opt("3_6").filter(|d| !d.trim().is_empty()),
+            // 3_7 FTPS, 3_20 implicit, 3_19 TLS 1.2, 3_22 TLS 1.3.
+            tls: opt("3_7")
+                .is_some_and(|v| schema::is_true(&v))
+                .then(|| tc_net::ftp::FtpsParams {
+                    implicit: opt("3_20").is_some_and(|v| schema::is_true(&v)),
+                    versions: tc_net::ftps::TlsVersions {
+                        tls12: opt("3_19").is_none_or(|v| schema::is_true(&v)),
+                        tls13: opt("3_22").is_some_and(|v| schema::is_true(&v)),
+                    },
+                    pinned: tc_net::ftps::trusted(&self.ftps_certificates(), &host, port),
+                }),
         };
         match user.filter(|u| !u.is_empty()) {
             // Anonymous login needs no password.
@@ -972,11 +995,50 @@ impl Tab {
         }
     }
 
+    /// FTPS certificates the user trusted (next to known_hosts).
+    fn ftps_certificates(&self) -> PathBuf {
+        self.known_hosts.with_file_name("ftps_certificates")
+    }
+
+    /// FTPS certificate question answered: reconnect trusting it (and
+    /// remember it unless "Connect once").
+    pub fn answer_certificate(&mut self, accept: bool, remember: bool) {
+        let Some(prompt) = self.cert_prompt.take() else {
+            return;
+        };
+        let Some(mut params) = self.last_ftp.take() else {
+            return;
+        };
+        if !accept {
+            self.message("\x1b[90m[connection cancelled]\x1b[0m");
+            return;
+        }
+        if remember
+            && let Err(e) = tc_net::ftps::trust(
+                &self.ftps_certificates(),
+                &params.host,
+                params.port,
+                &prompt.fingerprint,
+            )
+        {
+            self.message(&format!(
+                "\x1b[33mcould not save the certificate: {e}\x1b[0m"
+            ));
+        }
+        if let Some(tls) = &mut params.tls {
+            tls.pinned = Some(prompt.fingerprint);
+        }
+        self.start_ftp(params);
+    }
+
     fn start_ftp(&mut self, params: tc_net::ftp::FtpParams) {
         self.message(&format!(
-            "\x1b[90mConnecting to {}:{} (FTP) …\x1b[0m",
-            params.host, params.port
+            "\x1b[90mConnecting to {}:{} ({}) …\x1b[0m",
+            params.host,
+            params.port,
+            if params.tls.is_some() { "FTPS" } else { "FTP" }
         ));
+        self.last_ftp = Some(params.clone());
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ftp(tc_net::ftp::FtpSession::connect(
             params,
@@ -1002,6 +1064,18 @@ impl Tab {
                 SftpEvent::Unavailable(e) => {
                     self.message(&format!("\x1b[31mFTP: {e}\x1b[0m"));
                     self.status = Some("connection failed".into());
+                }
+                SftpEvent::UntrustedCertificate {
+                    fingerprint,
+                    reason,
+                } => {
+                    self.message(&format!(
+                        "\x1b[33mThe server certificate is not trusted: {reason}\x1b[0m"
+                    ));
+                    self.cert_prompt = Some(CertPrompt {
+                        fingerprint: fingerprint.clone(),
+                        reason: reason.clone(),
+                    });
                 }
                 SftpEvent::Failed { error, .. } => self.message(&format!("\x1b[33m{error}\x1b[0m")),
                 _ => {}
@@ -1311,6 +1385,10 @@ impl Tab {
                 }
             }
             SftpEvent::Unavailable(e) => self.sftp = SftpStatus::Unavailable(e),
+            // Handled by pump_ftp (the question); the browser waits.
+            SftpEvent::UntrustedCertificate { reason, .. } => {
+                self.sftp = SftpStatus::Unavailable(format!("certificate not trusted: {reason}"));
+            }
             SftpEvent::SudoPasswordNeeded => {
                 if let SftpStatus::Ready(v) = &mut self.sftp {
                     v.prompt = Some(BrowserPrompt::SudoPassword(Default::default()));

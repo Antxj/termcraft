@@ -5,6 +5,7 @@
 //! [`serial`] drives a COM / tty port.
 
 pub mod ftp;
+pub mod ftps;
 pub mod rlogin;
 pub mod serial;
 pub mod telnet;

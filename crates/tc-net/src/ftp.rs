@@ -1,4 +1,5 @@
-//! FTP file browser backend (plain FTP; FTPS is tracked in docs/PARITY.md).
+//! FTP / FTPS file browser backend (explicit AUTH TLS or implicit TLS,
+//! data channel always encrypted; see [`crate::ftps`] for certificates).
 //! One worker thread owns the control connection and processes requests in
 //! order, reporting with the same [`FsEvent`]s as the SFTP browser.
 
@@ -9,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::UNIX_EPOCH;
 use suppaftp::list::{File, PosixPexQuery};
 use suppaftp::types::FileType;
-use suppaftp::{FtpStream, Mode};
+use suppaftp::{Mode, RustlsConnector, RustlsFtpStream as FtpStream};
 use tc_core::remote_fs::{FsEvent, FsRequest, RemoteEntry};
 
 #[derive(Debug, Clone)]
@@ -23,6 +24,23 @@ pub struct FtpParams {
     /// ASCII transfer type instead of binary.
     pub ascii: bool,
     pub start_dir: Option<String>,
+    /// FTPS; `None` = plain FTP.
+    pub tls: Option<FtpsParams>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FtpsParams {
+    /// 3_20 "Implicit SSL" (TLS from the first byte, usually port 990);
+    /// else explicit AUTH TLS.
+    pub implicit: bool,
+    pub versions: crate::ftps::TlsVersions,
+    /// Certificate fingerprint the user trusts for this server.
+    pub pinned: Option<String>,
+}
+
+enum LoginError {
+    Failed(String),
+    Untrusted { fingerprint: String, reason: String },
 }
 
 pub struct FtpSession {
@@ -66,9 +84,33 @@ fn file_type(ascii: bool) -> FileType {
     }
 }
 
-fn login(p: &FtpParams) -> Result<(FtpStream, String), String> {
-    let mut ftp = FtpStream::connect((p.host.as_str(), p.port))
-        .map_err(|e| format!("cannot connect to {}:{}: {e}", p.host, p.port))?;
+fn connect(p: &FtpParams) -> Result<FtpStream, LoginError> {
+    let addr = (p.host.as_str(), p.port);
+    let failed = |e: suppaftp::FtpError| {
+        LoginError::Failed(format!("cannot connect to {}:{}: {e}", p.host, p.port))
+    };
+    let Some(tls) = &p.tls else {
+        return FtpStream::connect(addr).map_err(failed);
+    };
+    let (config, rejected) =
+        crate::ftps::client_config(tls.versions, tls.pinned.clone()).map_err(LoginError::Failed)?;
+    let connector = RustlsConnector::from(config);
+    let result = if tls.implicit {
+        FtpStream::connect_secure_implicit(addr, connector, &p.host)
+    } else {
+        FtpStream::connect(addr).and_then(|ftp| ftp.into_secure(connector, &p.host))
+    };
+    result.map_err(|e| match rejected.lock().expect("lock").take() {
+        Some((fingerprint, reason)) => LoginError::Untrusted {
+            fingerprint,
+            reason,
+        },
+        None => failed(e),
+    })
+}
+
+fn login(p: &FtpParams) -> Result<(FtpStream, String), LoginError> {
+    let mut ftp = connect(p)?;
     ftp.set_mode(if p.passive {
         Mode::Passive
     } else {
@@ -80,12 +122,12 @@ fn login(p: &FtpParams) -> Result<(FtpStream, String), String> {
         (p.user.as_str(), p.password.as_str())
     };
     ftp.login(user, pass)
-        .map_err(|e| format!("login failed: {e}"))?;
+        .map_err(|e| LoginError::Failed(format!("login failed: {e}")))?;
     ftp.transfer_type(file_type(p.ascii))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| LoginError::Failed(e.to_string()))?;
     if let Some(dir) = p.start_dir.as_deref().filter(|d| !d.trim().is_empty()) {
         ftp.cwd(dir.trim())
-            .map_err(|e| format!("cannot open {dir}: {e}"))?;
+            .map_err(|e| LoginError::Failed(format!("cannot open {dir}: {e}")))?;
     }
     let home = ftp.pwd().unwrap_or_else(|_| "/".into());
     Ok((ftp, home))
@@ -106,7 +148,16 @@ fn worker(
             send(FsEvent::Ready { home });
             ftp
         }
-        Err(e) => return send(FsEvent::Unavailable(e)),
+        Err(LoginError::Failed(e)) => return send(FsEvent::Unavailable(e)),
+        Err(LoginError::Untrusted {
+            fingerprint,
+            reason,
+        }) => {
+            return send(FsEvent::UntrustedCertificate {
+                fingerprint,
+                reason,
+            });
+        }
     };
     for (id, request) in requests.iter() {
         let progress = |done: u64, total: Option<u64>| send(FsEvent::Progress { id, done, total });

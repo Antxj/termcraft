@@ -61,6 +61,12 @@ pub enum FsEvent {
     SudoPasswordNeeded,
     /// Switching to or from sudo failed; the previous browser stays usable.
     SudoFailed(String),
+    /// FTPS: the server certificate did not verify; the user may trust
+    /// this fingerprint and reconnect.
+    UntrustedCertificate {
+        fingerprint: String,
+        reason: String,
+    },
     Listing {
         id: u64,
         path: String,

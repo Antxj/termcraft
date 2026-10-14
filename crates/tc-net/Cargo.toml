@@ -10,7 +10,10 @@ license.workspace = true
 socket2 = "0.6"
 crossbeam-channel.workspace = true
 serialport = { version = "4", default-features = false }
-suppaftp = "12"
+suppaftp = { version = "12", features = ["rustls-ring", "deprecated"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+sha2 = "0.11"
 tc-core.workspace = true
 
 [lints]

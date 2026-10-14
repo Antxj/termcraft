@@ -82,7 +82,7 @@ refined against it.
 | P1 | [x] | Telnet (ECHO, SGA, TERMINAL-TYPE, NAWS negotiation) | `tc-net` |
 | P1 | [x] | Serial (COM / tty, speed, data/stop bits, parity none/odd/even, flow none/XON/RTS); mark/space parity and DSR/DTR pending | `tc-net` |
 | P1 | [~] | SFTP session: SSH with only the file browser (no terminal), credentials and agents like SSH; the reference two-pane local / remote view is pending | `tc-ssh` + `tc-ui` |
-| P1 | [~] | FTP in the file browser (passive / active, ASCII, startup folder, saved password); FTPS pending | `tc-net` |
+| P1 | [x] | FTP / FTPS in the file browser (passive / active, ASCII, startup folder, saved password; FTPS explicit or implicit over rustls, TLS 1.2 / 1.3, data channel encrypted, untrusted certificates shown with their fingerprint and pinned on Accept). SSL2 / SSL3 / TLS 1.0 / 1.1 are not offered | `tc-net` |
 | P2 | [~] | RDP opens in the system client (mstsc with .rdp file / macOS rdp:// / FreeRDP or Remmina); embedded IronRDP view pending | `tc-ui` |
 | P2 | [~] | VNC opens in the system viewer (Screen Sharing / TigerVNC / TightVNC / Remmina); embedded view pending | `tc-ui` |
 | P2 | [~] | Mosh: mosh-server started over SSH (UDP port, charset, prediction, server path), then the local `mosh-client` with the key in its environment; needs Mosh installed (a built-in Mosh client is pending) | `tc-ui` |

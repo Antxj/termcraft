@@ -4835,6 +4835,7 @@ dependencies = [
  "chrono",
  "lazy-regex",
  "log",
+ "rustls",
  "thiserror 2.0.21",
 ]
 
@@ -4949,11 +4950,14 @@ name = "tc-net"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "rustls",
  "serialport",
+ "sha2",
  "socket2",
  "suppaftp",
  "tc-core",
  "tempfile",
+ "webpki-roots",
 ]
 
 [[package]]

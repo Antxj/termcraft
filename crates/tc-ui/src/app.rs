@@ -798,6 +798,7 @@ impl TermCraftApp {
         }
         self.passwords_window(ctx, out);
         self.host_key_dialog(ctx);
+        self.certificate_dialog(ctx);
         if let Some(editor) = &mut self.editor {
             editor.credentials = self
                 .core
@@ -1139,6 +1140,58 @@ impl TermCraftApp {
     }
 
     /// "Host key validation" for the active tab's pending SSH connection.
+    /// FTPS: the server certificate did not verify. Like the host key
+    /// dialog: Accept (remember it) / Connect once / Cancel.
+    fn certificate_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.core.tabs.iter_mut().find(|t| t.cert_prompt.is_some()) else {
+            return;
+        };
+        let prompt = tab.cert_prompt.as_ref().expect("checked");
+        let mut answer = None;
+        egui::Window::new("TermCraft Security Alert")
+            .id(egui::Id::new(("ftps-cert", tab.id)))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .min_width(560.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(ui::icon::SHIELD_WARNING)
+                            .size(44.0)
+                            .color(ui.visuals().warn_fg_color),
+                    );
+                    ui.vertical(|ui| {
+                        ui.label("The certificate of this FTPS server could not be verified:");
+                        ui.monospace(format!("    {}", prompt.reason));
+                        ui.label("Its fingerprint is:");
+                        ui.monospace(format!("    {}", prompt.fingerprint));
+                        ui.label(
+                            "Compare it with the one the server administrator gave you. Press \
+                             \"Accept\" to trust this certificate from now on, \"Connect Once\" \
+                             to trust it for this connection only, or \"Cancel\".",
+                        );
+                    });
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Accept").clicked() {
+                        answer = Some((true, true));
+                    }
+                    if ui.button("Connect Once").clicked() {
+                        answer = Some((true, false));
+                    }
+                    let cancel = ui.button("Cancel");
+                    cancel.request_focus();
+                    if cancel.clicked() {
+                        answer = Some((false, false));
+                    }
+                });
+            });
+        if let Some((accept, remember)) = answer {
+            tab.answer_certificate(accept, remember);
+        }
+    }
+
     /// Host key validation for the active tab's pending SSH connection.
     fn host_key_dialog(&mut self, ctx: &egui::Context) {
         let active = self.core.active;

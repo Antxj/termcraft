@@ -186,6 +186,7 @@ fn params(port: u16, password: &str) -> FtpParams {
         passive: true,
         ascii: false,
         start_dir: None,
+        tls: None,
     }
 }
 
