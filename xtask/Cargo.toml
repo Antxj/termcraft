@@ -13,7 +13,7 @@ lzma-rs = "0.3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 tar = "0.4"
 egui-phosphor = "0.14"
-skrifa = "0.44"
+skrifa = "0.48"
 tc-core.workspace = true
 tc-import.workspace = true
 toml.workspace = true
