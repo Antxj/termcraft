@@ -505,9 +505,6 @@ impl SessionEditor {
             } else {
                 ui.label(jump_hosts::summary(&hops));
             }
-            if self.type_index != 0 {
-                ui.weak("(used by SSH sessions for now)");
-            }
         });
         ui.add_space(6.0);
     }

@@ -149,6 +149,13 @@ pub(crate) async fn run(
     Ok(())
 }
 
+/// The local port of a `Local` tunnel, from its `SshEvent::Listening`
+/// message (`127.0.0.1:50123 -> host:port`).
+pub fn listening_port(message: &str) -> Option<u16> {
+    let (addr, _) = message.split_once(" -> ")?;
+    addr.parse::<std::net::SocketAddr>().ok().map(|a| a.port())
+}
+
 async fn bind_listener(bind: &str, port: u16) -> Result<TcpListener, String> {
     TcpListener::bind((bind, port))
         .await
@@ -272,6 +279,16 @@ pub(crate) async fn socks5_handshake<S: AsyncRead + AsyncWrite + Unpin>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_port_from_the_listening_message() {
+        assert_eq!(
+            listening_port("127.0.0.1:50123 -> rdp.lan:3389"),
+            Some(50123)
+        );
+        assert_eq!(listening_port("[::1]:7 -> h:1"), Some(7));
+        assert_eq!(listening_port("SOCKS5 proxy on 127.0.0.1:1080"), None);
+    }
 
     #[tokio::test]
     async fn socks5_parses_domain_and_ipv4() {

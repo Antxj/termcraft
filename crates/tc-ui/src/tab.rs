@@ -65,6 +65,43 @@ fn ended_key(bytes: &[u8]) -> Option<EndedAction> {
     }
 }
 
+/// A Telnet / RDP / VNC session through SSH jump hosts: a local tunnel
+/// to the end server is opened first, then the session uses it.
+struct ViaGateway {
+    target: GatewayTarget,
+    host: String,
+    port: u16,
+    hops: Vec<tc_core::jump_hosts::JumpHost>,
+}
+
+enum GatewayTarget {
+    Telnet,
+    Rdp(Option<String>),
+    Vnc,
+}
+
+/// The jump hosts of a Telnet / RDP / VNC session, if it has any.
+fn via_gateway(session: Option<&Session>) -> Option<ViaGateway> {
+    let session = session?;
+    let ids = tc_core::jump_hosts::ids_for(session.kind.type_index())?;
+    let hops = tc_core::jump_hosts::parse(&session.options, ids);
+    if hops.is_empty() {
+        return None;
+    }
+    let (target, host, port) = match &session.kind {
+        SessionKind::Telnet { host, port } => (GatewayTarget::Telnet, host, *port),
+        SessionKind::Rdp { host, port, user } => (GatewayTarget::Rdp(user.clone()), host, *port),
+        SessionKind::Vnc { host, port } => (GatewayTarget::Vnc, host, *port),
+        _ => return None,
+    };
+    Some(ViaGateway {
+        target,
+        host: host.clone(),
+        port,
+        hops,
+    })
+}
+
 /// An FTPS certificate that did not verify.
 pub struct CertPrompt {
     pub fingerprint: String,
@@ -297,6 +334,10 @@ pub struct Tab {
     paste_queue: std::collections::VecDeque<Vec<u8>>,
     paste_delay: std::time::Duration,
     next_paste: Instant,
+    /// Telnet / RDP / VNC waiting for its tunnel through the jump hosts.
+    via_gateway: Option<ViaGateway>,
+    /// That tunnel, kept open as long as the tab.
+    gateway_tunnel: Option<SshSession>,
     /// 4_6 "Term charset": remote bytes ↔ the emulator's UTF-8.
     charset: tc_term::TermCharset,
     /// "Log terminal output".
@@ -381,6 +422,8 @@ impl Tab {
             paste_queue: Default::default(),
             paste_delay: std::time::Duration::ZERO,
             charset: tc_term::TermCharset::default(),
+            via_gateway: None,
+            gateway_tunnel: None,
             next_paste: Instant::now(),
             log: None,
             find: None,
@@ -437,6 +480,11 @@ impl Tab {
             Some(SessionKind::Ssh { user: None, .. }) => {
                 tab.term.feed(b"login as: ");
                 tab.line = Some(LineInput::Login(String::new()));
+            }
+            Some(
+                SessionKind::Telnet { .. } | SessionKind::Rdp { .. } | SessionKind::Vnc { .. },
+            ) if let Some(via) = via_gateway(tab.session.as_ref()) => {
+                tab.start_via_gateway(via, None);
             }
             Some(SessionKind::Telnet { host, port }) => tab.open_telnet(host, port),
             Some(SessionKind::Serial { port_name, baud }) => tab.open_serial(port_name, baud),
@@ -929,6 +977,91 @@ impl Tab {
         self.backend = Backend::Connecting(rx);
     }
 
+    /// Open the local tunnel to the end server through the jump hosts.
+    /// Hops without a login ask for one first ("login as:").
+    fn start_via_gateway(&mut self, via: ViaGateway, login: Option<String>) {
+        let needs_login = via.hops.iter().any(|h| h.user.trim().is_empty());
+        let login = match login {
+            Some(l) => l,
+            None if needs_login => {
+                self.message("\x1b[90mLogin for the SSH gateway:\x1b[0m");
+                self.term.feed(b"login as: ");
+                self.line = Some(LineInput::Login(String::new()));
+                self.via_gateway = Some(via);
+                return;
+            }
+            None => String::new(),
+        };
+        let mut endpoints: Vec<tc_ssh::Endpoint> = via
+            .hops
+            .iter()
+            .map(|h| tc_ssh::Endpoint {
+                host: h.host.clone(),
+                port: h.port_number(),
+                user: if h.user.trim().is_empty() {
+                    login.clone()
+                } else {
+                    h.user.trim().to_string()
+                },
+                private_key: (!h.key.is_empty()).then(|| PathBuf::from(&h.key)),
+            })
+            .collect();
+        let Some(last) = endpoints.pop() else {
+            return;
+        };
+        self.message(&format!(
+            "\x1b[90mOpening a tunnel to {}:{} through {} …\x1b[0m",
+            via.host,
+            via.port,
+            tc_core::jump_hosts::summary(&via.hops)
+        ));
+        let params = tc_ssh::tunnel::TunnelParams {
+            ssh: last,
+            gateways: endpoints,
+            known_hosts: self.known_hosts.clone(),
+            spec: tc_ssh::tunnel::TunnelSpec::Local {
+                bind: "127.0.0.1".into(),
+                port: 0,
+                dest_host: via.host.clone(),
+                dest_port: via.port,
+            },
+            agent: agent_config(&self.ssh_settings),
+        };
+        self.credentials.reset();
+        self.via_gateway = Some(via);
+        self.backend = Backend::Ssh(SshSession::tunnel(params, self.repaint.clone()));
+    }
+
+    /// The tunnel listens: keep it, and start the session through it.
+    fn gateway_ready(&mut self, local_port: u16) {
+        let Some(via) = self.via_gateway.take() else {
+            return;
+        };
+        if let Backend::Ssh(tunnel) = std::mem::replace(&mut self.backend, Backend::None) {
+            self.gateway_tunnel = Some(tunnel);
+        }
+        let local = "127.0.0.1";
+        let external = !matches!(via.target, GatewayTarget::Telnet);
+        match via.target {
+            GatewayTarget::Telnet => self.open_telnet(local.into(), local_port),
+            GatewayTarget::Rdp(user) => {
+                let temp = std::env::temp_dir().join("termcraft-rdp");
+                let result = crate::external::launch_rdp(local, local_port, user.as_deref(), &temp);
+                self.external_result("RDP", &via.host, via.port, result);
+            }
+            GatewayTarget::Vnc => {
+                let result = crate::external::launch_vnc(local, local_port);
+                self.external_result("VNC", &via.host, via.port, result);
+            }
+        }
+        if external {
+            self.message(&format!(
+                "\x1b[90mThe tunnel stays open on {local}:{local_port} while this tab is \
+                 open.\x1b[0m"
+            ));
+        }
+    }
+
     fn open_telnet(&mut self, host: String, port: u16) {
         self.message(&format!(
             "\x1b[90mConnecting to {host}:{port} (Telnet) …\x1b[0m"
@@ -1234,6 +1367,12 @@ impl Tab {
                 SshEvent::Connected => {
                     self.status = None;
                     self.after_login();
+                }
+                SshEvent::Listening(message) if self.via_gateway.is_some() => {
+                    match tc_ssh::tunnel::listening_port(&message) {
+                        Some(port) => self.gateway_ready(port),
+                        None => self.message(&format!("\x1b[31mtunnel: {message}\x1b[0m")),
+                    }
                 }
                 SshEvent::Error(e) => self.message(&format!("\x1b[31m{e}\x1b[0m")),
                 SshEvent::Sftp(e) => self.on_sftp(e),
@@ -1646,6 +1785,12 @@ impl Tab {
                 '\r' | '\n' => {
                     self.term.feed(b"\r\n");
                     match self.line.take() {
+                        Some(LineInput::Login(user))
+                            if !user.is_empty() && self.via_gateway.is_some() =>
+                        {
+                            let via = self.via_gateway.take().expect("checked");
+                            self.start_via_gateway(via, Some(user));
+                        }
                         Some(LineInput::Login(user)) if !user.is_empty() => {
                             match self.session.as_ref().map(|s| &s.kind) {
                                 Some(SessionKind::Mosh { .. }) => self.connect_mosh(user),
@@ -1719,7 +1864,9 @@ impl Tab {
     }
 
     pub fn is_alive(&self) -> bool {
-        !matches!(self.backend, Backend::None) || self.line.is_some()
+        !matches!(self.backend, Backend::None)
+            || self.line.is_some()
+            || self.gateway_tunnel.is_some()
     }
 }
 
@@ -1882,6 +2029,62 @@ mod tests {
         pump_until(&mut tab, |t| {
             t.term.contents().contains("connection closed")
         });
+    }
+
+    /// End to end: a Telnet session whose jump host has no login asks for
+    /// it, opens the tunnel through the gateway, then talks Telnet over it.
+    #[test]
+    fn telnet_through_an_ssh_gateway() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let telnet_port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            s.write_all(b"Welcome through the gateway\r\n").unwrap();
+            std::thread::sleep(Duration::from_millis(500));
+        });
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (gw, fut) = rt
+            .block_on(tc_devserver::bind(0, tc_devserver::DevConfig::default()))
+            .unwrap();
+        rt.spawn(fut);
+        let dir = tempfile::tempdir().unwrap();
+        let env = TabEnv {
+            scrollback: 100,
+            known_hosts: dir.path().join("kh"),
+            repaint: Arc::new(|| {}),
+            vault: Arc::new(Vault::open(
+                dir.path().join("i.toml"),
+                Box::new(tc_vault::MemoryStore::default()),
+            )),
+            save_passwords: SavePasswords::Never,
+            ssh: Default::default(),
+            backspace_ctrl_h: false,
+            paste_right_click: true,
+            local_shell: Default::default(),
+            save_key_passphrases: false,
+            log_dir: None,
+            use_windows_path: true,
+        };
+        let mut session = Session::new(
+            "t",
+            SessionKind::Telnet {
+                host: "127.0.0.1".into(),
+                port: telnet_port,
+            },
+        );
+        // Telnet Network settings: 3_7 gateway host, 3_8 port.
+        session.options.insert("3_7".into(), "127.0.0.1".into());
+        session.options.insert("3_8".into(), gw.port().to_string());
+        let mut tab = Tab::open(1, Some(session), &env);
+        pump_until(&mut tab, |t| t.term.contents().contains("login as:"));
+        tab.send(format!("{}\r", tc_devserver::DEV_USER).as_bytes());
+        pump_until(&mut tab, |t| t.term.contents().contains("password:"));
+        tab.send(format!("{}\r", tc_devserver::DEV_PASSWORD).as_bytes());
+        pump_until(&mut tab, |t| {
+            t.term.contents().contains("Welcome through the gateway")
+        });
+        assert!(tab.gateway_tunnel.is_some());
     }
 
     /// End to end: the login shell is bash, so the hook is typed after the
