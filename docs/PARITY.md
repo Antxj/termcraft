@@ -93,7 +93,7 @@ refined against it.
 | P2 | [ ] | Custom shell-script bookmark | `tc-core` |
 | P3 | [x] | Rsh sessions over rlogin (privileged source port when allowed, window size) | `tc-net` |
 | P2 | [x] | File and Browser sessions: open with the default application / browser (only http(s) URLs; values checked so nothing reaches a command line as an option) | `tc-ui` |
-| P3 | [ ] | XDMCP | `tc-x11` |
+| P3 | [~] | XDMCP session: an external X server queries the display manager (3_5 host or broadcast, 3_3 sender IP, 3_12 screen, 3_14 / 3_15 size): VcXsrv / Xming on Windows, Xephyr on Linux / macOS (arguments validated). The built-in X server is pending | `tc-ui` |
 
 ## 4. SSH browser (SFTP sidebar)
 
@@ -116,8 +116,8 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [x] | Session model (host, port, user, kind, folder) | `tc-core` |
 | P0 | [x] | Save / load sessions (TOML) | `tc-core` |
-| P0 | [~] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (14 types editable; Xdmcp pending) | `tc-ui` |
-| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, Rsh, RDP, VNC, FTP, SFTP, Serial, Shell, File, Browser, Mosh, Aws S3, WSL (Xdmcp not yet); lossless (every non-default parameter kept in `options`) | `tc-import` |
+| P0 | [x] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (all 15 types editable) | `tc-ui` |
+| P0 | [x] | Import MobaXterm sessions: SSH, Telnet, Rsh, RDP, VNC, FTP, SFTP, Serial, Shell, File, Browser, Mosh, Xdmcp, Aws S3, WSL (every type); lossless (every non-default parameter kept in `options`) | `tc-import` |
 | P1 | [x] | Folders tree, rename / duplicate / delete from context menu, drag a session onto a folder (or another session) to move it, New folder / Rename folder / Delete folder (empty folders kept); session_folder_add / _rename / _remove commands | `tc-core` + `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |

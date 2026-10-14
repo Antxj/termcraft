@@ -191,6 +191,10 @@ fn parse_bookmark(name: &str, value: &str, folder: &str, report: &mut ImportRepo
         (9, Some(path)) => SessionKind::File { path },
         (11, Some(url)) => SessionKind::Browser { url },
         (13, Some(key_id)) => SessionKind::AwsS3 { key_id },
+        // Broadcast sessions have no host.
+        (3, host) => SessionKind::Xdmcp {
+            host: host.unwrap_or_default(),
+        },
         (14, distro) => SessionKind::Wsl {
             distro: distro.unwrap_or_else(|| "Default".into()),
         },

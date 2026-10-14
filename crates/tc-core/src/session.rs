@@ -98,6 +98,12 @@ pub enum SessionKind {
         #[serde(default = "default_ssh_port")]
         ssh_port: u16,
     },
+    /// XDMCP: an X server asks a display manager for a graphical login
+    /// (`host` empty = broadcast to any server).
+    Xdmcp {
+        #[serde(default)]
+        host: String,
+    },
     /// "Aws S3": browse buckets with an access key (the secret is asked
     /// for, or saved in the password store).
     AwsS3 { key_id: String },
@@ -148,6 +154,7 @@ impl SessionKind {
             Self::Mosh { .. } => "Mosh",
             Self::Wsl { .. } => "WSL",
             Self::AwsS3 { .. } => "Aws S3",
+            Self::Xdmcp { .. } => "Xdmcp",
         }
     }
 
@@ -168,6 +175,7 @@ impl SessionKind {
             Self::Mosh { .. } => 12,
             Self::Wsl { .. } => 14,
             Self::AwsS3 { .. } => 13,
+            Self::Xdmcp { .. } => 3,
         }
     }
 
@@ -222,6 +230,9 @@ impl SessionKind {
                 user: None,
                 ssh_port: 22,
             },
+            3 => Self::Xdmcp {
+                host: String::new(),
+            },
             13 => Self::AwsS3 {
                 key_id: String::new(),
             },
@@ -242,9 +253,11 @@ impl SessionKind {
             Self::Serial { .. } => &["3_9", "3_3"],
             Self::LocalShell { .. } => &[],
             Self::Rsh { .. } => &["3_2", "3_3"],
-            Self::File { .. } | Self::Browser { .. } | Self::Wsl { .. } | Self::AwsS3 { .. } => {
-                &["3_2"]
-            }
+            Self::File { .. }
+            | Self::Browser { .. }
+            | Self::Wsl { .. }
+            | Self::AwsS3 { .. }
+            | Self::Xdmcp { .. } => &["3_2"],
             Self::Mosh { .. } => &["3_2", "3_3", "3_4"],
         }
     }
@@ -291,6 +304,7 @@ impl SessionKind {
             (Self::Browser { url }, "3_2") => url.clone(),
             (Self::Wsl { distro }, "3_2") => distro.clone(),
             (Self::AwsS3 { key_id }, "3_2") => key_id.clone(),
+            (Self::Xdmcp { host }, "3_2") => host.clone(),
             _ => return None,
         })
     }
@@ -356,6 +370,7 @@ impl SessionKind {
             (Self::File { path }, "3_2") => *path = value.to_string(),
             (Self::Browser { url }, "3_2") => *url = value.to_string(),
             (Self::AwsS3 { key_id }, "3_2") => *key_id = value.to_string(),
+            (Self::Xdmcp { host }, "3_2") => *host = value.to_string(),
             (Self::Wsl { distro }, "3_2") => {
                 *distro = if value.is_empty() {
                     default_wsl_distro()
@@ -378,7 +393,9 @@ impl SessionKind {
             | Self::Ftp { host, .. }
             | Self::Sftp { host, .. } => Some(host.as_str()),
             Self::Serial { port_name, .. } => Some(port_name.as_str()),
-            Self::Rsh { host, .. } | Self::Mosh { host, .. } => Some(host.as_str()),
+            Self::Rsh { host, .. } | Self::Mosh { host, .. } | Self::Xdmcp { host } => {
+                Some(host.as_str())
+            }
             Self::File { path } => Some(path.as_str()),
             Self::Browser { url } => Some(url.as_str()),
             Self::LocalShell { .. } | Self::Wsl { .. } | Self::AwsS3 { .. } => None,

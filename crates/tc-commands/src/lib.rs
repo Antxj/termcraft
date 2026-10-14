@@ -810,7 +810,8 @@ fn session_host(s: &Session) -> Option<&str> {
         | K::Sftp { host, .. }
         | K::Ftp { host, .. }
         | K::Rsh { host, .. }
-        | K::Mosh { host, .. } => Some(host),
+        | K::Mosh { host, .. }
+        | K::Xdmcp { host } => Some(host),
         K::LocalShell { .. }
         | K::Serial { .. }
         | K::File { .. }

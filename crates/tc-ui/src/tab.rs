@@ -584,6 +584,7 @@ impl Tab {
             }
             Some(SessionKind::Wsl { distro }) => tab.open_wsl(&distro),
             Some(SessionKind::AwsS3 { key_id }) => tab.open_s3(key_id),
+            Some(SessionKind::Xdmcp { host }) => tab.open_xdmcp(&host),
             Some(SessionKind::File { path }) => {
                 let result = crate::external::open_path(&path);
                 tab.opened_externally("File", &path, result);
@@ -1270,6 +1271,45 @@ impl Tab {
             return None;
         }
         Some(secret)
+    }
+
+    /// XDMCP through an X server (3_5 "Specify server to connect to" with
+    /// 3_2, else broadcast; 3_3 sender IP, 3_12 screen, 3_14 / 3_15 size).
+    fn open_xdmcp(&mut self, host: &str) {
+        let opt = |id: &str| {
+            self.session
+                .as_ref()
+                .and_then(|s| s.options.get(id))
+                .cloned()
+        };
+        let query = opt("3_5").is_some_and(|v| schema::is_true(&v)) || !host.trim().is_empty();
+        let num = |id: &str, default: u32| {
+            opt(id)
+                .and_then(|v| v.trim().parse::<u32>().ok())
+                .unwrap_or(default)
+        };
+        let from = opt("3_3");
+        let request = crate::external::Xdmcp {
+            host: (query && !host.trim().is_empty()).then_some(host.trim()),
+            from: from.as_deref(),
+            display: u16::try_from(num("3_12", 1)).unwrap_or(1),
+            size: (num("3_14", 1024), num("3_15", 768)),
+        };
+        let shown = request.host.unwrap_or("any server (broadcast)").to_string();
+        let result = crate::external::launch_xdmcp(&request);
+        match result {
+            Ok(server) => {
+                self.message(&format!(
+                    "\x1b[32mXDMCP session to {shown} opened in {server} (display :{}).\x1b[0m",
+                    request.display
+                ));
+                self.status = Some("XDMCP opened externally".into());
+            }
+            Err(e) => {
+                self.message(&format!("\x1b[31mXDMCP: {e}\x1b[0m"));
+                self.status = Some("XDMCP unavailable".into());
+            }
+        }
     }
 
     /// "Aws S3": the secret access key is asked for (or taken from the

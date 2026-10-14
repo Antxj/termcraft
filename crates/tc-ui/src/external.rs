@@ -1,4 +1,5 @@
-//! Sessions that open in another program: RDP and VNC in the system's own
+//! Sessions that open in another program: RDP, VNC and XDMCP (an X
+//! server: VcXsrv / Xming on Windows, Xephyr elsewhere) in the system's own
 //! client (an embedded IronRDP / VNC view is tracked in docs/PARITY.md),
 //! "File" and "Browser" sessions with the default application.
 //!
@@ -113,6 +114,76 @@ pub fn launch_vnc(host: &str, port: u16) -> Result<String, String> {
     Err("no VNC viewer found in PATH (e.g. TigerVNC or TightVNC)".into())
 }
 
+/// An XDMCP session for an X server.
+#[derive(Debug, Clone, Copy)]
+pub struct Xdmcp<'a> {
+    /// `None` = broadcast ("Connect to any server").
+    pub host: Option<&'a str>,
+    /// "Sender IP" (the address the display manager answers to).
+    pub from: Option<&'a str>,
+    /// "Start XDMCP on screen number".
+    pub display: u16,
+    pub size: (u32, u32),
+}
+
+/// X server arguments; `nested` = Xephyr's `-screen WxH` (VcXsrv / Xming
+/// take `-screen 0 WxH`).
+pub fn xdmcp_args(x: &Xdmcp<'_>, nested: bool) -> Result<Vec<String>, String> {
+    let mut args = vec![format!(":{}", x.display)];
+    match x.host {
+        Some(h) => {
+            check_value("host", h)?;
+            args.extend(["-query".into(), h.to_string()]);
+        }
+        None => args.push("-broadcast".into()),
+    }
+    if let Some(from) = x.from.filter(|f| !f.trim().is_empty()) {
+        let from = from.trim();
+        from.parse::<std::net::IpAddr>()
+            .map_err(|_| format!("invalid sender IP {from:?}"))?;
+        args.extend(["-from".into(), from.to_string()]);
+    }
+    let (w, h) = (x.size.0.clamp(320, 16_384), x.size.1.clamp(200, 16_384));
+    if nested {
+        args.extend(["-screen".into(), format!("{w}x{h}")]);
+    } else {
+        args.extend(["-screen".into(), "0".into(), format!("{w}x{h}")]);
+    }
+    Ok(args)
+}
+
+/// Start an X server that runs the XDMCP session.
+pub fn launch_xdmcp(x: &Xdmcp<'_>) -> Result<String, String> {
+    if cfg!(windows) {
+        let pf = |var: &str, rel: &str| std::env::var_os(var).map(|p| PathBuf::from(p).join(rel));
+        let found = [
+            pf("ProgramFiles", r"VcXsrv\vcxsrv.exe"),
+            pf("ProgramFiles(x86)", r"Xming\Xming.exe"),
+            find_in_path("vcxsrv.exe"),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.is_file());
+        let Some(server) = found else {
+            return Err("no X server found (install VcXsrv or Xming)".into());
+        };
+        spawn(&server, &xdmcp_args(x, false)?)?;
+        return Ok(server
+            .file_name()
+            .map_or_else(|| "X server".into(), |n| n.to_string_lossy().into_owned()));
+    }
+    let candidates = [PathBuf::from("/opt/X11/bin/Xephyr")];
+    let found = candidates
+        .into_iter()
+        .find(|p| p.is_file())
+        .or_else(|| find_in_path("Xephyr"));
+    let Some(server) = found else {
+        return Err("Xephyr was not found (install it, e.g. the xserver-xephyr package)".into());
+    };
+    spawn(&server, &xdmcp_args(x, true)?)?;
+    Ok("Xephyr".into())
+}
+
 /// The system "open" command: Explorer, `open` or `xdg-open`. They take the
 /// target as one argument, without a shell, so nothing in it is executed.
 fn opener() -> &'static str {
@@ -204,6 +275,60 @@ pub fn open_url(url: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn xdmcp_arguments() {
+        let q = Xdmcp {
+            host: Some("dm.lan"),
+            from: Some("192.168.1.5"),
+            display: 1,
+            size: (1024, 768),
+        };
+        assert_eq!(
+            xdmcp_args(&q, false).unwrap(),
+            [
+                ":1",
+                "-query",
+                "dm.lan",
+                "-from",
+                "192.168.1.5",
+                "-screen",
+                "0",
+                "1024x768"
+            ]
+        );
+        let any = Xdmcp {
+            host: None,
+            from: None,
+            display: 2,
+            size: (10, 10),
+        };
+        assert_eq!(
+            xdmcp_args(&any, true).unwrap(),
+            [":2", "-broadcast", "-screen", "320x200"]
+        );
+        assert!(
+            xdmcp_args(
+                &Xdmcp {
+                    host: Some("-ac"),
+                    ..q
+                },
+                true
+            )
+            .is_err(),
+            "no option injection"
+        );
+        assert!(
+            xdmcp_args(
+                &Xdmcp {
+                    from: Some("x; rm"),
+                    ..q
+                },
+                true
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn values_are_checked() {
