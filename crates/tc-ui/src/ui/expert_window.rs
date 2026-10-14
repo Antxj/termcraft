@@ -11,10 +11,13 @@ use tc_core::settings::{
 /// "Terminal features", in reference order; `None` = not available yet.
 fn feature(e: &mut ExpertTerminal, index: usize) -> Option<FeatureRef<'_>> {
     Some(match index {
+        0 => FeatureRef::Flag(&mut e.scrollbar),
         1 => FeatureRef::Flag(&mut e.implicit_cr_in_lf),
         2 => FeatureRef::Flag(&mut e.implicit_lf_in_cr),
         3 => FeatureRef::Flag(&mut e.flush_logs),
         5 => FeatureRef::Flag(&mut e.mouse_reporting),
+        12 => FeatureRef::Force(&mut e.local_echo, true),
+        13 => FeatureRef::Force(&mut e.local_echo, false),
         16 => FeatureRef::Force(&mut e.app_cursor, true),
         17 => FeatureRef::Force(&mut e.app_cursor, false),
         22 => FeatureRef::Flag(&mut e.bracketed_paste),

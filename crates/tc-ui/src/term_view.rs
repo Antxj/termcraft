@@ -55,7 +55,17 @@ fn show_inner(
     let (cell_w, cell_h) = ui.fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
 
     let available = ui.available_size();
-    let (rect, response) = ui.allocate_exact_size(available, Sense::click_and_drag());
+    let (area, response) = ui.allocate_exact_size(available, Sense::click_and_drag());
+    // "Display scrollbar": a strip on the right, outside the cell grid.
+    let (rect, bar) = if opts.expert.scrollbar && area.width() > 4.0 * SCROLLBAR_WIDTH {
+        let split = area.max.x - SCROLLBAR_WIDTH;
+        (
+            Rect::from_min_max(area.min, pos2(split, area.max.y)),
+            Some(Rect::from_min_max(pos2(split, area.min.y), area.max)),
+        )
+    } else {
+        (area, None)
+    };
     let cols = ((rect.width() / cell_w).floor() as u16).max(2);
     let rows = ((rect.height() / cell_h).floor() as u16).max(1);
     tab.resize(rows, cols);
@@ -155,6 +165,9 @@ fn show_inner(
         vec2(cell_w, cell_h),
         response.has_focus(),
     );
+    if let Some(bar) = bar {
+        scrollbar(ui, tab, bar, rows);
+    }
     // "Visual" bell: a short flash over the terminal.
     if let Some(until) = tab.bell_flash {
         let now = std::time::Instant::now();
@@ -171,6 +184,42 @@ fn show_inner(
         }
     }
     out
+}
+
+const SCROLLBAR_WIDTH: f32 = 10.0;
+
+/// The history scrollbar: the thumb shows the visible rows; dragging it or
+/// clicking the track scrolls.
+fn scrollbar(ui: &egui::Ui, tab: &mut Tab, bar: Rect, rows: u16) {
+    let history = tab.term.history_len();
+    let visible = usize::from(rows);
+    let total = (history + visible).max(1) as f32;
+    let painter = ui.painter_at(bar);
+    let visuals = ui.visuals();
+    painter.rect_filled(bar, 0.0, visuals.extreme_bg_color);
+    if history == 0 {
+        return;
+    }
+    let thumb_h = (bar.height() * visible as f32 / total).max(16.0);
+    let travel = (bar.height() - thumb_h).max(1.0);
+    // Offset 0 = live view (thumb at the bottom).
+    let top = |offset: usize| bar.top() + travel * (1.0 - offset as f32 / history as f32);
+    let response = ui.interact(bar, ui.id().with("scrollbar"), Sense::click_and_drag());
+    if let Some(pos) = response.interact_pointer_pos()
+        && (response.dragged() || response.clicked())
+    {
+        let ratio = ((pos.y - bar.top() - thumb_h / 2.0) / travel).clamp(0.0, 1.0);
+        let offset = ((1.0 - ratio) * history as f32).round() as usize;
+        tab.term.set_scrollback(offset);
+    }
+    let y = top(tab.term.scrollback());
+    let thumb = Rect::from_min_size(pos2(bar.left() + 2.0, y), vec2(bar.width() - 4.0, thumb_h));
+    let color = if response.hovered() || response.dragged() {
+        visuals.widgets.hovered.bg_fill
+    } else {
+        visuals.widgets.inactive.bg_fill
+    };
+    painter.rect_filled(thumb, 3.0, color);
 }
 
 /// The expert settings as emulator options.

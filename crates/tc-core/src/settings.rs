@@ -297,6 +297,10 @@ pub struct TerminalSettings {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ExpertTerminal {
+    /// "Display scrollbar".
+    pub scrollbar: bool,
+    /// "Force local echo on / off" (`None` = the remote side echoes).
+    pub local_echo: Option<bool>,
     /// "Implicit CR in every LF".
     pub implicit_cr_in_lf: bool,
     /// "Implicit LF in every CR".
@@ -330,6 +334,8 @@ pub struct ExpertTerminal {
 impl Default for ExpertTerminal {
     fn default() -> Self {
         Self {
+            scrollbar: true,
+            local_echo: None,
             implicit_cr_in_lf: false,
             implicit_lf_in_cr: false,
             flush_logs: false,

@@ -226,6 +226,15 @@ impl Terminal {
         self.parser.screen().scrollback()
     }
 
+    /// Lines of history above the screen (for a scrollbar).
+    pub fn history_len(&mut self) -> usize {
+        let current = self.scrollback();
+        self.parser.screen_mut().set_scrollback(usize::MAX);
+        let len = self.scrollback();
+        self.parser.screen_mut().set_scrollback(current);
+        len
+    }
+
     pub fn cursor(&self) -> Option<(u16, u16)> {
         let screen = self.parser.screen();
         (!screen.hide_cursor() && screen.scrollback() == 0).then(|| screen.cursor_position())
@@ -478,15 +487,6 @@ impl Terminal {
         mouse::encode(ev, self.mouse_mode(), encoding)
     }
 
-    /// How many history lines exist above the live screen.
-    fn history_len(&mut self) -> usize {
-        let saved = self.scrollback();
-        self.parser.screen_mut().set_scrollback(usize::MAX);
-        let len = self.scrollback();
-        self.parser.screen_mut().set_scrollback(saved);
-        len
-    }
-
     /// A line's text with the starting column of each character.
     fn line_text(&mut self, line: i64) -> Option<(String, Vec<u16>)> {
         let (cells, _) = self.line_cells(line)?;
@@ -621,6 +621,17 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_length() {
+        let mut t = Terminal::new(2, 10, 100);
+        assert_eq!(t.history_len(), 0);
+        t.feed(b"1\r\n2\r\n3\r\n4\r\n5");
+        assert_eq!(t.history_len(), 3);
+        t.set_scrollback(1);
+        assert_eq!(t.history_len(), 3);
+        assert_eq!(t.scrollback(), 1, "the view does not move");
+    }
 
     #[test]
     fn expert_options() {

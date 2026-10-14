@@ -1811,6 +1811,9 @@ impl Tab {
         if let Some(hook) = &mut self.folder_hook {
             hook.on_user_input();
         }
+        if self.expert.local_echo == Some(true) {
+            self.local_echo(bytes);
+        }
         let bytes: &[u8] = &self.charset.encode(bytes);
         match &mut self.backend {
             Backend::None => {}
@@ -1822,6 +1825,27 @@ impl Tab {
                 let _ = stream.write(bytes);
             }
             Backend::Connecting(_) | Backend::Ftp(_) => {}
+        }
+    }
+
+    /// "Force local echo on": show what is typed without waiting for the
+    /// remote side (control keys and escape sequences are not shown).
+    fn local_echo(&mut self, bytes: &[u8]) {
+        if bytes.first() == Some(&0x1b) {
+            return;
+        }
+        let mut shown = Vec::with_capacity(bytes.len());
+        for &b in bytes {
+            match b {
+                b'\r' => shown.extend_from_slice(b"\r\n"),
+                0x7f | 0x08 => shown.extend_from_slice(b"\x08 \x08"),
+                b'\t' => shown.push(b),
+                b if b < 0x20 => {}
+                b => shown.push(b),
+            }
+        }
+        if !shown.is_empty() {
+            self.term.feed(&shown);
         }
     }
 
