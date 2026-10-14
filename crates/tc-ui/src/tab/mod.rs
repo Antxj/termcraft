@@ -275,6 +275,9 @@ pub struct Tab {
     /// "Expert settings" (reconnection keys, log flushing), from the
     /// configuration.
     pub expert: ExpertTerminal,
+    /// 4_38 "Execute macro at session start": typed once the session shows
+    /// its first output.
+    pub start_macro: Option<String>,
     /// "Visual" bell: flash the terminal until then.
     pub bell_flash: Option<Instant>,
     /// Bookmark 5_1 "Maximized/detached/fullscreen tab": open maximized
@@ -398,6 +401,7 @@ impl Tab {
             wants_fullscreen: false,
             lock_title: true,
             expert: ExpertTerminal::default(),
+            start_macro: None,
             bell_flash: None,
             next_paste: Instant::now(),
             log: None,

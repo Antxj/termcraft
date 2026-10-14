@@ -159,7 +159,7 @@ refined against it.
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
 | P1 | [x] | MultiExec: typing and pasting go to the selected terminals (per-terminal checkboxes; Activate all / none / Invert selection), "Synchronize mouse wheel scrolling" | `tc-ui` |
-| P1 | [x] | Macros: record keystrokes (recording bar + STOP), name, replay on any tab from the Macros menu / sidebar, rename / delete; macro_* commands | `tc-core` + `tc-ui` |
+| P1 | [x] | Macros: record keystrokes (recording bar + STOP), name, replay on any tab from the Macros menu / sidebar, rename / delete; macro_* commands; session option "Execute macro at session start" (4_38, a list of the saved macros) types it once the session shows its first output. "Custom macro definition" (4_39) pending: its stored form is not documented | `tc-core` + `tc-ui` |
 | P0 | [x] | CLI exposing every command (`termcraft-cli`) | `tc-cli` |
 | P0 | [x] | MCP server (agents drive the app): every catalog command is a tool; with the window open, `termcraft-cli mcp` and `termcraft-cli run` send commands to it (tabs work, and the window's own saves never undo them), otherwise they work on the files | `tc-mcp` + `tc-cli` |
 | P1 | [x] | Loopback JSON control channel to the running window (127.0.0.1, random port, per-run token in a user-only file, bounded requests); `termcraft-cli gui <command>` | `tc-commands` + `tc-ui` |

@@ -298,6 +298,13 @@ impl TermCraftApp {
                 .collect();
             editor.syntaxes =
                 crate::ui::syntax_window::choices(&self.core.settings.terminal.custom_syntaxes);
+            editor.macros = self
+                .core
+                .macros
+                .macros
+                .iter()
+                .map(|m| m.name.clone())
+                .collect();
             if !editor.show(ctx, out) {
                 self.editor = None;
             }

@@ -28,8 +28,8 @@ impl Host for Core {
     fn tab_open(&mut self, session: Option<Session>) -> Result<u64, CommandError> {
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        let env = self.tab_env();
-        self.tabs.push(Tab::open(id, session, &env));
+        let tab = self.new_tab(id, session);
+        self.tabs.push(tab);
         self.active = Some(id);
         Ok(id)
     }

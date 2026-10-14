@@ -72,6 +72,8 @@ pub struct SessionEditor {
     pub credentials: Vec<String>,
     /// "Syntax highlighting" choices, built-in and user (set by the app).
     pub syntaxes: Vec<(usize, String)>,
+    /// Saved macro names, for "Execute macro at session start".
+    pub macros: Vec<String>,
     manage_credentials: bool,
 }
 
@@ -128,6 +130,7 @@ impl SessionEditor {
             jump_hosts: None,
             credentials: Vec::new(),
             syntaxes: Vec::new(),
+            macros: Vec::new(),
             manage_credentials: false,
         };
         editor.load_values();
@@ -575,6 +578,27 @@ impl SessionEditor {
                         std::iter::once("Default").chain(installed.iter().map(String::as_str))
                     {
                         if ui.selectable_label(value == name, name).clicked() {
+                            *value = name.to_string();
+                        }
+                    }
+                });
+            return;
+        }
+        // "Execute macro at session start": one of the saved macros.
+        if p.id == "4_38" {
+            let none = crate::app::NO_MACRO;
+            let shown = if value.trim().is_empty() {
+                none.to_string()
+            } else {
+                value.clone()
+            };
+            egui::ComboBox::from_id_salt(("choice", p.id))
+                .selected_text(shown.as_str())
+                .width(170.0)
+                .show_ui(ui, |ui| {
+                    for name in std::iter::once(none).chain(self.macros.iter().map(String::as_str))
+                    {
+                        if ui.selectable_label(shown == name, name).clicked() {
                             *value = name.to_string();
                         }
                     }

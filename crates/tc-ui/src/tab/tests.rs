@@ -358,15 +358,15 @@ fn folder_tracking_hook_reports_pwd_in_bash() {
     assert!(stdout.ends_with("/tmp\x07"), "{stdout:?}");
 }
 
-/// "Force local line editing on": the server gets whole, edited lines.
-#[test]
-fn local_line_editing_sends_edited_lines() {
-    use std::io::Read;
+/// A Telnet-like server: sends `banner`, then reports what it receives.
+fn recording_server(banner: &'static [u8]) -> (u16, crossbeam_channel::Receiver<Vec<u8>>) {
+    use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let (tx, rx) = crossbeam_channel::unbounded::<Vec<u8>>();
     std::thread::spawn(move || {
         let (mut s, _) = listener.accept().unwrap();
+        let _ = s.write_all(banner);
         let mut buf = [0u8; 256];
         while let Ok(n) = s.read(&mut buf) {
             if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
@@ -374,6 +374,28 @@ fn local_line_editing_sends_edited_lines() {
             }
         }
     });
+    (port, rx)
+}
+
+/// Pump `tab` until the server got `want` (or panic); everything it got.
+fn received(tab: &mut Tab, rx: &crossbeam_channel::Receiver<Vec<u8>>, want: &[u8]) -> Vec<u8> {
+    let mut got = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let done = |got: &[u8]| got.windows(want.len()).any(|w| w == want);
+    while !done(&got) && Instant::now() < deadline {
+        tab.pump();
+        if let Ok(chunk) = rx.recv_timeout(Duration::from_millis(50)) {
+            got.extend(chunk);
+        }
+    }
+    assert!(done(&got), "wanted {want:?}, got {got:?}");
+    got
+}
+
+/// "Force local line editing on": the server gets whole, edited lines.
+#[test]
+fn local_line_editing_sends_edited_lines() {
+    let (port, rx) = recording_server(b"");
     let dir = tempfile::tempdir().unwrap();
     let env = test_env(dir.path());
     let session = Session::new(
@@ -388,17 +410,8 @@ fn local_line_editing_sends_edited_lines() {
     pump_until(&mut tab, |t| matches!(t.backend, Backend::Stream(_)));
     tab.send(b"lx");
     tab.send(b"\x7fs -a\r");
-    let mut got = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let done = |got: &[u8]| got.windows(6).any(|w| w == b"ls -a\r");
-    while !done(&got) && Instant::now() < deadline {
-        tab.pump();
-        if let Ok(chunk) = rx.recv_timeout(Duration::from_millis(50)) {
-            got.extend(chunk);
-        }
-    }
     // Telnet sends CR as CR NUL (RFC 854); option answers may come first.
-    assert!(done(&got), "{got:?}");
+    let got = received(&mut tab, &rx, b"ls -a\r");
     assert!(!got.windows(2).any(|w| w == b"lx"), "nothing before Enter");
     assert!(tab.term.contents().contains("ls -a"), "echoed locally");
 }
@@ -466,4 +479,22 @@ fn unusable_proxy_refuses_instead_of_connecting_directly() {
     let mut tab = Tab::open(1, Some(session), &test_env(dir.path()));
     pump_until(&mut tab, |t| t.term.contents().contains("Not connected"));
     assert!(target.accept().is_err(), "no direct connection");
+}
+
+/// 4_38 "Execute macro at session start": typed once the server talks.
+#[test]
+fn start_macro_runs_after_the_first_output() {
+    let (port, rx) = recording_server(b"login: ");
+    let dir = tempfile::tempdir().unwrap();
+    let session = Session::new(
+        "t",
+        SessionKind::Telnet {
+            host: "127.0.0.1".into(),
+            port,
+        },
+    );
+    let mut tab = Tab::open(1, Some(session), &test_env(dir.path()));
+    tab.start_macro = Some("admin\r".into());
+    received(&mut tab, &rx, b"admin\r");
+    assert!(tab.start_macro.is_none(), "only once");
 }

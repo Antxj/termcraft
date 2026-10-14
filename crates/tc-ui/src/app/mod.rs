@@ -19,6 +19,9 @@ use tc_core::{Paths, Session, SessionId, SessionStore, Settings, Tunnel, TunnelI
 
 /// Everything the command registry can act on. Kept separate from widget
 /// state so `execute(&mut core, cmd)` borrows cleanly.
+/// 4_38 value for "no macro".
+pub const NO_MACRO: &str = "<none>";
+
 struct Core {
     paths: Paths,
     store: SessionStore,
@@ -36,6 +39,20 @@ struct Core {
 }
 
 impl Core {
+    /// A new tab for `session`, with its "Execute macro at session start".
+    fn new_tab(&self, id: u64, session: Option<Session>) -> Tab {
+        let start_macro = session
+            .as_ref()
+            .and_then(|s| s.options.get("4_38"))
+            .map(|name| name.trim())
+            .filter(|name| !name.is_empty() && *name != NO_MACRO)
+            .and_then(|name| self.macros.macros.iter().find(|m| m.name == name))
+            .map(|m| m.keys.clone());
+        let mut tab = Tab::open(id, session, &self.tab_env());
+        tab.start_macro = start_macro;
+        tab
+    }
+
     /// What a new tab gets from the settings.
     fn tab_env(&self) -> TabEnv {
         TabEnv {
@@ -772,12 +789,12 @@ impl TermCraftApp {
             match action {
                 E::Close => self.run(Command::TabClose { tab: Some(id) }),
                 E::Restart => {
-                    let env = self.core.tab_env();
-                    if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
-                        let session = tab.session.clone();
-                        let title = tab.title.clone();
-                        *tab = Tab::open(id, session, &env);
+                    if let Some(i) = self.core.tabs.iter().position(|t| t.id == id) {
+                        let old = &self.core.tabs[i];
+                        let (session, title) = (old.session.clone(), old.title.clone());
+                        let mut tab = self.core.new_tab(id, session);
                         tab.title = title;
+                        self.core.tabs[i] = tab;
                     }
                 }
                 E::Save => {

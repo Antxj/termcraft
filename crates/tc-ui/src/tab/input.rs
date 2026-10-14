@@ -18,7 +18,11 @@ impl Tab {
             self.log = None;
             self.message(&format!("\x1b[33mlogging to {path} stopped: {e}\x1b[0m"));
         }
-        self.term.feed(bytes)
+        let replies = self.term.feed(bytes);
+        if let Some(keys) = self.start_macro.take() {
+            self.send(keys.as_bytes());
+        }
+        replies
     }
 
     /// Paste text: line endings as Enter, bracketed when the program asks,
