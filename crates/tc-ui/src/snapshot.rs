@@ -9,6 +9,8 @@
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
 //! - `TERMCRAFT_SNAPSHOT_LOCAL_TABS=3` — also open N local terminals
 //! - `TERMCRAFT_SNAPSHOT_WINDOW=config|passwords|credentials|master|master_settings|hotkeys|keygen|known_hosts|jump_hosts|new_session:<type>` — open that window
+//! - `TERMCRAFT_SNAPSHOT_TYPE=text` — typed (with Enter) into the active
+//!   tab two seconds after start
 //! - `TERMCRAFT_SNAPSHOT_HOSTKEY=1` — leave host key questions open (to
 //!   capture the host key dialog)
 //! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start
@@ -32,6 +34,8 @@ pub struct Snapshot {
     out: PathBuf,
     session: Option<String>,
     password: Option<String>,
+    /// Typed into the active tab once it had time to start.
+    typed: Option<String>,
     delay: Duration,
     pub tunnels: bool,
     /// Window to open on the first frame (taken once).
@@ -51,6 +55,7 @@ impl Snapshot {
             out,
             session: std::env::var("TERMCRAFT_SNAPSHOT_SESSION").ok(),
             password: std::env::var("TERMCRAFT_SNAPSHOT_PASSWORD").ok(),
+            typed: std::env::var("TERMCRAFT_SNAPSHOT_TYPE").ok(),
             delay: Duration::from_millis(delay),
             tunnels: std::env::var_os("TERMCRAFT_SNAPSHOT_TUNNELS").is_some(),
             window: std::env::var("TERMCRAFT_SNAPSHOT_WINDOW").ok(),
@@ -95,6 +100,11 @@ impl Snapshot {
                         && let Some(pw) = self.password.take()
                     {
                         tab.send(format!("{pw}\r").as_bytes());
+                    }
+                    if self.started.elapsed() >= Duration::from_secs(2)
+                        && let Some(text) = self.typed.take()
+                    {
+                        tab.send(format!("{text}\r").as_bytes());
                     }
                     // Keep the save-password question out of the picture.
                     tab.offers.clear();

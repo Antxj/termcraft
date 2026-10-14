@@ -89,6 +89,9 @@ fn show_inner(
     });
 
     tab.term.word_delimiters.clone_from(&opts.word_delimiters);
+    tab.term.syntax = tab
+        .syntax
+        .unwrap_or_else(|| tc_term::Syntax::from_index(opts.syntax_highlighting));
     let cell_at = |pos: Pos2| -> (u16, u16) {
         let row = ((pos.y - rect.top()) / cell_h)
             .floor()
@@ -289,11 +292,20 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
     let mut run = String::new();
     for row in 0..rows {
         let y = rect.top() + f32::from(row) * cell.y;
+        let highlight = tab.term.highlight_row(row);
+        let fg_at = |col: u16, c: &tc_term::CellView| {
+            highlight
+                .get(usize::from(col))
+                .copied()
+                .flatten()
+                .unwrap_or(c.fg)
+        };
         let mut col = 0;
         while col < cols {
             let Some(first) = tab.term.cell(row, col) else {
                 break;
             };
+            let first_fg = fg_at(col, &first);
             // Collect a run of cells sharing the same style.
             let start = col;
             let selected = tab.term.is_selected(row, col);
@@ -302,7 +314,7 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
                 let Some(c) = tab.term.cell(row, col) else {
                     break;
                 };
-                if c.fg != first.fg
+                if fg_at(col, &c) != first_fg
                     || c.bg != first.bg
                     || c.bold != first.bold
                     || c.underline != first.underline
@@ -327,7 +339,7 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
                 let fg = if selected {
                     SELECTION_FG
                 } else {
-                    color(first.fg)
+                    color(first_fg)
                 };
                 painter.text(pos2(x, y), egui::Align2::LEFT_TOP, &run, font.clone(), fg);
                 if first.underline {

@@ -5,6 +5,7 @@
 //! `alacritty_terminal` later without touching renderers.
 
 pub mod charset;
+pub mod highlight;
 mod input;
 mod mouse;
 mod osc7;
@@ -13,6 +14,7 @@ mod selection;
 mod strip;
 
 pub use charset::TermCharset;
+pub use highlight::Syntax;
 pub use input::{Key, Modifiers, encode_key};
 pub use mouse::{MouseAction, MouseButton, MouseEvent};
 pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};
@@ -28,6 +30,8 @@ pub struct Terminal {
     selection: Option<Selection>,
     /// Characters that end a word on double click (empty = the default set).
     pub word_delimiters: String,
+    /// Syntax highlighting of default-colored output.
+    pub syntax: Syntax,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +44,8 @@ pub struct CellView<'a> {
     pub underline: bool,
     /// Second half of a double-width glyph; renderers skip it.
     pub wide_continuation: bool,
+    /// The program left the default colors (syntax highlighting may apply).
+    pub default_colors: bool,
 }
 
 impl Terminal {
@@ -51,6 +57,7 @@ impl Terminal {
             theme: Theme::default(),
             selection: None,
             word_delimiters: String::new(),
+            syntax: Syntax::None,
         }
     }
 
@@ -141,7 +148,52 @@ impl Terminal {
             italic: cell.italic(),
             underline: cell.underline(),
             wide_continuation: cell.is_wide_continuation(),
+            default_colors: cell.fgcolor() == vt100::Color::Default
+                && cell.bgcolor() == vt100::Color::Default
+                && !cell.inverse(),
         })
+    }
+
+    /// Syntax highlighting colors of a view row, one per column (`None` =
+    /// keep the cell's color). Empty when nothing is highlighted, and on
+    /// the alternate screen (full-screen programs draw their own colors).
+    pub fn highlight_row(&self, row: u16) -> Vec<Option<Rgb>> {
+        if self.syntax == Syntax::None || self.alternate_screen() {
+            return Vec::new();
+        }
+        let screen = self.parser.screen();
+        let (_, cols) = self.size();
+        let mut chars = Vec::with_capacity(usize::from(cols));
+        let mut plain = Vec::with_capacity(usize::from(cols));
+        for col in 0..cols {
+            let Some(cell) = screen.cell(row, col) else {
+                break;
+            };
+            chars.push(cell.contents().chars().next().unwrap_or(' '));
+            plain.push(
+                cell.fgcolor() == vt100::Color::Default
+                    && cell.bgcolor() == vt100::Color::Default
+                    && !cell.inverse(),
+            );
+        }
+        if chars.iter().all(|c| c.is_whitespace()) {
+            return Vec::new();
+        }
+        let spans = highlight::spans(self.syntax, &chars);
+        if spans.is_empty() {
+            return Vec::new();
+        }
+        let t = &self.theme;
+        let mut out = vec![None; chars.len()];
+        for span in spans {
+            let rgb = t.resolve(vt100::Color::Idx(span.kind.ansi()), t.foreground, false);
+            for (col, slot) in out.iter_mut().enumerate().take(span.end).skip(span.start) {
+                if plain[col] {
+                    *slot = Some(rgb);
+                }
+            }
+        }
+        out
     }
 
     /// Absolute line of a view row (0 = top of the live screen).
@@ -438,6 +490,28 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn highlighting_only_touches_default_colored_cells() {
+        let mut t = Terminal::new(3, 60, 0);
+        t.feed(b"warning: retry \x1b[34merror\x1b[0m failed");
+        assert!(t.highlight_row(0).is_empty(), "off by default");
+        t.syntax = Syntax::Standard;
+        let row = t.highlight_row(0);
+        let yellow = t
+            .theme
+            .resolve(vt100::Color::Idx(3), t.theme.foreground, false);
+        let red = t
+            .theme
+            .resolve(vt100::Color::Idx(1), t.theme.foreground, false);
+        assert_eq!(row[0], Some(yellow), "warning");
+        assert_eq!(row[7], None, "the colon");
+        assert_eq!(row[9], Some(yellow), "retry");
+        assert_eq!(row[15], None, "the program colored this error itself");
+        assert_eq!(row[21], Some(red), "failed");
+        t.feed(b"\x1b[?1049h warning");
+        assert!(t.highlight_row(0).is_empty(), "alternate screen");
+    }
 
     #[test]
     fn prints_and_colors() {

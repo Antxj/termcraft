@@ -62,7 +62,7 @@ refined against it.
 | P1 | [x] | Exit confirmation ("Close prompt") from menu, Exit button and window close | `tc-ui` |
 | P2 | [x] | Column (block) selection (Ctrl+Alt drag) | `tc-term` |
 | P2 | [~] | Word delimiters for double-click (setting; Configuration field pending) | `tc-term` + `tc-core` |
-| P2 | [ ] | Syntax highlighting of output (keywords, errors, IPs…) | `tc-term` |
+| P2 | [~] | Syntax highlighting of output (4_36 per session, Configuration › Terminal globally): None / Standard keywords (OK, warning, error…, IPv4) / Unix shell / Cisco / Perl / SQL, only on cells the program left uncolored, not on the alternate screen. The "Customize" dialog (8 user syntaxes, TFORMSYNTAX) is pending | `tc-term` |
 | P2 | [~] | Activity on background tabs (accent dot); silence alerts pending | `tc-ui` |
 | P2 | [x] | Save / print terminal text (history included; printing through Notepad on Windows, `lp` elsewhere) | `tc-ui` |
 | P2 | [ ] | Separator line on Enter | `tc-term` |

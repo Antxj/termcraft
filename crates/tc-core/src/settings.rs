@@ -283,6 +283,9 @@ pub struct TerminalSettings {
     pub log_dir: String,
     /// "Use Windows PATH" in the local Bash / Zsh (Git for Windows, MSYS2).
     pub use_windows_path: bool,
+    /// "Syntax highlighting", as the session 4_36 index (1 = standard
+    /// keywords); sessions may choose their own.
+    pub syntax_highlighting: usize,
 }
 
 /// "Local terminal environment" (Configuration › Terminal) and the Shell
@@ -356,6 +359,7 @@ impl Default for TerminalSettings {
             word_delimiters: String::new(),
             log_dir: String::new(),
             use_windows_path: true,
+            syntax_highlighting: 1,
         }
     }
 }

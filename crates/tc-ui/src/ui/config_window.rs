@@ -161,6 +161,31 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
             ui.add(egui::TextEdit::singleline(&mut t.log_dir).desired_width(260.0));
         }
     });
+    ui.horizontal(|ui| {
+        // Same choices as the session "Syntax highlighting" (4_36).
+        let choices = tc_core::schema::terminal_params()
+            .iter()
+            .find(|p| p.id == "4_36")
+            .and_then(|p| match p.widget {
+                tc_core::schema::Widget::Choice(items) => Some(items),
+                _ => None,
+            })
+            .unwrap_or(&[]);
+        ui.label("Syntax highlighting:");
+        egui::ComboBox::from_id_salt("cfg-syntax")
+            .selected_text(choices.get(t.syntax_highlighting).copied().unwrap_or(""))
+            .width(313.0)
+            .show_ui(ui, |ui| {
+                for (i, label) in choices.iter().enumerate() {
+                    ui.selectable_value(&mut t.syntax_highlighting, i, *label);
+                }
+            })
+            .response
+            .on_hover_text(
+                "Colors keywords in terminal output that the program did not color itself. \
+                 Sessions can choose their own in \"Terminal settings\".",
+            );
+    });
     ui.checkbox(&mut t.use_windows_path, "Use Windows PATH")
         .on_hover_text("Local Bash / Zsh terminals also find the Windows programs");
     ui.weak(

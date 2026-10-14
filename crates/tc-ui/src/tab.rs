@@ -177,6 +177,14 @@ fn paste_delay(session: Option<&Session>) -> std::time::Duration {
     std::time::Duration::from_millis(ms)
 }
 
+/// 4_36 "Syntax highlighting" of the session, when it sets one.
+fn session_syntax(session: Option<&Session>) -> Option<tc_term::Syntax> {
+    session
+        .and_then(|s| s.options.get("4_36"))
+        .and_then(|v| v.parse::<usize>().ok())
+        .map(tc_term::Syntax::from_index)
+}
+
 /// 4_6 "Term charset" (default UTF-8).
 fn term_charset(session: Option<&Session>) -> tc_term::TermCharset {
     let index = session
@@ -334,6 +342,8 @@ pub struct Tab {
     paste_queue: std::collections::VecDeque<Vec<u8>>,
     paste_delay: std::time::Duration,
     next_paste: Instant,
+    /// 4_36 "Syntax highlighting" (`None` = the global setting).
+    pub syntax: Option<tc_term::Syntax>,
     /// Telnet / RDP / VNC waiting for its tunnel through the jump hosts.
     via_gateway: Option<ViaGateway>,
     /// That tunnel, kept open as long as the tab.
@@ -424,6 +434,7 @@ impl Tab {
             charset: tc_term::TermCharset::default(),
             via_gateway: None,
             gateway_tunnel: None,
+            syntax: None,
             next_paste: Instant::now(),
             log: None,
             find: None,
@@ -448,6 +459,7 @@ impl Tab {
         tab.term_type = settings.term_type;
         tab.paste_delay = paste_delay(tab.session.as_ref());
         tab.charset = term_charset(tab.session.as_ref());
+        tab.syntax = session_syntax(tab.session.as_ref());
         tab.color = tab
             .session
             .as_ref()
