@@ -6,6 +6,7 @@ mod credentials;
 mod external;
 mod folder_hook;
 mod mosh;
+mod remote_edit;
 mod skin;
 mod snapshot;
 mod tab;

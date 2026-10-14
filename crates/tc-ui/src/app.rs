@@ -736,6 +736,7 @@ impl TermCraftApp {
         crate::ui::tunnels_window::prompts(ctx, &mut self.core.running);
         self.save_password_dialog(ctx);
         self.paste_confirm_dialog(ctx);
+        self.upload_edited_dialog(ctx);
         self.keygen.show(ctx);
         if self.show_hotkeys
             && crate::ui::hotkeys_window::show(
@@ -924,6 +925,48 @@ impl TermCraftApp {
             if let Err(e) = self.core.save_settings() {
                 self.status = format!("could not save settings: {e}");
             }
+        }
+    }
+
+    /// An edited remote file changed locally: upload it?
+    fn upload_edited_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self
+            .core
+            .tabs
+            .iter_mut()
+            .find(|t| !t.upload_prompts.is_empty())
+        else {
+            return;
+        };
+        let changed = tab.upload_prompts.front().cloned().expect("checked");
+        let mut answer = None;
+        egui::Window::new("TermCraft")
+            .id(egui::Id::new(("upload-edited", tab.id)))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(ui::icon::UPLOAD_SIMPLE).size(36.0));
+                    ui.vertical(|ui| {
+                        ui.strong("The file has been modified.");
+                        ui.monospace(&changed.remote);
+                        ui.label("Do you want to upload it to the server?");
+                    });
+                });
+                ui.horizontal(|ui| {
+                    if ui.button("Yes").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("No").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        let Some(yes) = answer else { return };
+        tab.upload_prompts.pop_front();
+        if yes {
+            tab.upload_edited(&changed);
         }
     }
 

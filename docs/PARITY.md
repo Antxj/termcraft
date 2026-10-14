@@ -100,7 +100,7 @@ refined against it.
 | P0 | [~] | Upload (button or drop files from the OS) / download (save dialog); dragging files *out* to the OS pending | `tc-ssh` + `tc-ui` |
 | P1 | [x] | "Follow terminal folder": follows OSC 7 reports. On login, `$SHELL` is read on a separate exec channel; for bash / zsh the prompt hook is typed once the prompt settles and its echo is hidden. Other shells: one-click button | `tc-ssh` + `tc-term` + `tc-ui` |
 | P1 | [x] | Transfers run in parallel with progress bars | `tc-ssh` |
-| P1 | [ ] | Open remote file in local editor, upload on save | `tc-sftp` |
+| P1 | [x] | Open remote file in a local text editor (double click or "Open with default text editor") or its default program; a change asks "upload it to the server?"; private temporary copies removed with the tab | `tc-ui` |
 | P2 | [ ] | SCP mode (fast / legacy) when SFTP is unavailable | `tc-sftp` |
 | P2 | [~] | Rename / new folder / new file / delete (with confirmation), copy path (to clipboard or terminal), hidden files toggle; chmod pending | `tc-ui` |
 | P1 | [x] | "Remote monitoring" bar below SSH terminals (CPU, RAM, network, disk, uptime, users; one exec channel reading /proc every 2 s; Linux servers), SSH-browser button and Configuration › SSH › Remote-monitoring | `tc-core` + `tc-ssh` + `tc-ui` |

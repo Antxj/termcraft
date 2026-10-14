@@ -145,6 +145,37 @@ pub fn open_path(path: &str) -> Result<String, String> {
     Ok("the default application".into())
 }
 
+/// Open a local file in a text editor (never its default program, so a
+/// downloaded script or executable is not run): Notepad on Windows,
+/// TextEdit / the default text editor on macOS, a known GUI editor on Linux.
+pub fn open_in_text_editor(path: &Path) -> Result<String, String> {
+    let file = path.display().to_string();
+    if cfg!(windows) {
+        spawn(Path::new("notepad.exe"), &[file])?;
+        return Ok("Notepad".into());
+    }
+    if cfg!(target_os = "macos") {
+        spawn(Path::new("open"), &["-t".into(), file])?;
+        return Ok("the default text editor".into());
+    }
+    for exe in [
+        "gnome-text-editor",
+        "gedit",
+        "kate",
+        "kwrite",
+        "mousepad",
+        "xed",
+        "pluma",
+        "geany",
+    ] {
+        if let Some(p) = find_in_path(exe) {
+            spawn(&p, &[file])?;
+            return Ok(exe.to_string());
+        }
+    }
+    Err("no graphical text editor found (install gedit, kate or mousepad)".into())
+}
+
 /// Only web addresses: no other URL scheme (`file:`, app protocol
 /// handlers…) is handed to the system.
 pub fn web_url(url: &str) -> Result<String, String> {

@@ -263,6 +263,10 @@ pub struct Tab {
     log: Option<crate::term_log::TermLog>,
     /// "Find in terminal".
     pub find: Option<FindBar>,
+    /// Remote files opened in a local program, watched for changes.
+    edits: crate::remote_edit::RemoteEdits,
+    /// Edited files waiting for "upload to the server?".
+    pub upload_prompts: std::collections::VecDeque<crate::remote_edit::Changed>,
     /// Latest "Remote monitoring" reading (`Some` while monitoring is on).
     pub monitor: Option<Box<tc_core::monitor::Sample>>,
     /// The user toggled "Remote monitoring" here; the app applies it to
@@ -333,6 +337,8 @@ impl Tab {
             next_paste: Instant::now(),
             log: None,
             find: None,
+            edits: crate::remote_edit::RemoteEdits::new(id),
+            upload_prompts: Default::default(),
             monitor: None,
             monitoring_request: None,
             mosh: None,
@@ -838,6 +844,7 @@ impl Tab {
     /// Drain backend events into the emulator. Returns true if anything changed.
     pub fn pump(&mut self) -> bool {
         self.pump_paste();
+        self.upload_prompts.extend(self.edits.changed());
         match &mut self.backend {
             Backend::None => false,
             Backend::Pty(_) => self.pump_pty(),
@@ -1179,6 +1186,12 @@ impl Tab {
         let paste =
             (!self.paste_queue.is_empty()).then(|| self.next_paste.saturating_duration_since(now));
         let hook = self.folder_hook.as_ref().and_then(|h| h.wakeup(now));
+        // Watch edited files once a second.
+        let hook = match (hook, self.edits.is_watching()) {
+            (Some(h), true) => Some(h.min(std::time::Duration::from_secs(1))),
+            (None, true) => Some(std::time::Duration::from_secs(1)),
+            (h, false) => h,
+        };
         match (paste, hook) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -1300,6 +1313,18 @@ impl Tab {
                 }
             }
             SftpEvent::Done { id } => {
+                if let Some((local, how)) = self.edits.downloaded(id) {
+                    use crate::remote_edit::OpenWith;
+                    let opened = match how {
+                        OpenWith::TextEditor => crate::external::open_in_text_editor(&local),
+                        OpenWith::DefaultProgram => {
+                            crate::external::open_path(&local.display().to_string())
+                        }
+                    };
+                    if let (Err(e), SftpStatus::Ready(v)) = (opened, &mut self.sftp) {
+                        v.error = Some(e);
+                    }
+                }
                 if let SftpStatus::Ready(v) = &mut self.sftp {
                     v.ops.remove(&id);
                     v.transfers.remove(&id);
@@ -1308,6 +1333,7 @@ impl Tab {
                 }
             }
             SftpEvent::Failed { id, error } => {
+                self.edits.failed(id);
                 if let SftpStatus::Ready(v) = &mut self.sftp {
                     let label = v.ops.remove(&id);
                     v.transfers.remove(&id);
@@ -1366,6 +1392,40 @@ impl Tab {
         }
         self.sftp_sudo = on;
         ssh.sftp_sudo(on, password);
+    }
+
+    /// "Open with default text editor" / "Open with default program":
+    /// download to a private folder, open, then watch for changes.
+    pub fn sftp_edit(&mut self, remote: &str, how: crate::remote_edit::OpenWith) {
+        let local = match self.edits.start(remote, how) {
+            Ok(l) => l,
+            Err(e) => {
+                if let SftpStatus::Ready(v) = &mut self.sftp {
+                    v.error = Some(format!("cannot open {remote}: {e}"));
+                }
+                return;
+            }
+        };
+        let request = SftpRequest::Download {
+            remote: remote.to_string(),
+            local: local.clone(),
+            ascii: false,
+        };
+        if let Some(id) = self.fs_request(request) {
+            self.edits.set_download(&local, id);
+            if let SftpStatus::Ready(v) = &mut self.sftp {
+                v.ops.insert(id, format!("Open {remote}"));
+            }
+        }
+    }
+
+    /// Upload an edited copy back ("upload to the server?" answered yes).
+    pub fn upload_edited(&mut self, changed: &crate::remote_edit::Changed) {
+        self.sftp_op(SftpRequest::Upload {
+            local: changed.local.clone(),
+            remote: changed.remote.clone(),
+            ascii: false,
+        });
     }
 
     /// Browse to a remote directory.

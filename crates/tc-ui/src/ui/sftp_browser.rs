@@ -3,6 +3,7 @@
 //! "Follow terminal folder". Files dropped from the OS are uploaded.
 
 use super::{NOT_YET, icon};
+use crate::remote_edit::OpenWith;
 use crate::tab::{BrowserPrompt, SftpStatus, SftpView, Tab};
 use std::path::PathBuf;
 use tc_ssh::sftp::{join, parent};
@@ -76,6 +77,8 @@ enum BrowserAction {
     InstallFolderTracking,
     /// Reopen the browser with (or without) sudo.
     Sudo(bool),
+    /// Open a remote file in a local program and watch it.
+    Edit(String, OpenWith),
     SudoPassword(String),
 }
 
@@ -86,6 +89,7 @@ fn apply(tab: &mut Tab, action: BrowserAction) {
         BrowserAction::TypeInTerminal(text) => tab.send(text.as_bytes()),
         BrowserAction::InstallFolderTracking => tab.install_folder_tracking(),
         BrowserAction::Sudo(on) => tab.sftp_sudo(on, None),
+        BrowserAction::Edit(path, how) => tab.sftp_edit(&path, how),
         BrowserAction::SudoPassword(pw) => tab.sftp_sudo(true, Some(pw)),
     }
 }
@@ -401,7 +405,11 @@ fn row(ui: &mut egui::Ui, view: &mut SftpView, e: &RemoteEntry, out: &mut Vec<Br
         if e.is_dir {
             out.push(BrowserAction::Cd(join(&view.cwd, &e.name)));
         } else {
-            download(view, &[e], out);
+            // Like the reference: a file opens in the text editor.
+            out.push(BrowserAction::Edit(
+                join(&view.cwd, &e.name),
+                OpenWith::TextEditor,
+            ));
         }
     }
     if r.middle_clicked() {
@@ -434,11 +442,21 @@ fn context_menu(
         out.push(BrowserAction::Cd(path.clone()));
         ui.close();
     }
-    for label in [
-        "Open with default text editor",
-        "Open with...",
-        "Compare text files",
-    ] {
+    if !e.is_dir {
+        if ui.button("Open with default text editor").clicked() {
+            out.push(BrowserAction::Edit(path.clone(), OpenWith::TextEditor));
+            ui.close();
+        }
+        if ui
+            .button("Open with default program")
+            .on_hover_text("Runs the program your system uses for this kind of file")
+            .clicked()
+        {
+            out.push(BrowserAction::Edit(path.clone(), OpenWith::DefaultProgram));
+            ui.close();
+        }
+    }
+    for label in ["Open with...", "Compare text files"] {
         ui.add_enabled(false, egui::Button::new(label))
             .on_disabled_hover_text(NOT_YET);
     }
