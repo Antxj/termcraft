@@ -24,20 +24,27 @@ fn name_of(server: &str) -> Result<&'static str, CommandError> {
         .ok_or_else(|| CommandError::InvalidArgs(format!("unknown server {server:?}")))
 }
 
-/// The root folder of a server: as set, else the home folder.
-fn root(dir: &str) -> PathBuf {
+/// The root folder of a server: as set, else `default` (a dedicated,
+/// initially empty folder — never the home folder, which holds keys and
+/// settings that must not be shared or overwritten).
+fn root(dir: &str, default: &std::path::Path) -> Result<PathBuf, CommandError> {
     let dir = dir.trim();
-    if dir.is_empty() {
-        directories::UserDirs::new()
-            .map(|d| d.home_dir().to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."))
-    } else {
-        PathBuf::from(dir)
+    if !dir.is_empty() {
+        return Ok(PathBuf::from(dir));
     }
+    std::fs::create_dir_all(default)
+        .map_err(|e| CommandError::Failed(format!("{}: {e}", default.display())))?;
+    Ok(default.to_path_buf())
 }
 
 impl Servers {
-    pub fn start(&mut self, server: &str, s: &ServersSettings) -> Result<String, CommandError> {
+    /// Start `server`; an empty root folder means `default_root`.
+    pub fn start(
+        &mut self,
+        server: &str,
+        s: &ServersSettings,
+        default_root: &std::path::Path,
+    ) -> Result<String, CommandError> {
         let name = name_of(server)?;
         if self.is_running(name) {
             return Err(CommandError::InvalidArgs(format!(
@@ -46,14 +53,14 @@ impl Servers {
         }
         let started = match name {
             "http" => tc_servers::http::start(tc_servers::http::HttpConfig {
-                root: root(&s.http.root),
+                root: root(&s.http.root, default_root)?,
                 port: s.http.port,
                 bind: "0.0.0.0".into(),
                 list_directories: s.http.list_directories,
                 stop_after: s.http.stop_after.duration(),
             }),
             _ => tc_servers::tftp::start(tc_servers::tftp::TftpConfig {
-                root: root(&s.tftp.root),
+                root: root(&s.tftp.root, default_root)?,
                 port: s.tftp.port,
                 bind: "0.0.0.0".into(),
                 buffer_size: s.tftp.buffer_size as usize,

@@ -167,7 +167,8 @@ impl Host for Core {
     }
 
     fn server_start(&mut self, server: &str) -> Result<String, CommandError> {
-        self.servers.start(server, &self.settings.servers)
+        let shared = self.paths.data_dir.join("shared");
+        self.servers.start(server, &self.settings.servers, &shared)
     }
 
     fn server_stop(&mut self, server: &str) -> Result<(), CommandError> {
@@ -981,24 +982,8 @@ impl TermCraftApp {
             return;
         };
         let text = tab.term.history_text();
-        let dir = std::env::temp_dir().join("termcraft-print");
-        let file = dir.join(format!("terminal-{}.txt", tab.id));
-        let result = std::fs::create_dir_all(&dir)
-            .and_then(|()| std::fs::write(&file, text))
-            .map_err(|e| e.to_string())
-            .and_then(|()| {
-                let (program, args): (&str, Vec<std::ffi::OsString>) = if cfg!(windows) {
-                    ("notepad.exe", vec!["/p".into(), file.clone().into()])
-                } else {
-                    ("lp", vec![file.clone().into()])
-                };
-                std::process::Command::new(program)
-                    .args(args)
-                    .spawn()
-                    .map(drop)
-                    .map_err(|e| format!("{program}: {e}"))
-            });
-        self.status = match result {
+        let id = tab.id;
+        self.status = match print_text(&text, id) {
             Ok(()) => "Terminal text sent to the printer".into(),
             Err(e) => format!("printing failed: {e}"),
         };
@@ -2002,6 +1987,38 @@ fn file_frame(ui: &mut egui::Ui, tab: &mut crate::tab::Tab) {
             }
         }
     }
+}
+
+/// Print plain text: `lp` reads it from its input on Unix (no file);
+/// Windows prints a copy in the user's own temporary folder with Notepad.
+fn print_text(text: &str, tab_id: u64) -> Result<(), String> {
+    if cfg!(windows) {
+        let dir = std::env::temp_dir().join("termcraft-print");
+        let file = dir.join(format!("terminal-{tab_id}.txt"));
+        std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&file, text))
+            .map_err(|e| e.to_string())?;
+        return std::process::Command::new("notepad.exe")
+            .arg("/p")
+            .arg(&file)
+            .spawn()
+            .map(drop)
+            .map_err(|e| format!("notepad.exe: {e}"));
+    }
+    use std::io::Write as _;
+    let mut child = std::process::Command::new("lp")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("lp: {e}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or("lp: no input")?
+        .write_all(text.as_bytes())
+        .map_err(|e| format!("lp: {e}"))?;
+    // Reap it once done (the input was closed above).
+    std::thread::spawn(move || drop(child.wait()));
+    Ok(())
 }
 
 /// Skin and "Graphical interface elements size"; both are no-ops when

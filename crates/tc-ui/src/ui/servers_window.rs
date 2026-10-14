@@ -147,7 +147,7 @@ fn root_dir(ui: &mut egui::Ui, value: &mut String) {
         ui.label("Root directory");
         ui.add(
             egui::TextEdit::singleline(value)
-                .hint_text("home folder")
+                .hint_text("termcraft-data/shared")
                 .desired_width(260.0),
         );
         if ui.button(icon::FOLDER_OPEN).clicked()

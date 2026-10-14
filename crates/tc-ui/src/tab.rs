@@ -512,7 +512,7 @@ impl Tab {
             find: None,
             cert_prompt: None,
             last_ftp: None,
-            edits: crate::remote_edit::RemoteEdits::new(id),
+            edits: crate::remote_edit::RemoteEdits::new(),
             upload_prompts: Default::default(),
             monitor: None,
             monitoring_request: None,

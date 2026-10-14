@@ -165,7 +165,8 @@ impl StopAfter {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HttpServerSettings {
-    /// "Root directory" (empty = the user's home folder).
+    /// "Root directory" (empty = a dedicated `shared` folder in the data
+    /// folder, never the home folder).
     pub root: String,
     /// "Listening port".
     pub port: u16,
@@ -240,7 +241,7 @@ pub enum HomeLocation {
     /// The user's own home (unchanged).
     #[default]
     Default,
-    /// A fresh folder in the temporary directory.
+    /// A throw-away folder in the user's cache folder.
     Temp,
     /// `home` next to the program (portable installs).
     SameAsApplication,
@@ -271,7 +272,11 @@ impl GeneralSettings {
     pub fn terminal_home(&self) -> Option<std::path::PathBuf> {
         let dir = match self.home_location {
             HomeLocation::Default => return None,
-            HomeLocation::Temp => std::env::temp_dir().join("termcraft-home"),
+            // The user's own cache folder: a shared /tmp would let other
+            // users prepare the folder.
+            HomeLocation::Temp => directories::BaseDirs::new()?
+                .cache_dir()
+                .join("termcraft-home"),
             HomeLocation::SameAsApplication => std::env::current_exe().ok()?.parent()?.join("home"),
             HomeLocation::Custom => {
                 let d = self.home_dir.trim();

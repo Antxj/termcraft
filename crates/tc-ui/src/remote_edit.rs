@@ -39,7 +39,9 @@ pub struct Changed {
 }
 
 pub struct RemoteEdits {
-    dir: PathBuf,
+    /// Private folder for the copies: random name, owner-only (0700 on
+    /// Unix), created on first use and removed with the tab.
+    dir: Option<tempfile::TempDir>,
     edits: Vec<Edit>,
     last_check: Instant,
 }
@@ -72,12 +74,9 @@ fn local_name(remote: &str) -> String {
 }
 
 impl RemoteEdits {
-    pub fn new(tab_id: u64) -> Self {
-        let dir = std::env::temp_dir()
-            .join("termcraft-edit")
-            .join(format!("{}-{tab_id}", std::process::id()));
+    pub fn new() -> Self {
         Self {
-            dir,
+            dir: None,
             edits: Vec::new(),
             last_check: Instant::now(),
         }
@@ -85,16 +84,17 @@ impl RemoteEdits {
 
     /// Where to download `remote`; remember it until the download ends.
     pub fn start(&mut self, remote: &str, how: OpenWith) -> std::io::Result<PathBuf> {
-        let mut builder = std::fs::DirBuilder::new();
-        builder.recursive(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
+        if self.dir.is_none() {
+            self.dir = Some(
+                tempfile::Builder::new()
+                    .prefix("termcraft-edit-")
+                    .tempdir()?,
+            );
         }
+        let dir = self.dir.as_ref().expect("just created").path();
         // One sub-folder per edit keeps same-named files apart.
-        let sub = self.dir.join(self.edits.len().to_string());
-        builder.create(&sub)?;
+        let sub = dir.join(self.edits.len().to_string());
+        std::fs::create_dir(&sub)?;
         let local = sub.join(local_name(remote));
         self.edits.push(Edit {
             remote: remote.to_string(),
@@ -159,14 +159,6 @@ impl RemoteEdits {
     }
 }
 
-impl Drop for RemoteEdits {
-    fn drop(&mut self) {
-        if self.dir.starts_with(std::env::temp_dir()) {
-            let _ = std::fs::remove_dir_all(&self.dir);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,7 +173,7 @@ mod tests {
 
     #[test]
     fn tracks_downloads_and_changes() {
-        let mut edits = RemoteEdits::new(u64::MAX - 1);
+        let mut edits = RemoteEdits::new();
         let local = edits.start("/srv/app.conf", OpenWith::TextEditor).unwrap();
         edits.set_download(&local, 7);
         assert_eq!(edits.downloaded(8), None);
@@ -211,7 +203,7 @@ mod tests {
                 local: local.clone()
             }]
         );
-        let dir = edits.dir.clone();
+        let dir = edits.dir.as_ref().unwrap().path().to_path_buf();
         drop(edits);
         assert!(!dir.exists(), "temporary copies are removed");
     }
