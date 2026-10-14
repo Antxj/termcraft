@@ -260,6 +260,8 @@ pub struct TermCraftApp {
     startup_seen_alive: bool,
     /// `--hideterm`: minimize on the first frame.
     start_minimized: bool,
+    /// "Restart now" after an update: start the new version on exit.
+    restart_after_exit: bool,
     /// The window was created transparent (a transparency was set at
     /// start-up); changes from 0 apply after a restart.
     transparent_window: bool,
@@ -365,6 +367,7 @@ impl TermCraftApp {
             exit_when_done: startup.exit_when_done,
             startup_seen_alive: false,
             start_minimized: startup.minimized,
+            restart_after_exit: false,
             transparent_window,
             show_config: false,
             config_tab: Default::default(),
@@ -1636,6 +1639,7 @@ impl TermCraftApp {
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
                 let mut install = None;
+                let mut restart = false;
                 match &self.updates.state {
                     UpdateState::Idle | UpdateState::UpToDate => {}
                     UpdateState::Checking => {
@@ -1651,7 +1655,10 @@ impl TermCraftApp {
                         ui.label("Installing update…");
                     }
                     UpdateState::Installed(v) => {
-                        ui.label(format!("Updated to {v} — restart to apply"));
+                        ui.label(format!("Updated to {v}"));
+                        if ui.button("Restart now").clicked() {
+                            restart = true;
+                        }
                     }
                     UpdateState::Error(e) => {
                         ui.weak(format!("Updates: {e}"));
@@ -1659,6 +1666,12 @@ impl TermCraftApp {
                 }
                 if let Some(update) = install {
                     self.updates.install(&ctx, update);
+                }
+                if restart {
+                    // The new version starts once this one has exited (the
+                    // "Close prompt" still asks about open sessions).
+                    self.restart_after_exit = true;
+                    self.request_exit(&ctx);
                 }
                 if !self.status.is_empty() {
                     ui.separator();
@@ -2002,6 +2015,14 @@ fn apply_view(ctx: &egui::Context, view: &tc_core::settings::ViewSettings) {
 }
 
 impl eframe::App for TermCraftApp {
+    fn on_exit(&mut self) {
+        if self.restart_after_exit
+            && let Ok(exe) = std::env::current_exe()
+        {
+            let _ = std::process::Command::new(exe).spawn();
+        }
+    }
+
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         if self.transparent_window {
             [0.0; 4]

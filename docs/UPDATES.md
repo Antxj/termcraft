@@ -14,8 +14,10 @@ the portable zip and installed copies.
    strictly newer (no downgrades).
 4. Download the asset for `<os>-<arch>` and check its exact size and SHA-256
    while streaming.
-5. Replace the running executable (`self-replace`). The new version runs on
-   next start.
+5. Replace the running executable (`self-replace`; on macOS the program
+   inside `TermCraft.app`). "Restart now" in the status bar starts the new
+   version. Copies installed by a Linux package manager (`/usr/...`) are not
+   replaced: the package manager updates them.
 
 Settings (`settings.toml`, `[update]`): `check_on_startup` (default `true`),
 `auto_install` (default `false`), `channel` (`stable` | `beta`).

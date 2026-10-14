@@ -191,13 +191,25 @@ impl Updater {
     /// Download, verify, and replace the running executable.
     /// The new version takes effect on next start.
     pub fn install(&self, update: &Available) -> Result<(), UpdateError> {
-        if cfg!(target_os = "macos") {
-            return Err(UpdateError::Unsupported("macOS .app bundles"));
+        // A copy installed by the system package manager (.deb …) is
+        // updated by it, not replaced behind its back.
+        if let Ok(exe) = std::env::current_exe()
+            && managed_by_system(&exe)
+        {
+            return Err(UpdateError::Unsupported(
+                "installed by the system package manager: update it with the package manager",
+            ));
         }
+        // macOS: the program inside TermCraft.app is replaced in place.
         let file = download_verified(&update.asset)?;
         self_replace::self_replace(file.path())?;
         Ok(())
     }
+}
+
+/// Programs under `/usr` (Linux packages) belong to the package manager.
+pub fn managed_by_system(exe: &Path) -> bool {
+    cfg!(target_os = "linux") && exe.starts_with("/usr")
 }
 
 fn fetch_small(url: &str) -> Result<Vec<u8>, UpdateError> {
@@ -446,6 +458,84 @@ mod tests {
         let sig = sign_manifest(&bytes, &secret).unwrap();
         assert_eq!(verify_manifest(&bytes, &sig, &keys, "stable").unwrap(), m);
         assert!(build_manifest("stable", "not-semver", "", "x", &[]).is_err());
+    }
+
+    /// A release served over HTTP: check finds the update, the download
+    /// is verified, a tampered signature is refused.
+    #[test]
+    fn check_and_download_from_a_server() {
+        use std::io::{BufRead, BufReader};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        let platform = current_platform();
+        let exe = dir.path().join(format!("termcraft-{platform}"));
+        std::fs::write(&exe, b"the new release").unwrap();
+        let m = build_manifest(
+            "stable",
+            "99.0.0",
+            "notes",
+            &base,
+            &[(platform.clone(), exe.clone())],
+        )
+        .unwrap();
+        let bytes = serde_json::to_vec(&m).unwrap();
+        let (secret, keys) = keypair();
+        let sig = sign_manifest(&bytes, &secret).unwrap();
+        let files: std::collections::HashMap<String, Vec<u8>> = [
+            ("/update-stable.json".to_string(), bytes.clone()),
+            ("/update-stable.json.sig".to_string(), sig.into_bytes()),
+            (
+                format!("/termcraft-{platform}"),
+                b"the new release".to_vec(),
+            ),
+        ]
+        .into();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                loop {
+                    let mut h = String::new();
+                    reader.read_line(&mut h).unwrap();
+                    if h == "\r\n" || h.is_empty() {
+                        break;
+                    }
+                }
+                let path = line.split_whitespace().nth(1).unwrap_or("/").to_string();
+                let mut out = stream;
+                match files.get(&path) {
+                    Some(body) => {
+                        let _ = write!(
+                            out,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        let _ = out.write_all(body);
+                    }
+                    None => {
+                        let _ = out.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    }
+                }
+            }
+        });
+        let updater = Updater::new(&base, "stable", keys.clone());
+        let update = updater.check("1.0.0").unwrap().expect("a newer version");
+        assert_eq!(update.version, "99.0.0");
+        let file = download_verified(&update.asset).unwrap();
+        assert_eq!(std::fs::read(file.path()).unwrap(), b"the new release");
+        assert!(
+            updater.check("99.0.0").unwrap().is_none(),
+            "already up to date"
+        );
+        let other = ed25519_dalek::SigningKey::from_bytes(&[9; 32]).verifying_key();
+        assert!(
+            Updater::new(&base, "stable", vec![other])
+                .check("1.0.0")
+                .is_err()
+        );
+        assert!(managed_by_system(Path::new("/usr/bin/termcraft")) == cfg!(target_os = "linux"));
     }
 
     #[test]
