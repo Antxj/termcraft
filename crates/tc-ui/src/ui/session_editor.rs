@@ -551,7 +551,18 @@ impl SessionEditor {
     }
 
     /// One labelled control. In a grid (`inline == false`) it takes two cells.
+    /// One parameter; those TermCraft does not apply yet are shown greyed
+    /// out, so the dialog never pretends a setting works.
     fn field(&mut self, ui: &mut egui::Ui, p: &'static Param, inline: bool) {
+        if honoured(self.type_index, p.id) {
+            return self.field_inner(ui, p, inline);
+        }
+        ui.add_enabled_ui(false, |ui| self.field_inner(ui, p, inline))
+            .response
+            .on_disabled_hover_text(NOT_YET);
+    }
+
+    fn field_inner(&mut self, ui: &mut egui::Ui, p: &'static Param, inline: bool) {
         let value = self
             .values
             .entry(p.id)
@@ -714,4 +725,67 @@ impl SessionEditor {
 
 fn is_gateway_id(ids: GatewayIds, id: &str) -> bool {
     [ids.host, ids.port, ids.user, ids.key].contains(&id)
+}
+
+/// Session parameters shown but not applied yet (session type index, id).
+const NOT_APPLIED: &[(Option<usize>, &str)] = &[
+    // SSH: protocol version, algorithm lists, certificates, locales.
+    (Some(0), "3_24"),
+    (Some(0), "3_28"),
+    (Some(0), "3_29"),
+    (Some(0), "3_30"),
+    (Some(0), "3_31"),
+    (Some(0), "3_33"),
+    (Some(0), "3_36"),
+    (Some(0), "3_37"),
+    (Some(0), "3_38"),
+    (Some(0), "3_39"),
+    // RDP (external client): zoom, smart cards, authentication level,
+    // expert settings, WebAuthn.
+    (Some(4), "3_28"),
+    (Some(4), "3_30"),
+    (Some(4), "3_31"),
+    (Some(4), "3_32"),
+    (Some(4), "3_33"),
+    // Every type: custom macro, font charset / antialiasing / ligatures,
+    // advanced terminal settings.
+    (None, "4_39"),
+    (None, "4_41"),
+    (None, "4_42"),
+    (None, "4_43"),
+    (None, "4_44"),
+];
+
+fn honoured(type_index: usize, id: &str) -> bool {
+    !NOT_APPLIED
+        .iter()
+        .any(|(t, i)| *i == id && t.is_none_or(|t| t == type_index))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unapplied_parameters_are_marked() {
+        assert!(!honoured(0, "3_31"), "SSH ciphers");
+        assert!(honoured(1, "3_31"), "same id, other type");
+        assert!(!honoured(7, "4_44"), "every type");
+        assert!(honoured(0, "3_32"), "trivial authentication is applied");
+        // Every listed id exists in the schema for its type.
+        for (t, id) in NOT_APPLIED {
+            let types: Vec<usize> = t.map_or_else(|| (0..15).collect(), |t| vec![t]);
+            assert!(
+                types.iter().any(|&t| {
+                    schema::type_params(t)
+                        .iter()
+                        .chain(schema::network_params(t))
+                        .chain(schema::terminal_params())
+                        .chain(schema::bookmark_params())
+                        .any(|p| p.id == *id)
+                }),
+                "{id}"
+            );
+        }
+    }
 }
