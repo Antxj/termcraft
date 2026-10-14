@@ -5,6 +5,7 @@
 //! registry.
 
 pub mod config_window;
+pub mod diff_window;
 pub mod expert_window;
 pub mod home;
 pub mod host_key_dialog;
@@ -54,6 +55,9 @@ pub enum Action {
     Servers,
     /// Tools › "Text editor".
     TextEditor,
+    /// Tools › "Diff tool" / "Ascii table".
+    DiffTool,
+    AsciiTable,
     Configuration,
     Tunnels,
     CheckUpdates,

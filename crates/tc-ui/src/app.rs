@@ -234,6 +234,8 @@ pub struct TermCraftApp {
     show_expert: bool,
     /// Built-in text editor.
     text_editor: crate::ui::text_editor::TextEditor,
+    diff_tool: crate::ui::diff_window::DiffWindow,
+    ascii_table: crate::ui::diff_window::AsciiTable,
     /// "Servers management" window and its page.
     show_servers: bool,
     servers_page: crate::ui::servers_window::Page,
@@ -339,6 +341,8 @@ impl TermCraftApp {
             syntax_window: None,
             show_expert: false,
             text_editor: Default::default(),
+            diff_tool: Default::default(),
+            ascii_table: Default::default(),
             show_servers: false,
             servers_page: Default::default(),
             shortcut_dialog: None,
@@ -455,6 +459,14 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::DiffTool => {
+                self.diff_tool.open = true;
+                return;
+            }
+            Action::AsciiTable => {
+                self.ascii_table.open = true;
+                return;
+            }
             Action::TextEditor => {
                 self.text_editor.open = true;
                 return;
@@ -978,6 +990,8 @@ impl TermCraftApp {
             }
         }
         self.text_editor.show(ctx);
+        self.diff_tool.show(ctx);
+        self.ascii_table.show(ctx);
         for note in self.core.servers.pump(&self.core.settings.servers) {
             self.status = note;
         }
@@ -1934,6 +1948,7 @@ impl eframe::App for TermCraftApp {
                 Some("jump_hosts") => self.editor = Some(SessionEditor::jump_hosts_preview()),
                 Some("expert") => self.show_expert = true,
                 Some("editor") => self.text_editor.preview(),
+                Some("diff") => self.diff_tool.preview(),
                 Some("servers") => {
                     self.show_servers = true;
                     self.servers_page = crate::ui::servers_window::Page::Http;
