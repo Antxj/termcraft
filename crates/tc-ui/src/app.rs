@@ -230,6 +230,9 @@ pub struct TermCraftApp {
     startup_seen_alive: bool,
     /// `--hideterm`: minimize on the first frame.
     start_minimized: bool,
+    /// The window was created transparent (a transparency was set at
+    /// start-up); changes from 0 apply after a restart.
+    transparent_window: bool,
     show_config: bool,
     config_tab: crate::ui::config_window::ConfigTab,
     /// "Close prompt" waiting for an answer.
@@ -266,6 +269,7 @@ impl TermCraftApp {
             SessionStore::default()
         });
         let settings = Settings::load(&paths.settings_file()).unwrap_or_default();
+        let transparent_window = crate::wants_transparency(&settings.view);
         let macros = tc_core::MacroStore::load(&paths.macros_file()).unwrap_or_default();
         let tunnels = TunnelStore::load(&paths.tunnels_file()).unwrap_or_else(|e| {
             status = format!("could not load tunnels: {e}");
@@ -275,7 +279,7 @@ impl TermCraftApp {
             paths.passwords_index_file(),
             Box::new(tc_vault::OsKeychain),
         ));
-        crate::skin::apply(&cc.egui_ctx, settings.view.theme);
+        crate::skin::apply(&cc.egui_ctx, settings.view.theme, settings.view.saturation);
         let ctx = cc.egui_ctx.clone();
         let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(move || ctx.request_repaint());
 
@@ -320,6 +324,7 @@ impl TermCraftApp {
             exit_when_done: startup.exit_when_done,
             startup_seen_alive: false,
             start_minimized: startup.minimized,
+            transparent_window,
             show_config: false,
             config_tab: Default::default(),
             confirm_exit: false,
@@ -662,12 +667,22 @@ impl TermCraftApp {
     fn detached_windows(&mut self, ctx: &egui::Context) {
         let font_size = self.core.settings.terminal.font_size;
         let opts = self.core.settings.terminal.clone();
+        let transparency = self
+            .core
+            .settings
+            .view
+            .detached_transparency
+            .min(tc_core::settings::MAX_TRANSPARENCY);
         for tab in self.core.tabs.iter_mut().filter(|t| t.detached) {
             let viewport = egui::ViewportId::from_hash_of(("detached-tab", tab.id));
             let builder = egui::ViewportBuilder::default()
                 .with_title(format!("{} - TermCraft", tab.title))
-                .with_inner_size([900.0, 600.0]);
+                .with_inner_size([900.0, 600.0])
+                .with_transparent(transparency > 0);
             let close = ctx.show_viewport_immediate(viewport, builder, |ui, _class| {
+                if transparency > 0 {
+                    ui.set_opacity(1.0 - f32::from(transparency) / 100.0);
+                }
                 let output = term_view::show(ui, tab, font_size, true, &opts);
                 if let Some(text) = output.paste {
                     tab.paste(&text);
@@ -1655,7 +1670,7 @@ fn terminals(
 /// Skin and "Graphical interface elements size"; both are no-ops when
 /// nothing changed.
 fn apply_view(ctx: &egui::Context, view: &tc_core::settings::ViewSettings) {
-    crate::skin::apply(ctx, view.theme);
+    crate::skin::apply(ctx, view.theme, view.saturation);
     let zoom = view.ui_size.zoom();
     if (ctx.zoom_factor() - zoom).abs() > f32::EPSILON {
         ctx.set_zoom_factor(zoom);
@@ -1663,9 +1678,29 @@ fn apply_view(ctx: &egui::Context, view: &tc_core::settings::ViewSettings) {
 }
 
 impl eframe::App for TermCraftApp {
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if self.transparent_window {
+            [0.0; 4]
+        } else {
+            visuals.panel_fill.to_normalized_gamma_f32()
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         apply_view(&ctx, &self.core.settings.view);
+        // "Transparency" / "Detached/fullscreen transparency" (the window
+        // itself is transparent only when it was created so).
+        if self.transparent_window {
+            let full = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+            let v = &self.core.settings.view;
+            let t = if full {
+                v.detached_transparency
+            } else {
+                v.transparency
+            };
+            ui.set_opacity(1.0 - f32::from(t.min(tc_core::settings::MAX_TRANSPARENCY)) / 100.0);
+        }
         for cmd in std::mem::take(&mut self.startup) {
             self.run(cmd);
         }

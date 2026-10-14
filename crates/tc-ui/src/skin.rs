@@ -124,10 +124,42 @@ fn palette_id() -> egui::Id {
     egui::Id::new("termcraft-skin")
 }
 
+/// Scale the saturation of a colour (`factor` 1 = unchanged, 0 = grey).
+fn saturate(c: Color32, factor: f32) -> Color32 {
+    let [r, g, b, a] = c.to_array();
+    let (r, g, b) = (f32::from(r), f32::from(g), f32::from(b));
+    // Grey with the same luma, then move away from / towards it.
+    let grey = 0.299 * r + 0.587 * g + 0.114 * b;
+    let ch = |v: f32| (grey + (v - grey) * factor).round().clamp(0.0, 255.0) as u8;
+    Color32::from_rgba_unmultiplied(ch(r), ch(g), ch(b), a)
+}
+
+/// The palette with "Color saturation" applied (36 % = as designed).
+pub fn with_saturation(p: Palette, percent: u8) -> Palette {
+    let factor = (f32::from(percent) / f32::from(tc_core::settings::DEFAULT_SATURATION)).min(2.5);
+    if (factor - 1.0).abs() < f32::EPSILON {
+        return p;
+    }
+    let s = |c| saturate(c, factor);
+    Palette {
+        chrome: s(p.chrome),
+        tab_active: s(p.tab_active),
+        tab_inactive: s(p.tab_inactive),
+        tab_hover: s(p.tab_hover),
+        accent: s(p.accent),
+        border: s(p.border),
+        panel: s(p.panel),
+        field: s(p.field),
+        ok: s(p.ok),
+        warn: s(p.warn),
+        ..p
+    }
+}
+
 /// Apply a skin (cheap to call: does nothing when it is already applied).
-pub fn apply(ctx: &egui::Context, theme: Theme) {
+pub fn apply(ctx: &egui::Context, theme: Theme, saturation: u8) {
     let system_dark = ctx.system_theme() == Some(egui::Theme::Dark);
-    let p = palette(theme, system_dark);
+    let p = with_saturation(palette(theme, system_dark), saturation);
     if ctx.data(|d| d.get_temp::<Palette>(palette_id())) == Some(p) {
         return;
     }
@@ -176,6 +208,16 @@ mod tests {
             }
             assert!(contrast(p.weak_text, p.panel) >= 3.0, "{p:?}");
         }
+    }
+
+    #[test]
+    fn saturation() {
+        assert_eq!(with_saturation(LIGHT, 36), LIGHT);
+        let grey = with_saturation(LIGHT, 0).accent;
+        assert!(grey.r() == grey.g() && grey.g() == grey.b(), "{grey:?}");
+        let vivid = with_saturation(LIGHT, 72).accent;
+        assert!(vivid.b() - vivid.r() > LIGHT.accent.b() - LIGHT.accent.r());
+        assert_eq!(with_saturation(DARK, 0).text, DARK.text, "text stays");
     }
 
     #[test]

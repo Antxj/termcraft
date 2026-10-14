@@ -289,6 +289,24 @@ fn ssh(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
 
 fn display(ui: &mut egui::Ui, s: &mut Settings) {
     let v = &mut s.view;
+    egui::Grid::new("cfg-display-sliders")
+        .num_columns(2)
+        .spacing([12.0, 6.0])
+        .show(ui, |ui| {
+            let max = tc_core::settings::MAX_TRANSPARENCY;
+            ui.label("Color saturation");
+            ui.add(egui::Slider::new(&mut v.saturation, 0..=90).suffix("%"));
+            ui.end_row();
+            ui.label("Transparency");
+            ui.add(egui::Slider::new(&mut v.transparency, 0..=max).suffix("%"))
+                .on_hover_text("Turning transparency on takes effect after a restart");
+            ui.end_row();
+            ui.label("Detached/fullscreen transparency");
+            ui.add(egui::Slider::new(&mut v.detached_transparency, 0..=max).suffix("%"))
+                .on_hover_text("Detached tabs and the fullscreen window");
+            ui.end_row();
+        });
+    ui.add_space(8.0);
     egui::Grid::new("cfg-display")
         .num_columns(2)
         .spacing([12.0, 8.0])

@@ -17,6 +17,12 @@ mod tunnels;
 mod ui;
 mod updates;
 
+/// Create the window transparent only when a transparency is set: an
+/// opaque window is cheaper and safe on every desktop.
+pub(crate) fn wants_transparency(view: &tc_core::settings::ViewSettings) -> bool {
+    view.transparency > 0 || view.detached_transparency > 0
+}
+
 fn main() -> eframe::Result<()> {
     // Command-line options: hand them to the running window if there is
     // one, else run them in this new one.
@@ -43,6 +49,10 @@ fn main() -> eframe::Result<()> {
         .with_title("TermCraft")
         .with_inner_size([1100.0, 700.0])
         .with_min_inner_size([480.0, 320.0]);
+    let settings = tc_core::Settings::load(&paths.settings_file()).unwrap_or_default();
+    if wants_transparency(&settings.view) {
+        viewport = viewport.with_transparent(true);
+    }
     if std::env::var_os("TERMCRAFT_SNAPSHOT").is_some() {
         // Snapshot runs must not get in the way of whatever the user is
         // doing: no focus, below other windows, clicks pass through.

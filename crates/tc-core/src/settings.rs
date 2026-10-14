@@ -237,7 +237,19 @@ pub struct ViewSettings {
     pub session_dots: bool,
     /// "Compact mode": only the tabs and terminals.
     pub compact: bool,
+    /// "Color saturation" of the skin, in percent (36 = as designed).
+    pub saturation: u8,
+    /// "Transparency" of the main window, in percent (0 = opaque).
+    pub transparency: u8,
+    /// "Detached/fullscreen transparency", in percent.
+    pub detached_transparency: u8,
 }
+
+/// Highest window transparency offered (beyond it the text is unreadable).
+pub const MAX_TRANSPARENCY: u8 = 80;
+
+/// The skin saturation that leaves its colors unchanged.
+pub const DEFAULT_SATURATION: u8 = 36;
 
 impl Default for ViewSettings {
     fn default() -> Self {
@@ -256,6 +268,9 @@ impl Default for ViewSettings {
             ui_size: UiSize::default(),
             session_dots: true,
             compact: false,
+            saturation: DEFAULT_SATURATION,
+            transparency: 0,
+            detached_transparency: 0,
         }
     }
 }
