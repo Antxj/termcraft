@@ -114,6 +114,21 @@ pub fn launch_vnc(host: &str, port: u16) -> Result<String, String> {
     Err("no VNC viewer found in PATH (e.g. TigerVNC or TightVNC)".into())
 }
 
+/// macOS without `$DISPLAY`: start XQuartz (when installed) so X11
+/// forwarding has a server on `:0`. Returns whether it was started.
+pub fn start_xquartz() -> bool {
+    if !cfg!(target_os = "macos") {
+        return false;
+    }
+    let installed = [
+        "/Applications/Utilities/XQuartz.app",
+        "/Applications/XQuartz.app",
+    ]
+    .iter()
+    .any(|p| Path::new(p).exists());
+    installed && spawn(Path::new("open"), &["-a".into(), "XQuartz".into()]).is_ok()
+}
+
 /// An XDMCP session for an X server.
 #[derive(Debug, Clone, Copy)]
 pub struct Xdmcp<'a> {

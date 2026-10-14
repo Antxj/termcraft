@@ -18,11 +18,26 @@ pub struct Display {
     pub host: Option<String>,
     pub number: u16,
     pub screen: u32,
+    /// A socket path given as the display (XQuartz on macOS:
+    /// `/private/tmp/com.apple.launchd.…/org.xquartz:0`).
+    pub socket: Option<std::path::PathBuf>,
 }
 
-/// `:0`, `:1.0`, `localhost:10.0`, `127.0.0.1:0`, `unix:0`.
+/// `:0`, `:1.0`, `localhost:10.0`, `127.0.0.1:0`, `unix:0`, or a socket
+/// path (XQuartz).
 pub fn parse_display(s: &str) -> Option<Display> {
     let s = s.trim();
+    if s.starts_with('/') {
+        // The whole value is the socket; the number follows the last ':'.
+        let (_, rest) = s.rsplit_once(':')?;
+        let number = rest.split('.').next()?.parse().ok()?;
+        return Some(Display {
+            host: None,
+            number,
+            screen: 0,
+            socket: Some(std::path::PathBuf::from(s)),
+        });
+    }
     let (host, rest) = s.rsplit_once(':')?;
     let (number, screen) = match rest.split_once('.') {
         Some((n, sc)) => (n.parse().ok()?, sc.parse().ok()?),
@@ -42,6 +57,7 @@ pub fn parse_display(s: &str) -> Option<Display> {
         host,
         number,
         screen,
+        socket: None,
     })
 }
 
@@ -190,7 +206,10 @@ async fn connect_display(d: &Display) -> std::io::Result<Box<dyn Io>> {
         None => {
             #[cfg(unix)]
             {
-                let path = format!("/tmp/.X11-unix/X{}", d.number);
+                let path = d
+                    .socket
+                    .clone()
+                    .unwrap_or_else(|| format!("/tmp/.X11-unix/X{}", d.number).into());
                 Ok(Box::new(tokio::net::UnixStream::connect(path).await?))
             }
             #[cfg(not(unix))]
@@ -271,6 +290,15 @@ mod tests {
             Some("localhost")
         );
         assert!(parse_display("nonsense").is_none());
+        let quartz = parse_display("/private/tmp/com.apple.launchd.AbC/org.xquartz:0").unwrap();
+        assert_eq!(quartz.host, None);
+        assert_eq!(quartz.number, 0);
+        assert_eq!(
+            quartz.socket.as_deref(),
+            Some(std::path::Path::new(
+                "/private/tmp/com.apple.launchd.AbC/org.xquartz:0"
+            ))
+        );
     }
 
     #[test]

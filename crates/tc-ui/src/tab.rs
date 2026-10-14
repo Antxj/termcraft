@@ -197,6 +197,24 @@ fn paste_delay(session: Option<&Session>) -> std::time::Duration {
     std::time::Duration::from_millis(ms)
 }
 
+/// The local X server for X11 forwarding: `$DISPLAY`, else XQuartz on
+/// macOS (started on demand); with a notice for the terminal.
+fn x11_display() -> (Option<String>, Option<&'static str>) {
+    if let Some(d) = tc_ssh::x11::default_display() {
+        return (Some(d), None);
+    }
+    if crate::external::start_xquartz() {
+        return (
+            Some(":0".into()),
+            Some("[90mStarting XQuartz for X11 forwarding …[0m"),
+        );
+    }
+    (
+        None,
+        Some("[33mX11-forwarding: no X server (DISPLAY is not set).[0m"),
+    )
+}
+
 /// 4_36 "Syntax highlighting" index of the session, when it sets one.
 fn session_syntax(session: Option<&Session>) -> Option<usize> {
     session
@@ -1011,6 +1029,11 @@ impl Tab {
                 host: hop.host,
             })
             .collect();
+        let x11 = if *x11_forwarding {
+            x11_display()
+        } else {
+            (None, None)
+        };
         let mut params = ConnectParams {
             host: host.clone(),
             port: *port,
@@ -1050,7 +1073,7 @@ impl Tab {
             shell: true,
             proxy: tc_ssh::proxy::from_options(&|id| opt(id).map(String::from)),
             agent_forwarding: opt("3_35").is_some_and(schema::is_true),
-            x11_display: x11_forwarding.then(tc_ssh::x11::default_display).flatten(),
+            x11_display: x11.0,
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());

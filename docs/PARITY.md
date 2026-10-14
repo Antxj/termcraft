@@ -170,8 +170,8 @@ refined against it.
 |-----|--------|---------|-------|
 | P1 | [~] | SSH X11 forwarding (3_6) to a local X server: $DISPLAY (or localhost:0 on Windows for VcXsrv / Xming); fake cookie checked and replaced with the real one from xauth, X11 channels refused when not requested. A built-in X server is pending | `tc-ssh` |
 | P2 | [ ] | Windows: bundle and manage VcXsrv (MIT/X11 license) | `tc-x11` |
-| P2 | [ ] | macOS: detect / launch XQuartz | `tc-x11` |
-| P2 | [ ] | Linux: use native X / XWayland | `tc-x11` |
+| P2 | [x] | macOS: XQuartz for X11 forwarding: its launchd socket in $DISPLAY is used as is; without $DISPLAY an installed XQuartz is started and :0 used | `tc-ssh` + `tc-ui` |
+| P2 | [x] | Linux: X11 forwarding to the native X server or XWayland through $DISPLAY (Unix socket or TCP) | `tc-ssh` |
 | P2 | [ ] | X11 clipboard sync, keyboard layout, multi-monitor | `tc-x11` |
 
 ## 10. Local Unix environment
