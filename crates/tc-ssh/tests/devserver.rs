@@ -345,7 +345,11 @@ fn wait_for(session: &SshSession, mut want: impl FnMut(&SshEvent) -> bool) -> Ss
 #[cfg(target_os = "linux")]
 #[test]
 fn remote_monitoring_reports_samples() {
-    let server = start(DevConfig::default());
+    // The monitoring script never ends: its samples must be streamed.
+    let server = start(DevConfig {
+        exec_shell: Some("sh".into()),
+        ..DevConfig::default()
+    });
     let dir = tempfile::tempdir().unwrap();
     let mut p = params(server.port, &dir.path().join("known_hosts"), "sleep 10");
     p.remote_monitoring = true;
