@@ -7,6 +7,7 @@
 pub mod config_window;
 pub mod home;
 pub mod menus;
+pub mod passwords_window;
 pub mod session_editor;
 pub mod sftp_browser;
 pub mod sidebar;
@@ -29,6 +30,8 @@ pub enum Action {
     ToggleFullscreen,
     About,
     PasswordsSettings,
+    /// Passwords settings on the Credentials tab.
+    ManageCredentials,
     Configuration,
     Tunnels,
     CheckUpdates,

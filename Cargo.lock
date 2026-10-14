@@ -5006,6 +5006,7 @@ dependencies = [
  "tc-vault",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
@@ -5029,11 +5030,15 @@ dependencies = [
 name = "tc-vault"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
+ "argon2",
+ "hex",
  "keyring",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
  "toml",
+ "zeroize",
 ]
 
 [[package]]

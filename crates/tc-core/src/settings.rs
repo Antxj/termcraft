@@ -42,10 +42,24 @@ pub enum SavePasswords {
     Ask,
 }
 
+/// "Prompt me for my master password" (configuration file storage).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MasterPrompt {
+    /// The key is cached in the OS keychain: ask on a new account or computer.
+    #[default]
+    NewComputer,
+    /// Ask at every TermCraft startup.
+    EveryStartup,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PasswordSettings {
     pub save: SavePasswords,
+    /// "Save SSH keys passphrases as well".
+    pub save_key_passphrases: bool,
+    pub master_prompt: MasterPrompt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

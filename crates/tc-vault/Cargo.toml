@@ -8,6 +8,10 @@ license.workspace = true
 
 [dependencies]
 keyring = "4"
+aes-gcm = "0.11"
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
+hex = "0.4"
+zeroize = "1"
 serde.workspace = true
 toml.workspace = true
 thiserror.workspace = true

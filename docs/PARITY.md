@@ -121,8 +121,10 @@ refined against it.
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
 | P0 | [x] | Save passwords in the OS keychain; "Do you want to save this password?"; Always / Never / Ask; auto-fill once per connection | `tc-vault` |
-| P1 | [x] | Passwords settings: list (Protocol / Username / Servername), delete selected / all; secrets never shown or returned by commands | `tc-ui` + `tc-commands` |
-| P1 | [ ] | Master password (encrypted vault, Argon2id + XChaCha20) | `tc-vault` |
+| P1 | [x] | Passwords settings 1:1: Passwords and Credentials tabs (Protocol / Username / Servername / Password), "Save SSH keys passphrases as well", Show passwords and Export to file (CSV) behind the Master Password, Copy username / servername / password, Delete selected / all, New / Edit credential. Commands never return secrets | `tc-ui` + `tc-commands` |
+| P1 | [x] | "Choose where to save passwords": system keychain or configuration file encrypted with the Master Password (Argon2id + AES-256-GCM); secrets move when switching | `tc-vault` |
+| P1 | [~] | Master Password dialog (strength meter; prompt only on a new account / computer via a key cached in the keychain, or at every startup). "After unlocking my user session" and OS sign-in (Windows Hello) pending | `tc-vault` + `tc-ui` |
+| P1 | [x] | Named credentials used by sessions as `[name]` in the username field; "Create or manage credentials" button | `tc-vault` + `tc-ui` |
 | P1 | [ ] | Key generator (ed25519 / RSA, OpenSSH + PPK formats) | `tc-vault` |
 | P1 | [x] | Host key validation dialog, known_hosts (OpenSSH format), changed-key refusal | `tc-ssh` |
 | P2 | [ ] | known_hosts management UI | `tc-ssh` |

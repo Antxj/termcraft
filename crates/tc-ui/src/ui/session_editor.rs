@@ -60,6 +60,9 @@ pub struct SessionEditor {
     values: BTreeMap<&'static str, String>,
     tab: Tab,
     error: Option<String>,
+    /// Named credentials offered next to "Username" (set by the app).
+    pub credentials: Vec<String>,
+    manage_credentials: bool,
 }
 
 impl SessionEditor {
@@ -82,6 +85,8 @@ impl SessionEditor {
             values: BTreeMap::new(),
             tab: Tab::Advanced,
             error: None,
+            credentials: Vec::new(),
+            manage_credentials: false,
         };
         editor.load_values();
         editor
@@ -202,6 +207,9 @@ impl SessionEditor {
 
     /// Draw the dialog. Returns false when it should close.
     pub fn show(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) -> bool {
+        if std::mem::take(&mut self.manage_credentials) {
+            out.push(Action::ManageCredentials);
+        }
         let mut open = true;
         let mut close = false;
         egui::Window::new("Session settings")
@@ -459,6 +467,28 @@ impl SessionEditor {
                 {
                     *value = if shown.is_empty() { "-1".into() } else { shown };
                 }
+            }
+            Widget::Text if p.label == "Username" => {
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(value).desired_width(140.0));
+                    ui.menu_button(icon::KEY, |ui| {
+                        for name in &self.credentials {
+                            if ui.button(format!("[{name}]")).clicked() {
+                                *value = format!("[{name}]");
+                                ui.close();
+                            }
+                        }
+                        if !self.credentials.is_empty() {
+                            ui.separator();
+                        }
+                        if ui.button("Manage credentials…").clicked() {
+                            self.manage_credentials = true;
+                            ui.close();
+                        }
+                    })
+                    .response
+                    .on_hover_text("Create or manage credentials");
+                });
             }
             Widget::Text | Widget::Check => {
                 ui.add(egui::TextEdit::singleline(value).desired_width(170.0));

@@ -238,7 +238,7 @@ pub const CATALOG: &[CommandSpec] = &[
     CommandSpec {
         name: "password_forget",
         title: "Delete saved password",
-        description: "Delete one saved credential from the OS keychain.",
+        description: "Delete one saved password.",
         input_schema: r#"{"type":"object","required":["target"],"properties":{"target":{"type":"object","required":["protocol","username","server"],"properties":{"protocol":{"type":"string"},"username":{"type":"string"},"server":{"type":"string"}}}}}"#,
         example_args: r#"{"target":{"protocol":"ssh","username":"root","server":"10.0.0.1:22"}}"#,
         mutating: true,
@@ -246,9 +246,33 @@ pub const CATALOG: &[CommandSpec] = &[
     CommandSpec {
         name: "password_forget_all",
         title: "Delete all saved passwords",
-        description: "Delete every credential TermCraft saved in the OS keychain.",
+        description: "Delete every saved session password.",
         input_schema: EMPTY,
         example_args: "{}",
+        mutating: true,
+    },
+    CommandSpec {
+        name: "credential_list",
+        title: "List credentials",
+        description: "List named credentials (name, username). Passwords are never returned.",
+        input_schema: EMPTY,
+        example_args: "{}",
+        mutating: false,
+    },
+    CommandSpec {
+        name: "credential_set",
+        title: "Save credential",
+        description: "Create or replace a named credential (username and password) used by sessions as [name].",
+        input_schema: r#"{"type":"object","required":["name","username"],"properties":{"name":{"type":"string"},"username":{"type":"string"},"password":{"type":"string"}}}"#,
+        example_args: r#"{"name":"lab","username":"admin","password":"example-only"}"#,
+        mutating: true,
+    },
+    CommandSpec {
+        name: "credential_remove",
+        title: "Delete credential",
+        description: "Delete a named credential.",
+        input_schema: r#"{"type":"object","required":["name"],"properties":{"name":{"type":"string"}}}"#,
+        example_args: r#"{"name":"lab"}"#,
         mutating: true,
     },
     CommandSpec {

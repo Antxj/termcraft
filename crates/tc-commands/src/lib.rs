@@ -106,6 +106,17 @@ pub enum Command {
         target: tc_vault::Target,
     },
     PasswordForgetAll {},
+    CredentialList {},
+    /// Create or replace a named credential ("Credentials" tab).
+    CredentialSet {
+        name: String,
+        username: String,
+        #[serde(default)]
+        password: String,
+    },
+    CredentialRemove {
+        name: String,
+    },
     UpdateCheck {},
 }
 
@@ -149,6 +160,9 @@ impl Command {
             Self::PasswordList {} => "password_list",
             Self::PasswordForget { .. } => "password_forget",
             Self::PasswordForgetAll {} => "password_forget_all",
+            Self::CredentialList {} => "credential_list",
+            Self::CredentialSet { .. } => "credential_set",
+            Self::CredentialRemove { .. } => "credential_remove",
             Self::UpdateCheck {} => "update_check",
         }
     }
@@ -487,6 +501,31 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
                 .map_err(|e| CommandError::Failed(e.to_string()))?;
             Ok(json!({ "ok": true }))
         }
+        Command::CredentialList {} => {
+            let list: Vec<_> = host
+                .vault()?
+                .credentials()
+                .into_iter()
+                .map(|(name, username)| json!({ "name": name, "username": username }))
+                .collect();
+            Ok(json!(list))
+        }
+        Command::CredentialSet {
+            name,
+            username,
+            password,
+        } => {
+            host.vault()?
+                .save_credential(&name, &username, &password)
+                .map_err(|e| CommandError::Failed(e.to_string()))?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::CredentialRemove { name } => {
+            host.vault()?
+                .forget_credential(&name)
+                .map_err(|e| CommandError::Failed(e.to_string()))?;
+            Ok(json!({ "ok": true }))
+        }
         Command::UpdateCheck {} => host.update_check(),
     }
 }
@@ -747,6 +786,21 @@ mod tests {
         assert_eq!(list[0]["server"], "h:22");
         execute(&mut host, Command::PasswordForget { target: t }).unwrap();
         assert!(host.1.list().is_empty());
+
+        execute(
+            &mut host,
+            Command::CredentialSet {
+                name: "lab".into(),
+                username: "admin".into(),
+                password: "cred-secret".into(),
+            },
+        )
+        .unwrap();
+        let list = execute(&mut host, Command::CredentialList {}).unwrap();
+        assert!(!list.to_string().contains("cred-secret"));
+        assert_eq!(list[0]["username"], "admin");
+        execute(&mut host, Command::CredentialRemove { name: "lab".into() }).unwrap();
+        assert!(host.1.credentials().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -1,11 +1,11 @@
 //! Running SSH tunnels: one `SshSession::tunnel` per started tunnel, with
 //! its own host-key and password prompts (tunnels have no terminal).
 
-use crate::credentials::{Credentials, PromptAction};
+use crate::credentials::{Credentials, PromptAction, target_for};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tc_core::settings::SavePasswords;
+use tc_core::settings::PasswordSettings;
 use tc_core::{Tunnel, TunnelKind};
 use tc_ssh::{Endpoint, Reply, SecretKind, SshEvent, SshSession, TunnelParams, TunnelSpec};
 use tc_vault::{Target, Vault};
@@ -73,7 +73,7 @@ impl RunningTunnel {
         tunnel: &Tunnel,
         known_hosts: PathBuf,
         vault: Arc<Vault>,
-        mode: SavePasswords,
+        passwords: &PasswordSettings,
         repaint: Arc<dyn Fn() + Send + Sync>,
     ) -> Self {
         Self {
@@ -84,7 +84,7 @@ impl RunningTunnel {
             host_key: None,
             secret: None,
             closed: false,
-            credentials: Credentials::new(vault, mode),
+            credentials: Credentials::new(vault, passwords.save, passwords.save_key_passphrases),
             offers: VecDeque::new(),
         }
     }
@@ -112,8 +112,9 @@ impl RunningTunnel {
                     user,
                     host,
                     port,
+                    key_path,
                 } => {
-                    let target = Target::ssh(&user, &host, port);
+                    let target = target_for(kind, &user, &host, port, key_path.as_deref());
                     match self.credentials.on_prompt(kind, &target) {
                         PromptAction::AutoFill(pw) => self.session.reply(Reply::Secret(pw)),
                         PromptAction::Ask { saved_rejected } => {

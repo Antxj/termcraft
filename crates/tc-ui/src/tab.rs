@@ -1,4 +1,4 @@
-use crate::credentials::{Credentials, PromptAction};
+use crate::credentials::{Credentials, PromptAction, target_for};
 use crate::folder_hook::{self, FolderHook};
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
@@ -26,6 +26,8 @@ pub struct TabEnv {
     pub paste_right_click: bool,
     /// "Local terminal environment".
     pub local_shell: tc_core::settings::LocalShell,
+    /// "Save SSH keys passphrases as well".
+    pub save_key_passphrases: bool,
 }
 
 fn shell_kind(shell: LocalShell) -> tc_pty::ShellKind {
@@ -171,7 +173,11 @@ impl Tab {
             line: None,
             known_hosts: env.known_hosts.clone(),
             repaint: env.repaint.clone(),
-            credentials: Credentials::new(env.vault.clone(), env.save_passwords),
+            credentials: Credentials::new(
+                env.vault.clone(),
+                env.save_passwords,
+                env.save_key_passphrases,
+            ),
             offers: Default::default(),
             folder_hook: None,
         };
@@ -308,6 +314,7 @@ impl Tab {
         let opt = |id: &str| options.get(id).map(String::as_str);
         let (rows, cols) = self.term.size();
         self.credentials.reset();
+        let (user, credential_error) = self.credentials.use_named(&user, host, *port);
         // Network settings: 3_9 gateway host, 3_10 port, 3_11 login, 3_16 key.
         let gateway = opt("3_9")
             .map(str::trim)
@@ -354,6 +361,9 @@ impl Tab {
         params.detect_login_shell =
             params.sftp && params.command.is_none() && opt("3_18").is_none_or(schema::is_true);
         self.folder_hook = params.detect_login_shell.then(FolderHook::new);
+        if let Some(e) = credential_error {
+            self.message(&format!("\x1b[33m{e}\x1b[0m"));
+        }
         if params.sftp {
             self.sftp = SftpStatus::Connecting;
         }
@@ -624,7 +634,11 @@ impl Tab {
                     user,
                     host,
                     port,
-                } => self.on_secret_needed(prompt, kind, Target::ssh(&user, &host, port)),
+                    key_path,
+                } => {
+                    let target = target_for(kind, &user, &host, port, key_path.as_deref());
+                    self.on_secret_needed(prompt, kind, target)
+                }
                 SshEvent::Connected => {
                     self.status = None;
                     self.after_login();
@@ -1017,6 +1031,7 @@ mod tests {
             backspace_ctrl_h: false,
             paste_right_click: true,
             local_shell: Default::default(),
+            save_key_passphrases: false,
         };
         let session = Session::new(
             "t",
@@ -1069,6 +1084,7 @@ mod tests {
             backspace_ctrl_h: false,
             paste_right_click: true,
             local_shell: Default::default(),
+            save_key_passphrases: false,
         };
         let mut session = dev_session(addr.port());
         session.options.remove("3_8");
@@ -1107,6 +1123,7 @@ mod tests {
             backspace_ctrl_h: false,
             paste_right_click: true,
             local_shell: Default::default(),
+            save_key_passphrases: false,
         };
 
         // 1st connection: no saved password -> prompt in the terminal.

@@ -92,6 +92,8 @@ pub enum SshEvent {
         user: String,
         host: String,
         port: u16,
+        /// The key file, for `SecretKind::KeyPassphrase`.
+        key_path: Option<String>,
     },
     Connected,
     /// A tunnel is accepting connections on this address.
@@ -267,6 +269,14 @@ async fn ask_secret(
         user: endpoint.user.clone(),
         host: endpoint.host.clone(),
         port: endpoint.port,
+        key_path: (kind == SecretKind::KeyPassphrase)
+            .then(|| {
+                endpoint
+                    .private_key
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+            })
+            .flatten(),
     });
     loop {
         match next_reply(replies).await {
