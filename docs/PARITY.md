@@ -50,17 +50,17 @@ refined against it.
 | P0 | [~] | VT/xterm emulation (colors, cursor, alt screen) | `tc-term` |
 | P0 | [x] | Local shell tab (ConPTY on Windows, PTY on Unix) | `tc-pty` |
 | P0 | [~] | Scrollback (Shift+PgUp/PgDn/Home/End) | `tc-term` |
-| P0 | [~] | Right-click paste ("Paste using right-click"); copy-on-select pending | `tc-ui` |
+| P0 | [x] | Mouse selection (drag, double-click word, triple-click line, Ctrl+Alt block), "Copy on select", right-click paste, Ctrl+Insert / Shift+Insert, Ctrl+Shift+C / V (Cmd on macOS); Ctrl+C / X / V reach the program as ^C / ^X / ^V | `tc-term` + `tc-ui` |
 | P1 | [x] | Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size | `tc-term` + `tc-ui` |
 | P1 | [ ] | Charset selection (UTF-8, ISO-8859-x…) | `tc-term` |
 | P1 | [x] | Backspace behavior (^H / ^?) and terminal type (TERM) per session | `tc-ui` |
 | P1 | [ ] | Find in terminal output | `tc-ui` |
 | P1 | [ ] | Output logging to file | `tc-term` |
-| P1 | [ ] | Multi-line paste warning | `tc-ui` |
+| P1 | [x] | Multi-line paste warning ("Do not show this message again") | `tc-ui` |
 | P1 | [ ] | Paste delay (per session) | `tc-ui` |
 | P1 | [x] | Exit confirmation ("Close prompt") from menu, Exit button and window close | `tc-ui` |
-| P2 | [ ] | Column (block) selection (Ctrl+Alt+Click) | `tc-ui` |
-| P2 | [ ] | Configurable word delimiters for double-click | `tc-core` |
+| P2 | [x] | Column (block) selection (Ctrl+Alt drag) | `tc-term` |
+| P2 | [~] | Word delimiters for double-click (setting; Configuration field pending) | `tc-term` + `tc-core` |
 | P2 | [ ] | Syntax highlighting of output (keywords, errors, IPs…) | `tc-term` |
 | P2 | [ ] | Activity / silence tracking on tabs | `tc-ui` |
 | P2 | [ ] | Save / print terminal content | `tc-ui` |

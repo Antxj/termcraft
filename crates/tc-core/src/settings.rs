@@ -246,6 +246,12 @@ pub struct TerminalSettings {
     pub backspace_ctrl_h: bool,
     /// "Local terminal environment".
     pub local_shell: LocalShell,
+    /// "Copy on select": selected text goes to the clipboard.
+    pub copy_on_select: bool,
+    /// Ask before pasting text with several lines.
+    pub warn_multiline_paste: bool,
+    /// Characters that end a word on double click (empty = default set).
+    pub word_delimiters: String,
 }
 
 /// "Local terminal environment" (Configuration › Terminal) and the Shell
@@ -314,6 +320,9 @@ impl Default for TerminalSettings {
             paste_right_click: true,
             backspace_ctrl_h: false,
             local_shell: LocalShell::default(),
+            copy_on_select: true,
+            warn_multiline_paste: true,
+            word_delimiters: String::new(),
         }
     }
 }

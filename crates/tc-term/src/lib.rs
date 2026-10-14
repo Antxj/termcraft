@@ -5,11 +5,15 @@
 //! `alacritty_terminal` later without touching renderers.
 
 mod input;
+mod mouse;
 mod osc7;
 mod palette;
+mod selection;
 
 pub use input::{Key, Modifiers, encode_key};
+pub use mouse::{MouseAction, MouseButton, MouseEvent};
 pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};
+pub use selection::{DEFAULT_WORD_DELIMITERS, Point, Selection, SelectionMode};
 
 pub struct Terminal {
     parser: vt100::Parser,
@@ -17,6 +21,9 @@ pub struct Terminal {
     /// Latest directory reported via OSC 7, not yet taken.
     cwd_report: Option<String>,
     pub theme: Theme,
+    selection: Option<Selection>,
+    /// Characters that end a word on double click (empty = the default set).
+    pub word_delimiters: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +45,8 @@ impl Terminal {
             osc7: osc7::Osc7::default(),
             cwd_report: None,
             theme: Theme::default(),
+            selection: None,
+            word_delimiters: String::new(),
         }
     }
 
@@ -103,6 +112,11 @@ impl Terminal {
         self.parser.screen().application_cursor()
     }
 
+    /// Full-screen programs (less, vim…) use the alternate screen.
+    pub fn alternate_screen(&self) -> bool {
+        self.parser.screen().alternate_screen()
+    }
+
     pub fn bracketed_paste(&self) -> bool {
         self.parser.screen().bracketed_paste()
     }
@@ -124,6 +138,157 @@ impl Terminal {
             underline: cell.underline(),
             wide_continuation: cell.is_wide_continuation(),
         })
+    }
+
+    /// Absolute line of a view row (0 = top of the live screen).
+    fn line_of(&self, row: u16) -> i64 {
+        i64::from(row) - self.scrollback() as i64
+    }
+
+    /// Cell texts of an absolute line, read through the scrollback; `None`
+    /// when the line is not on screen or in history.
+    fn line_cells(&mut self, line: i64) -> Option<(Vec<String>, bool)> {
+        let (rows, cols) = self.size();
+        let saved = self.scrollback();
+        let (offset, row) = if line >= 0 {
+            (0, u16::try_from(line).ok()?)
+        } else {
+            (usize::try_from(-line).ok()?, 0)
+        };
+        self.parser.screen_mut().set_scrollback(offset);
+        // Asked for more history than there is: the view stops early.
+        let reachable = self.scrollback() == offset && row < rows;
+        let result = reachable.then(|| {
+            let screen = self.parser.screen();
+            let cells = (0..cols)
+                .map(|c| {
+                    screen
+                        .cell(row, c)
+                        .map(|cell| cell.contents().to_string())
+                        .unwrap_or_default()
+                })
+                .collect();
+            (cells, screen.row_wrapped(row))
+        });
+        self.parser.screen_mut().set_scrollback(saved);
+        result
+    }
+
+    /// Bounds of the selection unit under a view cell.
+    fn unit_at(&mut self, row: u16, col: u16, mode: SelectionMode) -> (Point, Point) {
+        let line = self.line_of(row);
+        let (_, cols) = self.size();
+        let point = |col| Point { line, col };
+        match mode {
+            SelectionMode::Char | SelectionMode::Block => (point(col), point(col)),
+            SelectionMode::Line => (point(0), point(cols.saturating_sub(1))),
+            SelectionMode::Word => {
+                let cells = self.line_cells(line).map(|(c, _)| c).unwrap_or_default();
+                let refs: Vec<&str> = cells.iter().map(String::as_str).collect();
+                let (a, b) = selection::word_bounds(&refs, usize::from(col), &self.word_delimiters);
+                let to = |v: usize| u16::try_from(v).unwrap_or(u16::MAX);
+                (point(to(a)), point(to(b)))
+            }
+        }
+    }
+
+    /// Start a selection at a view cell (mouse press / double / triple click).
+    pub fn select_start(&mut self, row: u16, col: u16, mode: SelectionMode) {
+        let unit = self.unit_at(row, col, mode);
+        self.selection = Some(Selection::new(mode, unit));
+    }
+
+    /// Drag the selection to a view cell.
+    pub fn select_extend(&mut self, row: u16, col: u16) {
+        let Some(mode) = self.selection.map(|s| s.mode) else {
+            return;
+        };
+        let unit = self.unit_at(row, col, mode);
+        if let Some(s) = &mut self.selection {
+            s.extend(unit);
+        }
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selection = None;
+    }
+
+    pub fn has_selection(&self) -> bool {
+        self.selection.is_some()
+    }
+
+    /// Whether a view cell is selected (for the renderer).
+    pub fn is_selected(&self, row: u16, col: u16) -> bool {
+        self.selection
+            .is_some_and(|s| s.contains(self.line_of(row), col))
+    }
+
+    /// The selected text: trailing blanks trimmed, wrapped lines joined,
+    /// other lines separated by `\n`.
+    pub fn selection_text(&mut self) -> Option<String> {
+        let s = self.selection?;
+        let (_, cols) = self.size();
+        let mut out = String::new();
+        for line in s.start.line..=s.end.line {
+            let Some((cells, wrapped)) = self.line_cells(line) else {
+                continue;
+            };
+            let (from, to) = match s.mode {
+                SelectionMode::Block => (s.start.col, s.end.col),
+                _ => (
+                    if line == s.start.line { s.start.col } else { 0 },
+                    if line == s.end.line {
+                        s.end.col
+                    } else {
+                        cols - 1
+                    },
+                ),
+            };
+            let text: String = cells
+                .iter()
+                .skip(usize::from(from))
+                .take(usize::from(to.saturating_sub(from)) + 1)
+                .map(|c| if c.is_empty() { " " } else { c.as_str() })
+                .collect();
+            let joined = wrapped && s.mode != SelectionMode::Block && line != s.end.line;
+            if joined {
+                out.push_str(&text);
+            } else {
+                out.push_str(text.trim_end());
+                if line != s.end.line {
+                    out.push('\n');
+                }
+            }
+        }
+        Some(out)
+    }
+
+    /// The program asked for mouse events (then the UI reports clicks
+    /// instead of selecting, unless Shift is held).
+    pub fn mouse_reporting(&self) -> bool {
+        self.mouse_mode() != mouse::Mode::Off
+    }
+
+    fn mouse_mode(&self) -> mouse::Mode {
+        use vt100::MouseProtocolMode as M;
+        match self.parser.screen().mouse_protocol_mode() {
+            M::None => mouse::Mode::Off,
+            M::Press => mouse::Mode::Press,
+            M::PressRelease => mouse::Mode::PressRelease,
+            M::ButtonMotion => mouse::Mode::ButtonMotion,
+            M::AnyMotion => mouse::Mode::AnyMotion,
+        }
+    }
+
+    /// Bytes to send for a mouse event, if the program wants this one.
+    pub fn encode_mouse(&self, ev: MouseEvent) -> Option<Vec<u8>> {
+        use vt100::MouseProtocolEncoding as E;
+        let encoding = match self.parser.screen().mouse_protocol_encoding() {
+            E::Default => mouse::Encoding::Default,
+            E::Utf8 => mouse::Encoding::Utf8,
+            E::Sgr => mouse::Encoding::Sgr,
+        };
+        mouse::encode(ev, self.mouse_mode(), encoding)
     }
 
     /// Plain-text dump of the visible screen (used by tests and `tab_read`).
@@ -148,6 +313,60 @@ mod tests {
         let r = t.cell(0, 6).unwrap();
         assert_eq!(r.text, "r");
         assert_ne!(r.fg, t.theme.foreground);
+    }
+
+    #[test]
+    fn selection_reads_words_lines_and_history() {
+        let mut t = Terminal::new(3, 20, 100);
+        t.feed(b"first line\r\nsecond word here\r\nthird\r\nfourth\r\nfifth");
+        // Live screen: third / fourth / fifth; "first", "second" in history.
+        t.select_start(1, 1, SelectionMode::Word);
+        assert_eq!(t.selection_text().as_deref(), Some("fourth"));
+        assert!(t.is_selected(1, 0) && !t.is_selected(0, 0));
+
+        t.select_start(0, 0, SelectionMode::Line);
+        t.select_extend(1, 3);
+        assert_eq!(t.selection_text().as_deref(), Some("third\nfourth"));
+
+        // Scroll up two lines and select from history.
+        t.set_scrollback(2);
+        t.select_start(0, 0, SelectionMode::Char);
+        t.select_extend(1, 5);
+        assert_eq!(t.selection_text().as_deref(), Some("first line\nsecond"));
+        t.set_scrollback(0);
+        assert!(!t.is_selected(0, 0), "the selection stays in history");
+        assert_eq!(t.selection_text().as_deref(), Some("first line\nsecond"));
+        t.clear_selection();
+        assert_eq!(t.selection_text(), None);
+    }
+
+    #[test]
+    fn wrapped_lines_are_joined_and_blocks_are_columns() {
+        let mut t = Terminal::new(4, 5, 0);
+        t.feed(b"abcdefgh\r\nxy");
+        t.select_start(0, 0, SelectionMode::Char);
+        t.select_extend(1, 2);
+        assert_eq!(t.selection_text().as_deref(), Some("abcdefgh"));
+        t.select_start(0, 1, SelectionMode::Block);
+        t.select_extend(2, 2);
+        assert_eq!(t.selection_text().as_deref(), Some("bc\ngh\ny"));
+    }
+
+    #[test]
+    fn mouse_reporting_follows_the_program() {
+        let mut t = Terminal::new(4, 20, 0);
+        let click = MouseEvent {
+            button: MouseButton::Left,
+            action: MouseAction::Press,
+            row: 0,
+            col: 0,
+            mods: Modifiers::default(),
+        };
+        assert!(!t.mouse_reporting());
+        assert_eq!(t.encode_mouse(click), None);
+        t.feed(b"\x1b[?1000h\x1b[?1006h");
+        assert!(t.mouse_reporting());
+        assert_eq!(t.encode_mouse(click).unwrap(), b"\x1b[<0;1;1M");
     }
 
     #[test]

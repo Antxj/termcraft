@@ -163,6 +163,8 @@ pub struct Tab {
     pub offers: std::collections::VecDeque<(Target, String)>,
     /// Automatic "Follow terminal folder" for bash / zsh logins.
     folder_hook: Option<FolderHook>,
+    /// A multi-line paste waiting for the user's OK.
+    pub pending_paste: Option<String>,
     /// Latest "Remote monitoring" reading (`Some` while monitoring is on).
     pub monitor: Option<Box<tc_core::monitor::Sample>>,
     /// The user toggled "Remote monitoring" here; the app applies it to
@@ -222,6 +224,7 @@ impl Tab {
             ),
             offers: Default::default(),
             folder_hook: None,
+            pending_paste: None,
             monitor: None,
             monitoring_request: None,
             mosh: None,

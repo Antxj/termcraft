@@ -560,6 +560,7 @@ impl TermCraftApp {
         }
         crate::ui::tunnels_window::prompts(ctx, &mut self.core.running);
         self.save_password_dialog(ctx);
+        self.paste_confirm_dialog(ctx);
         self.passwords_window(ctx, out);
         self.host_key_dialog(ctx);
         if let Some(editor) = &mut self.editor {
@@ -740,6 +741,62 @@ impl TermCraftApp {
         }
     }
 
+    /// "You are about to paste several lines": confirm before sending.
+    fn paste_confirm_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self
+            .core
+            .tabs
+            .iter_mut()
+            .find(|t| t.pending_paste.is_some())
+        else {
+            return;
+        };
+        let text = tab.pending_paste.clone().unwrap_or_default();
+        let lines = text.trim_end().lines().count();
+        let mut answer = None;
+        let mut dont_ask = !self.core.settings.terminal.warn_multiline_paste;
+        egui::Window::new("TermCraft")
+            .id(egui::Id::new(("paste-confirm", tab.id)))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(ui::icon::CLIPBOARD_TEXT).size(36.0));
+                    ui.vertical(|ui| {
+                        ui.strong(format!("You are about to paste {lines} lines."));
+                        ui.label("Each line may run as a command. Do you want to continue?");
+                    });
+                });
+                let preview: String = text.lines().take(6).collect::<Vec<_>>().join("\n");
+                ui.add(
+                    egui::Label::new(egui::RichText::new(preview).monospace().small()).truncate(),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Paste").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+                ui.checkbox(&mut dont_ask, "Do not show this message again");
+            });
+        let Some(paste) = answer else { return };
+        if let Some(text) = tab.pending_paste.take()
+            && paste
+        {
+            let bytes = term_view::paste_bytes(tab, &text);
+            tab.send(&bytes);
+        }
+        if dont_ask == self.core.settings.terminal.warn_multiline_paste {
+            self.core.settings.terminal.warn_multiline_paste = !dont_ask;
+            if let Err(e) = self.core.save_settings() {
+                self.status = format!("could not save settings: {e}");
+            }
+        }
+    }
+
     /// Reference `TFORMMANAGEPASSWORDS` and the Master Password dialogs.
     fn passwords_window(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) {
         let outcome = self.passwords.show(
@@ -865,6 +922,7 @@ fn terminals(
     font_size: f32,
 ) -> Vec<(u64, term_view::TermOutput)> {
     use tc_core::settings::SplitMode as S;
+    let opts = &core.settings.terminal.clone();
     let area = ui.available_rect_before_wrap();
     let gap = 3.0;
     let rects: Vec<egui::Rect> = match split {
@@ -913,7 +971,10 @@ fn terminals(
                     crate::ui::monitor_bar::show(&mut pane, bar, tab.monitor.as_deref());
                     pane = ui.new_child(egui::UiBuilder::new().max_rect(term_rect));
                 }
-                outputs.push((id, term_view::show(&mut pane, tab, font_size, is_active)));
+                outputs.push((
+                    id,
+                    term_view::show(&mut pane, tab, font_size, is_active, opts),
+                ));
                 if split != S::Single && is_active {
                     pane.painter().rect_stroke(
                         *rect,

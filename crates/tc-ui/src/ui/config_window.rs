@@ -112,6 +112,8 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
     ui.horizontal(|ui| {
         ui.checkbox(&mut t.backspace_ctrl_h, "Backspace sends ^H");
         ui.checkbox(&mut t.paste_right_click, "Paste using right-click");
+        ui.checkbox(&mut t.copy_on_select, "Copy on select")
+            .on_hover_text("Selected text is copied to the clipboard");
         ui.checkbox(&mut t.confirm_exit, "Close prompt")
             .on_hover_text("Ask before exiting TermCraft while sessions are open");
     });
