@@ -9,7 +9,18 @@ use std::path::PathBuf;
 use tc_ssh::sftp::{join, parent};
 use tc_ssh::{RemoteEntry, SftpRequest};
 
+/// The SSH-browser in the sidebar.
 pub fn show(ui: &mut egui::Ui, tab: Option<&mut Tab>) {
+    show_in(ui, tab, false);
+}
+
+/// The remote side of the two-pane SFTP / FTP session view: no "Follow
+/// terminal folder" nor monitoring; local files can be dropped on it.
+pub fn show_frame(ui: &mut egui::Ui, tab: &mut Tab) {
+    show_in(ui, Some(tab), true);
+}
+
+fn show_in(ui: &mut egui::Ui, tab: Option<&mut Tab>, frame: bool) {
     let Some(tab) = tab else {
         ui.weak("The SSH-browser appears here when an SSH session is connected.");
         return;
@@ -48,8 +59,14 @@ pub fn show(ui: &mut egui::Ui, tab: Option<&mut Tab>) {
             ui.colored_label(ui.visuals().error_fg_color, e);
         }
         transfers(ui, view);
-        let list_rect = file_list(ui, view, &mut actions);
+        let list_rect = file_list(ui, view, &mut actions, frame);
         dropped_files(ui, list_rect, view, &mut actions);
+        if frame {
+            for action in actions {
+                apply(tab, action);
+            }
+            return;
+        }
         ui.separator();
         follow_folder(ui, view, &mut actions);
     }
@@ -417,7 +434,12 @@ fn transfers(ui: &mut egui::Ui, view: &SftpView) {
     }
 }
 
-fn file_list(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) -> egui::Rect {
+fn file_list(
+    ui: &mut egui::Ui,
+    view: &mut SftpView,
+    out: &mut Vec<BrowserAction>,
+    frame: bool,
+) -> egui::Rect {
     let entries: Vec<RemoteEntry> = view
         .entries
         .iter()
@@ -425,7 +447,8 @@ fn file_list(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction
         .cloned()
         .collect();
     // Leave room below for "Follow terminal folder" and its button.
-    let height = (ui.available_height() - 76.0).max(80.0);
+    let reserve = if frame { 0.0 } else { 76.0 };
+    let height = (ui.available_height() - reserve).max(80.0);
     let response = egui::ScrollArea::both()
         .id_salt("sftp-list")
         .max_height(height)
@@ -465,7 +488,25 @@ fn file_list(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction
 fn row(ui: &mut egui::Ui, view: &mut SftpView, e: &RemoteEntry, out: &mut Vec<BrowserAction>) {
     let glyph = if e.is_dir { icon::FOLDER } else { icon::FILE };
     let selected = view.selected.contains(&e.name);
-    let r = ui.selectable_label(selected, format!("{glyph}  {}", e.name));
+    let r = ui
+        .selectable_label(selected, format!("{glyph}  {}", e.name))
+        .interact(egui::Sense::click_and_drag());
+    if !e.is_dir && r.drag_started() {
+        // Drag the selection (to the local pane) if this file is in it.
+        let mut paths: Vec<String> = if selected {
+            selected_entries(view)
+                .iter()
+                .filter(|x| !x.is_dir)
+                .map(|x| join(&view.cwd, &x.name))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if paths.is_empty() {
+            paths.push(join(&view.cwd, &e.name));
+        }
+        r.dnd_set_drag_payload(super::local_pane::RemoteDrag(paths));
+    }
     if r.clicked() {
         if ui.input(|i| i.modifiers.command) {
             if !view.selected.remove(&e.name) {
@@ -577,9 +618,20 @@ fn context_menu(
     }
 }
 
-/// Ask where to save, then queue downloads (directories are skipped).
+/// Ask where to save, then queue downloads (directories are skipped). In
+/// the two-pane view they go straight to the local folder.
 fn download(view: &SftpView, entries: &[&RemoteEntry], out: &mut Vec<BrowserAction>) {
     let files: Vec<&&RemoteEntry> = entries.iter().filter(|e| !e.is_dir).collect();
+    if let Some(dir) = &view.local_target {
+        for e in files {
+            out.push(BrowserAction::Request(SftpRequest::Download {
+                remote: join(&view.cwd, &e.name),
+                local: dir.join(&e.name),
+                ascii: view.ascii,
+            }));
+        }
+        return;
+    }
     match files.as_slice() {
         [] => {}
         [one] => {
@@ -635,7 +687,15 @@ fn dropped_files(ui: &egui::Ui, rect: egui::Rect, view: &SftpView, out: &mut Vec
         )
     });
     let over = pointer.is_none_or(|p| rect.contains(p));
-    if hovering && over {
+    // Files dragged from the local pane of the two-pane view.
+    let zone = ui.interact(rect, ui.id().with("remote-drop"), egui::Sense::hover());
+    if let Some(drag) = zone.dnd_release_payload::<super::local_pane::LocalDrag>() {
+        upload(view, drag.0.clone(), out);
+    }
+    let local_drag = zone
+        .dnd_hover_payload::<super::local_pane::LocalDrag>()
+        .is_some();
+    if (hovering && over) || local_drag {
         ui.painter().rect_stroke(
             rect,
             4.0,
@@ -661,7 +721,7 @@ fn access_string(mode: u32) -> String {
 }
 
 /// `YYYY-MM-DD HH:MM` in the local time zone, from Unix seconds.
-fn format_time(secs: u64) -> String {
+pub fn format_time(secs: u64) -> String {
     format_time_in(secs, &chrono::Local)
 }
 

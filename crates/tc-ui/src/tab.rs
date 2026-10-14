@@ -274,6 +274,8 @@ pub struct SftpView {
     /// "Use SUDO for SSH-browser" is on / offered (SSH only).
     pub sudo: bool,
     pub sudo_supported: bool,
+    /// Two-pane session view: downloads go straight to this local folder.
+    pub local_target: Option<PathBuf>,
     listing: Option<u64>,
 }
 
@@ -364,6 +366,8 @@ pub struct Tab {
     pub expert: ExpertTerminal,
     /// "Visual" bell: flash the terminal until then.
     pub bell_flash: Option<Instant>,
+    /// Local side of the SFTP / FTP session view.
+    pub local_pane: Option<crate::ui::local_pane::LocalPane>,
     /// 4_36 "Syntax highlighting" (`None` = the global setting).
     pub syntax: Option<usize>,
     /// Telnet / RDP / VNC waiting for its tunnel through the jump hosts.
@@ -457,6 +461,7 @@ impl Tab {
             via_gateway: None,
             gateway_tunnel: None,
             syntax: None,
+            local_pane: None,
             expert: ExpertTerminal::default(),
             bell_flash: None,
             next_paste: Instant::now(),
@@ -1268,7 +1273,7 @@ impl Tab {
             match &event {
                 SftpEvent::Ready { home } => {
                     self.message(&format!(
-                        "\x1b[32mConnected. Browse files in the side panel ({home}).\x1b[0m"
+                        "\x1b[32mConnected ({home}). Drag files between the local and remote panes to transfer them.\x1b[0m"
                     ));
                     self.status = None;
                     self.after_login();
@@ -1567,7 +1572,7 @@ impl Tab {
                 ) && self.sftp_reopen_cwd.is_none()
                 {
                     self.message(&format!(
-                        "\x1b[32mConnected. Browse files in the side panel ({home}).\x1b[0m"
+                        "\x1b[32mConnected ({home}). Drag files between the local and remote panes to transfer them.\x1b[0m"
                     ));
                     self.status = None;
                 }
@@ -1944,6 +1949,27 @@ impl Tab {
     /// A hidden (password-like) prompt is waiting for input.
     pub fn awaiting_secret(&self) -> bool {
         matches!(self.line, Some(LineInput::Secret(..)))
+    }
+
+    /// SFTP and FTP sessions show the two-pane file view.
+    pub fn is_file_session(&self) -> bool {
+        matches!(
+            self.session.as_ref().map(|s| &s.kind),
+            Some(SessionKind::Sftp { .. } | SessionKind::Ftp { .. })
+        )
+    }
+
+    /// The local pane, created on first use in the session's "Local
+    /// startup folder" (SFTP 3_16).
+    pub fn local_pane_mut(&mut self) -> &mut crate::ui::local_pane::LocalPane {
+        let start = self
+            .session
+            .as_ref()
+            .filter(|s| matches!(s.kind, SessionKind::Sftp { .. }))
+            .and_then(|s| s.options.get("3_16"))
+            .cloned();
+        self.local_pane
+            .get_or_insert_with(|| crate::ui::local_pane::LocalPane::new(start.as_deref()))
     }
 
     pub fn is_alive(&self) -> bool {

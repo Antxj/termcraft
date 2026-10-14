@@ -12,6 +12,7 @@ pub mod hotkeys_window;
 pub mod jump_hosts_dialog;
 pub mod keygen_window;
 pub mod known_hosts_window;
+pub mod local_pane;
 pub mod menus;
 pub mod monitor_bar;
 pub mod passwords_window;

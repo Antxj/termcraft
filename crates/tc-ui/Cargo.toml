@@ -25,6 +25,7 @@ egui.workspace = true
 serde_json.workspace = true
 crossbeam-channel.workspace = true
 anyhow.workspace = true
+directories.workspace = true
 egui-phosphor = "0.14"
 rfd = "0.17"
 zeroize = "1"

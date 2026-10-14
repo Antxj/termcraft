@@ -1636,6 +1636,15 @@ fn terminals(
                     let rest = pane.available_rect_before_wrap();
                     pane = ui.new_child(egui::UiBuilder::new().max_rect(rest));
                 }
+                if tab.is_file_session() {
+                    // Reference TFRAMEFTP: local | remote files, the log below.
+                    let (files, log) = rect.split_top_bottom_at_fraction(0.72);
+                    let mut frame = ui.new_child(egui::UiBuilder::new().max_rect(files));
+                    file_frame(&mut frame, tab);
+                    pane = ui.new_child(
+                        egui::UiBuilder::new().max_rect(log.shrink2(egui::vec2(0.0, 2.0))),
+                    );
+                }
                 if tab.monitor.is_some() {
                     // "Remote monitoring" bar under the terminal.
                     let (term_rect, bar) =
@@ -1665,6 +1674,68 @@ fn terminals(
     }
     ui.allocate_rect(area, egui::Sense::hover());
     outputs
+}
+
+/// The two-pane SFTP / FTP view: local files on the left, the remote
+/// browser on the right; drag files between them to transfer.
+fn file_frame(ui: &mut egui::Ui, tab: &mut crate::tab::Tab) {
+    use crate::ui::local_pane::LocalAction;
+    let rect = ui.max_rect();
+    let (left, right) = rect.split_left_right_at_fraction(0.42);
+    let mut actions = Vec::new();
+    let mut l = ui.new_child(egui::UiBuilder::new().max_rect(left.shrink(4.0)));
+    egui::Frame::group(l.style()).show(&mut l, |ui| {
+        ui.set_min_size(ui.available_size());
+        ui.push_id("local-pane", |ui| {
+            tab.local_pane_mut().show(ui, &mut actions)
+        });
+    });
+    let local_dir = tab.local_pane_mut().cwd.clone();
+    if let crate::tab::SftpStatus::Ready(view) = &mut tab.sftp {
+        view.local_target = Some(local_dir.clone());
+    }
+    let mut r = ui.new_child(egui::UiBuilder::new().max_rect(right.shrink(4.0)));
+    egui::Frame::group(r.style()).show(&mut r, |ui| {
+        ui.set_min_size(ui.available_size());
+        ui.push_id("remote-pane", |ui| {
+            crate::ui::sftp_browser::show_frame(ui, tab)
+        });
+    });
+    for action in actions {
+        match action {
+            LocalAction::Upload(files) => {
+                let crate::tab::SftpStatus::Ready(view) = &tab.sftp else {
+                    continue;
+                };
+                let (cwd, ascii) = (view.cwd.clone(), view.ascii);
+                for local in files {
+                    let Some(name) = local.file_name().map(|n| n.to_string_lossy().into_owned())
+                    else {
+                        continue;
+                    };
+                    tab.sftp_op(tc_ssh::SftpRequest::Upload {
+                        remote: tc_ssh::sftp::join(&cwd, &name),
+                        local,
+                        ascii,
+                    });
+                }
+            }
+            LocalAction::Download(remote, dir) => {
+                let ascii = matches!(&tab.sftp, crate::tab::SftpStatus::Ready(v) if v.ascii);
+                for path in remote {
+                    let name = path.rsplit('/').next().unwrap_or_default().to_string();
+                    if name.is_empty() {
+                        continue;
+                    }
+                    tab.sftp_op(tc_ssh::SftpRequest::Download {
+                        remote: path,
+                        local: dir.join(name),
+                        ascii,
+                    });
+                }
+            }
+        }
+    }
 }
 
 /// Skin and "Graphical interface elements size"; both are no-ops when
