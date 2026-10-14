@@ -76,6 +76,70 @@ pub struct TextEditor {
     wrap: bool,
     /// Closing a modified file waits for an answer.
     confirm_close: Option<usize>,
+    /// "Find" / "Replace" bar (Ctrl+F; F3 = Find next).
+    find: Option<Find>,
+    /// Selection to apply to the text (a found match), in characters.
+    select: Option<(usize, usize)>,
+    /// Cursor position in the active file (characters).
+    cursor: usize,
+}
+
+#[derive(Default)]
+struct Find {
+    needle: String,
+    replace: String,
+    case: bool,
+    message: Option<String>,
+}
+
+fn lowered(s: &str, case: bool) -> Vec<char> {
+    if case {
+        s.chars().collect()
+    } else {
+        s.chars().flat_map(char::to_lowercase).collect()
+    }
+}
+
+/// The next match of `needle` after character `from`, wrapping around;
+/// character positions.
+pub fn find_next(text: &str, needle: &str, from: usize, case: bool) -> Option<(usize, usize)> {
+    if needle.is_empty() {
+        return None;
+    }
+    // Lower-casing may change lengths; only search case-insensitively
+    // when it does not.
+    let hay = lowered(text, case);
+    let pat = lowered(needle, case);
+    let (hay, pat) = if hay.len() == text.chars().count() && pat.len() == needle.chars().count() {
+        (hay, pat)
+    } else {
+        (text.chars().collect(), needle.chars().collect())
+    };
+    let at = |i: usize| hay.get(i..i + pat.len()) == Some(&pat[..]);
+    let n = hay.len();
+    (from..n)
+        .chain(0..from.min(n))
+        .find(|&i| at(i))
+        .map(|i| (i, i + pat.len()))
+}
+
+/// Replace every match; returns the new text and the count.
+pub fn replace_all(text: &str, needle: &str, with: &str, case: bool) -> (String, usize) {
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    let mut count = 0;
+    while let Some((a, b)) = find_next(text, needle, i, case).filter(|(a, _)| *a >= i) {
+        out.extend(&chars[i..a]);
+        out.push_str(with);
+        i = b;
+        count += 1;
+        if i >= chars.len() {
+            break;
+        }
+    }
+    out.extend(&chars[i.min(chars.len())..]);
+    (out, count)
 }
 
 impl TextEditor {
@@ -119,6 +183,10 @@ fi
 exit 0
 "
         .into();
+        self.find = Some(Find {
+            needle: "target".into(),
+            ..Find::default()
+        });
     }
 
     pub fn new_file(&mut self) {
@@ -194,9 +262,21 @@ exit 0
     }
 
     fn contents(&mut self, ui: &mut egui::Ui) {
-        let save_key = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::S));
+        let (save_key, find_key, next_key) = ui.input_mut(|i| {
+            (
+                i.consume_key(egui::Modifiers::COMMAND, egui::Key::S),
+                i.consume_key(egui::Modifiers::COMMAND, egui::Key::F),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::F3),
+            )
+        });
         if save_key {
             self.save(self.active, false);
+        }
+        if find_key {
+            self.find.get_or_insert_with(Find::default);
+        }
+        if next_key {
+            self.find_next();
         }
         ui.horizontal(|ui| {
             if ui.button(format!("{}  New", icon::FILE_PLUS)).clicked() {
@@ -259,7 +339,9 @@ exit 0
             }
         });
         ui.separator();
+        self.find_bar(ui);
         let wrap = self.wrap;
+        let select = self.select.take();
         let Some(f) = self.files.get_mut(self.active) else {
             return;
         };
@@ -272,21 +354,47 @@ exit 0
             job.wrap.max_width = if wrap { width } else { f32::INFINITY };
             ui.fonts_mut(|fonts| fonts.layout_job(job))
         };
+        let lines = f.text.lines().count().max(1) + usize::from(f.text.ends_with('\n'));
         let output = egui::ScrollArea::both()
             .id_salt("editor-scroll")
             .auto_shrink([false, false])
             .max_height(ui.available_height() - 22.0)
             .show(ui, |ui| {
-                egui::TextEdit::multiline(&mut f.text)
-                    .font(egui::TextStyle::Monospace)
-                    .code_editor()
-                    .desired_width(f32::INFINITY)
-                    .desired_rows(24)
-                    .lock_focus(true)
-                    .layouter(&mut layouter)
-                    .show(ui)
+                ui.horizontal_top(|ui| {
+                    // Line numbers (rows match only without word wrap).
+                    if !wrap {
+                        let numbers: String = (1..=lines).map(|n| format!("{n}\n")).collect();
+                        ui.add(egui::Label::new(
+                            egui::RichText::new(numbers.trim_end()).monospace().weak(),
+                        ));
+                    }
+                    egui::TextEdit::multiline(&mut f.text)
+                        .id(egui::Id::new(("editor-text", f.label.as_str())))
+                        .font(egui::TextStyle::Monospace)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(24)
+                        .lock_focus(true)
+                        .layouter(&mut layouter)
+                        .show(ui)
+                })
+                .inner
             })
             .inner;
+        if let Some((a, b)) = select {
+            let mut state = output.state.clone();
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(a),
+                    egui::text::CCursor::new(b),
+                )));
+            state.store(ui.ctx(), output.response.id);
+            output.response.request_focus();
+        }
+        if let Some(r) = output.cursor_range {
+            self.cursor = r.primary.index.0;
+        }
         // Status bar: line / column of the cursor.
         let status = output.cursor_range.map(|r| {
             let upto: String = f.text.chars().take(r.primary.index.0).collect();
@@ -301,6 +409,88 @@ exit 0
                 ui.weak("modified");
             }
         });
+    }
+
+    fn find_next(&mut self) {
+        let Some(find) = &mut self.find else {
+            self.find = Some(Find::default());
+            return;
+        };
+        let Some(f) = self.files.get(self.active) else {
+            return;
+        };
+        match find_next(&f.text, &find.needle, self.cursor, find.case) {
+            Some(range) => {
+                self.cursor = range.1;
+                self.select = Some(range);
+                find.message = None;
+            }
+            None => find.message = Some("Not found".into()),
+        }
+    }
+
+    fn find_bar(&mut self, ui: &mut egui::Ui) {
+        let Some(find) = &mut self.find else { return };
+        let mut action = None;
+        ui.horizontal(|ui| {
+            ui.label("Find:");
+            let r = ui.add(egui::TextEdit::singleline(&mut find.needle).desired_width(160.0));
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                action = Some(0);
+            }
+            ui.label("Replace with:");
+            ui.add(egui::TextEdit::singleline(&mut find.replace).desired_width(140.0));
+            ui.checkbox(&mut find.case, "Match case");
+            if ui.button("Find next").on_hover_text("F3").clicked() {
+                action = Some(0);
+            }
+            if ui.button("Replace").clicked() {
+                action = Some(1);
+            }
+            if ui.button("Replace all").clicked() {
+                action = Some(2);
+            }
+            if ui.button(icon::X).on_hover_text("Close").clicked() {
+                action = Some(3);
+            }
+            if let Some(m) = &find.message {
+                ui.weak(m);
+            }
+        });
+        match action {
+            Some(0) => self.find_next(),
+            Some(1) => {
+                // Replace the match at the cursor, then find the next one.
+                let (needle, with, case) = (find.needle.clone(), find.replace.clone(), find.case);
+                if let Some(f) = self.files.get_mut(self.active) {
+                    let len = needle.chars().count();
+                    let start = self.cursor.saturating_sub(len);
+                    if let Some((a, b)) =
+                        find_next(&f.text, &needle, start, case).filter(|(a, _)| *a == start)
+                    {
+                        let chars: Vec<char> = f.text.chars().collect();
+                        let mut text: String = chars[..a].iter().collect();
+                        text.push_str(&with);
+                        text.extend(&chars[b..]);
+                        f.text = text;
+                        self.cursor = a + with.chars().count();
+                    }
+                }
+                self.find_next();
+            }
+            Some(2) => {
+                let (needle, with, case) = (find.needle.clone(), find.replace.clone(), find.case);
+                if let Some(f) = self.files.get_mut(self.active) {
+                    let (text, n) = replace_all(&f.text, &needle, &with, case);
+                    f.text = text;
+                    if let Some(find) = &mut self.find {
+                        find.message = Some(format!("{n} replaced"));
+                    }
+                }
+            }
+            Some(_) => self.find = None,
+            None => {}
+        }
     }
 
     fn confirm_dialog(&mut self, ctx: &egui::Context) {
@@ -427,5 +617,23 @@ mod tests {
         ed.save(0, false);
         assert_eq!(std::fs::read_to_string(&text).unwrap(), "héllo\nx");
         assert!(!ed.files[0].dirty());
+    }
+
+    #[test]
+    fn find_and_replace() {
+        let t = "Foo bar foo baz";
+        assert_eq!(find_next(t, "foo", 0, true), Some((8, 11)));
+        assert_eq!(find_next(t, "foo", 0, false), Some((0, 3)));
+        assert_eq!(find_next(t, "foo", 1, false), Some((8, 11)));
+        assert_eq!(find_next(t, "foo", 9, false), Some((0, 3)), "wraps around");
+        assert_eq!(find_next(t, "qux", 0, false), None);
+        assert_eq!(
+            find_next("éa éa", "éa", 1, true),
+            Some((3, 5)),
+            "characters, not bytes"
+        );
+        assert_eq!(replace_all(t, "foo", "X", false), ("X bar X baz".into(), 2));
+        assert_eq!(replace_all("aaa", "a", "aa", true), ("aaaaaa".into(), 3));
+        assert_eq!(replace_all("abc", "", "x", true), ("abc".into(), 0));
     }
 }
