@@ -114,6 +114,31 @@ pub fn launch_vnc(host: &str, port: u16) -> Result<String, String> {
     Err("no VNC viewer found in PATH (e.g. TigerVNC or TightVNC)".into())
 }
 
+/// "Open with...": run `program` with the file as its only argument (no
+/// shell). macOS application bundles open through `open -a`.
+pub fn open_with(program: &Path, file: &Path) -> Result<String, String> {
+    let name = program.file_name().map_or_else(
+        || program.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    if cfg!(target_os = "macos") && program.extension().is_some_and(|e| e == "app") {
+        spawn(
+            Path::new("open"),
+            &[
+                "-a".into(),
+                program.display().to_string(),
+                file.display().to_string(),
+            ],
+        )?;
+    } else {
+        Command::new(program)
+            .arg(file)
+            .spawn()
+            .map_err(|e| format!("{}: {e}", program.display()))?;
+    }
+    Ok(name)
+}
+
 /// macOS without `$DISPLAY`: start XQuartz (when installed) so X11
 /// forwarding has a server on `:0`. Returns whether it was started.
 pub fn start_xquartz() -> bool {

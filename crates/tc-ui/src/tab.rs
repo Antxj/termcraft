@@ -1840,6 +1840,7 @@ impl Tab {
                             self.open_in_diff.push(local.clone());
                             Ok(String::new())
                         }
+                        OpenWith::Program(program) => crate::external::open_with(&program, &local),
                     };
                     if let (Err(e), SftpStatus::Ready(v)) = (opened, &mut self.sftp) {
                         v.error = Some(e);

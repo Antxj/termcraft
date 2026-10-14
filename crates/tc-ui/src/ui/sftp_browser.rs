@@ -571,8 +571,20 @@ fn context_menu(
             ui.close();
         }
     }
-    ui.add_enabled(false, egui::Button::new("Open with..."))
-        .on_disabled_hover_text(NOT_YET);
+    if !e.is_dir
+        && ui
+            .button("Open with...")
+            .on_hover_text("Choose the program that opens this file")
+            .clicked()
+    {
+        ui.close();
+        if let Some(program) = rfd::FileDialog::new().set_title("Open with…").pick_file() {
+            out.push(BrowserAction::Edit(
+                path.clone(),
+                OpenWith::Program(program),
+            ));
+        }
+    }
     if !e.is_dir
         && ui
             .button("Compare text files")

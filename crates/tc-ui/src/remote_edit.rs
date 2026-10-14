@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenWith {
     /// A text editor, never the file's default program (so a remote
     /// script or executable is not run).
@@ -15,6 +15,8 @@ pub enum OpenWith {
     DefaultProgram,
     /// "Compare text files": the copy goes to the Diff tool.
     Compare,
+    /// "Open with...": a program the user chose.
+    Program(PathBuf),
 }
 
 struct Edit {
@@ -114,7 +116,7 @@ impl RemoteEdits {
         let e = self.edits.iter_mut().find(|e| e.download == Some(id))?;
         e.download = None;
         e.seen = mtime(&e.local);
-        Some((e.local.clone(), e.how))
+        Some((e.local.clone(), e.how.clone()))
     }
 
     /// The remote path of a local copy.
