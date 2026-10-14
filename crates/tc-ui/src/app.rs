@@ -234,6 +234,8 @@ pub struct TermCraftApp {
     show_expert: bool,
     /// Built-in text editor.
     text_editor: crate::ui::text_editor::TextEditor,
+    /// Popup ("quake") terminal and its system-wide hotkey.
+    popup: crate::popup::Popup,
     /// Shared sessions (read-only) and their management window.
     shared: crate::shared::SharedSessions,
     shared_window: Option<crate::ui::shared_window::SharedWindow>,
@@ -347,6 +349,7 @@ impl TermCraftApp {
             syntax_window: None,
             show_expert: false,
             text_editor: Default::default(),
+            popup: crate::popup::Popup::new(&cc.egui_ctx),
             shared: Default::default(),
             shared_window: None,
             connect_as: None,
@@ -1144,6 +1147,19 @@ impl TermCraftApp {
                 }
             }
         }
+        // Popup terminal: the hotkey works from any program (not in
+        // snapshot runs, which must not grab keys).
+        if self.snapshot.is_none() {
+            let hotkey = tc_core::hotkeys::effective(&self.core.settings.hotkeys)
+                .into_iter()
+                .find(|(a, _)| *a == tc_core::hotkeys::HotkeyAction::PopupTerminal)
+                .and_then(|(_, hk)| hk);
+            self.popup.sync_hotkey(hotkey);
+            let core = &self.core;
+            self.popup.handle(&core.settings.popup, || core.tab_env());
+        }
+        self.popup
+            .show(ctx, &self.core.settings.popup, &self.core.settings.terminal);
         self.text_editor.show(ctx);
         self.diff_tool.show(ctx);
         self.ascii_table.show(ctx);

@@ -40,8 +40,8 @@ refined against it.
 | P1 | [x] | Chrome-style tab strip: rounded tabs, accent on the active tab, close button, middle-click closes, session icon | `tc-ui` |
 | P1 | [x] | Bookmark settings behaviour: 5_1 Normal / Detached / Maximized detached / Fullscreen tab, 1_1 "Reconnection message at session end" (off = the tab closes), 4_15 "Lock terminal title" (unlocked = OSC 0 / 2 titles rename the tab, printable and bounded) | `tc-term` + `tc-ui` |
 | P1 | [x] | Bookmark icon chooser: built-in icons by group (sessions, servers, systems, network, cloud, symbols), tint, custom PNG stored in the session (≤ 64 KiB, ≤ 256 px) | `tc-core` + `tc-ui` |
-| P2 | [ ] | Minimize to system tray | `tc-ui` |
-| P2 | [ ] | Popup ("quake") terminal shortcut | `tc-ui` |
+| P2 | [ ] | Minimize to system tray (eframe does not run a hidden window again without platform code; pending) | `tc-ui` |
+| P2 | [x] | Popup ("quake") terminal: system-wide hotkey (Keyboard shortcuts, default Ctrl + Alt + F12) shows / hides a local terminal at the left / top / right / bottom edge or floating, above other windows; Configuration › Misc "Popup terminal" transparency, size, sizeable, hide instead of close | `tc-ui` |
 | P2 | [~] | "Graphical interface elements size" (Autodetect … HighDPI big); `--dpi` command-line pending | `tc-ui` |
 | P3 | [ ] | Branding customizer (logo / default settings) | `xtask` |
 

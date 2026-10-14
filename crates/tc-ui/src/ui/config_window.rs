@@ -459,4 +459,35 @@ fn misc(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
     if ui.button("TermCraft passwords settings").clicked() {
         out.push(Action::PasswordsSettings);
     }
+    ui.add_space(8.0);
+    ui.group(|ui| {
+        let p = &mut s.popup;
+        ui.strong("Popup terminal");
+        egui::Grid::new("cfg-popup")
+            .num_columns(4)
+            .spacing([12.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("Transparency:");
+                ui.add(
+                    egui::Slider::new(&mut p.transparency, 0..=tc_core::settings::MAX_TRANSPARENCY)
+                        .suffix("%"),
+                );
+                ui.label("Position:");
+                egui::ComboBox::from_id_salt("cfg-popup-position")
+                    .selected_text(p.position.label())
+                    .show_ui(ui, |ui| {
+                        for pos in tc_core::settings::PopupPosition::ALL {
+                            ui.selectable_value(&mut p.position, pos, pos.label());
+                        }
+                    });
+                ui.end_row();
+                ui.label("Size:");
+                ui.add(egui::Slider::new(&mut p.size, 10..=100).suffix("%"));
+                ui.checkbox(&mut p.sizeable, "Popup terminal is sizeable");
+                ui.end_row();
+            });
+        ui.checkbox(&mut p.hide_instead_of_close, "Hide popup terminal instead of closing it")
+            .on_hover_text("Hiding keeps the terminal and its history for the next time");
+        ui.weak("Show / hide it with its keyboard shortcut (Settings › Keyboard shortcuts), from any program.");
+    });
 }

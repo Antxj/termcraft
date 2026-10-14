@@ -146,10 +146,12 @@ pub enum HotkeyAction {
     ZoomIn,
     ZoomOut,
     Quit,
+    /// System-wide: show / hide the popup terminal.
+    PopupTerminal,
 }
 
 impl HotkeyAction {
-    pub const ALL: [HotkeyAction; 21] = [
+    pub const ALL: [HotkeyAction; 22] = [
         Self::NewTab,
         Self::CloseTab,
         Self::NextTab,
@@ -171,6 +173,7 @@ impl HotkeyAction {
         Self::ZoomIn,
         Self::ZoomOut,
         Self::Quit,
+        Self::PopupTerminal,
     ];
 
     /// Stable id for the settings file.
@@ -197,6 +200,7 @@ impl HotkeyAction {
             Self::ZoomIn => "zoom_in",
             Self::ZoomOut => "zoom_out",
             Self::Quit => "quit",
+            Self::PopupTerminal => "popup_terminal",
         }
     }
 
@@ -223,6 +227,7 @@ impl HotkeyAction {
             Self::ZoomIn => "Increase font size",
             Self::ZoomOut => "Decrease font size",
             Self::Quit => "Quit",
+            Self::PopupTerminal => "Show / hide the popup terminal (system-wide)",
         }
     }
 
@@ -251,6 +256,7 @@ impl HotkeyAction {
             Self::ZoomIn => "Ctrl + Shift + ADD",
             Self::ZoomOut => "Ctrl + Shift + SUBTRACT",
             Self::Quit => NONE,
+            Self::PopupTerminal => "Ctrl + Alt + F12",
         }
     }
 

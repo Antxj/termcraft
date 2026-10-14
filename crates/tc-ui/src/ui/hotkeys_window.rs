@@ -55,6 +55,8 @@ fn matches(hk: &Hotkey, key: egui::Key, m: egui::Modifiers) -> bool {
 fn to_action(a: HotkeyAction, active_tab: Option<u64>) -> Option<Action> {
     use HotkeyAction as H;
     Some(match a {
+        // Registered with the system instead (works in other programs).
+        H::PopupTerminal => return None,
         H::NewTab => Action::Run(Command::TabOpen { session: None }),
         H::CloseTab => Action::Run(Command::TabClose { tab: None }),
         H::NextTab => Action::CycleTab(1),

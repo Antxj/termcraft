@@ -13,9 +13,87 @@ pub struct Settings {
     pub servers: ServersSettings,
     /// "Shared sessions locations".
     pub shared_sessions: Vec<SharedSessionsEntry>,
+    /// Configuration › Misc › "Popup terminal".
+    pub popup: PopupSettings,
     /// Keyboard shortcuts changed from their defaults: action id →
     /// hotkey (`<none>` removes one). See `crate::hotkeys`.
     pub hotkeys: std::collections::BTreeMap<String, String>,
+}
+
+/// "Popup terminal" (Configuration › Misc): a terminal that drops in
+/// from a screen edge with a system-wide hotkey.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PopupSettings {
+    /// "Transparency", percent.
+    pub transparency: u8,
+    /// "Size", percent of the screen.
+    pub size: u8,
+    pub position: PopupPosition,
+    /// "Popup terminal is sizeable".
+    pub sizeable: bool,
+    /// "Hide popup terminal instead of closing it".
+    pub hide_instead_of_close: bool,
+}
+
+impl Default for PopupSettings {
+    fn default() -> Self {
+        Self {
+            transparency: 16,
+            size: 36,
+            position: PopupPosition::default(),
+            sizeable: false,
+            hide_instead_of_close: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PopupPosition {
+    Left,
+    Top,
+    Right,
+    #[default]
+    Bottom,
+    Floating,
+}
+
+impl PopupPosition {
+    pub const ALL: [PopupPosition; 5] = [
+        Self::Left,
+        Self::Top,
+        Self::Right,
+        Self::Bottom,
+        Self::Floating,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Top => "top",
+            Self::Right => "right",
+            Self::Bottom => "bottom",
+            Self::Floating => "floating",
+        }
+    }
+
+    /// Position and size of the popup on a `screen` (width, height), for
+    /// `size` percent: (x, y, width, height).
+    pub fn rect(self, screen: (f32, f32), size: u8) -> (f32, f32, f32, f32) {
+        let f = f32::from(size.clamp(10, 100)) / 100.0;
+        let (w, h) = screen;
+        match self {
+            Self::Top => (0.0, 0.0, w, h * f),
+            Self::Bottom => (0.0, h - h * f, w, h * f),
+            Self::Left => (0.0, 0.0, w * f, h),
+            Self::Right => (w - w * f, 0.0, w * f, h),
+            Self::Floating => {
+                let (pw, ph) = (w * f.max(0.3), h * f.max(0.3));
+                ((w - pw) / 2.0, (h - ph) / 2.0, pw, ph)
+            }
+        }
+    }
 }
 
 /// A shared sessions location ("Shared sessions management").
