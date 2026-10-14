@@ -195,6 +195,9 @@ enum Rename {
     Macro(tc_core::MacroId),
     /// Name for a macro that was just recorded (its keys).
     NewMacro(String),
+    /// A new folder inside this one.
+    NewFolder(String),
+    Folder(String),
 }
 
 pub struct TermCraftApp {
@@ -230,6 +233,8 @@ pub struct TermCraftApp {
     dont_ask_again: bool,
     rename: Option<(Rename, String)>,
     confirm_delete: Option<SessionId>,
+    /// "Delete folder" waiting for confirmation.
+    confirm_delete_folder: Option<String>,
     editor: Option<SessionEditor>,
     snapshot: Option<crate::snapshot::Snapshot>,
     status: String,
@@ -308,6 +313,7 @@ impl TermCraftApp {
             dont_ask_again: false,
             rename: None,
             confirm_delete: None,
+            confirm_delete_folder: None,
             editor: None,
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
@@ -418,6 +424,14 @@ impl TermCraftApp {
                 return;
             }
             Action::DeleteSession(id) => return self.confirm_delete = Some(id),
+            Action::NewFolder(parent) => {
+                return self.rename = Some((Rename::NewFolder(parent), String::new()));
+            }
+            Action::RenameFolder(path) => {
+                let name = path.clone();
+                return self.rename = Some((Rename::Folder(path), name));
+            }
+            Action::DeleteFolder(path) => return self.confirm_delete_folder = Some(path),
             Action::MoveSession(id, folder) => {
                 if let Some(mut session) = self.core.store.get(id).cloned()
                     && session.folder != folder
@@ -826,6 +840,8 @@ impl TermCraftApp {
                 Rename::Session(_) => "Rename session",
                 Rename::Macro(_) => "Rename macro",
                 Rename::NewMacro(_) => "Save recorded macro",
+                Rename::NewFolder(_) => "New folder",
+                Rename::Folder(_) => "Rename folder",
             };
             let mut open = true;
             egui::Window::new(title)
@@ -860,7 +876,52 @@ impl TermCraftApp {
                 Rename::NewMacro(keys) => Command::MacroAdd {
                     r#macro: tc_core::Macro::new(text, keys),
                 },
+                Rename::NewFolder(parent) => Command::SessionFolderAdd {
+                    path: if parent.is_empty() {
+                        text
+                    } else {
+                        format!("{parent}/{text}")
+                    },
+                },
+                Rename::Folder(from) => Command::SessionFolderRename { from, to: text },
             }));
+        }
+
+        if let Some(path) = self.confirm_delete_folder.clone() {
+            let inside = self
+                .core
+                .store
+                .sessions
+                .iter()
+                .filter(|s| s.folder == path || s.folder.starts_with(&format!("{path}/")))
+                .count();
+            let mut decided = None;
+            egui::Window::new("Delete folder")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.label(format!("Delete folder \"{path}\"?"));
+                    if inside > 0 {
+                        ui.colored_label(
+                            ui.visuals().warn_fg_color,
+                            format!("The {inside} session(s) inside it are deleted too."),
+                        );
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("Delete").clicked() {
+                            decided = Some(true);
+                        }
+                        if ui.button("Cancel").clicked() {
+                            decided = Some(false);
+                        }
+                    });
+                });
+            if let Some(yes) = decided {
+                self.confirm_delete_folder = None;
+                if yes {
+                    out.push(Action::Run(Command::SessionFolderRemove { path }));
+                }
+            }
         }
 
         if let Some(id) = self.confirm_delete {
@@ -1525,6 +1586,7 @@ impl eframe::App for TermCraftApp {
                     *open_sessions.entry(s.id).or_insert(false) |= t.is_alive();
                 }
             }
+            let folders = self.core.store.all_folders();
             let sessions = &self.core.store.sessions;
             let quick = &mut self.quick_connect;
             let macros = &self.core.macros.macros;
@@ -1540,6 +1602,7 @@ impl eframe::App for TermCraftApp {
                         recording,
                     };
                     let sessions = sidebar::Sessions {
+                        folders: &folders,
                         list: sessions,
                         open: &open_sessions,
                         dots: view.session_dots,

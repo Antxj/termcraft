@@ -93,6 +93,8 @@ pub struct Sessions<'a> {
     pub list: &'a [Session],
     /// Sessions open in a tab: `true` = connected (green), `false` = closed (orange).
     pub open: &'a HashMap<SessionId, bool>,
+    /// Every folder, also empty ones.
+    pub folders: &'a std::collections::BTreeSet<String>,
     /// "Show green/orange buttons next to each open session".
     pub dots: bool,
 }
@@ -149,6 +151,14 @@ struct Folder<'a> {
 
 fn session_tree(ui: &mut egui::Ui, sessions: &Sessions<'_>, filter: &str, out: &mut Vec<Action>) {
     let mut root = Folder::default();
+    if filter.is_empty() {
+        for f in sessions.folders {
+            let mut node = &mut root;
+            for part in f.split('/').filter(|p| !p.is_empty()) {
+                node = node.folders.entry(part).or_default();
+            }
+        }
+    }
     for s in sessions.list {
         if !filter.is_empty() && !s.name.to_lowercase().contains(filter) {
             continue;
@@ -200,6 +210,10 @@ fn draw_folder(
             .default_open(true)
             .show(ui, |ui| draw_folder(ui, sub, &sub_path, sessions, out));
         drop_target(ui, &header.header_response, &sub_path, out);
+        let folder = sub_path.trim_matches('/').to_string();
+        header
+            .header_response
+            .context_menu(|ui| folder_menu(ui, &folder, out));
     }
     for s in &folder.sessions {
         let row = ui
@@ -256,7 +270,12 @@ fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
     item(ui, "Ping host", None, out);
     ui.separator();
     item(ui, "New session", Some(Action::NewSession), out);
-    item(ui, "New folder", None, out);
+    item(
+        ui,
+        "New folder",
+        Some(Action::NewFolder(s.folder.clone())),
+        out,
+    );
     item(ui, "Rename", Some(Action::RenameSession(s.id)), out);
     item(ui, "Edit", Some(Action::EditSession(s.id)), out);
     item(ui, "Delete", Some(Action::DeleteSession(s.id)), out);
@@ -277,7 +296,38 @@ fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
     root_menu(ui, out);
 }
 
+/// Right click on a folder.
+fn folder_menu(ui: &mut egui::Ui, folder: &str, out: &mut Vec<Action>) {
+    item(ui, "New session", Some(Action::NewSession), out);
+    item(
+        ui,
+        "New folder",
+        Some(Action::NewFolder(folder.to_string())),
+        out,
+    );
+    item(
+        ui,
+        "Rename folder",
+        Some(Action::RenameFolder(folder.to_string())),
+        out,
+    );
+    item(
+        ui,
+        "Delete folder",
+        Some(Action::DeleteFolder(folder.to_string())),
+        out,
+    );
+    ui.separator();
+    root_menu(ui, out);
+}
+
 fn root_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
+    item(
+        ui,
+        "New folder (top level)",
+        Some(Action::NewFolder(String::new())),
+        out,
+    );
     item(
         ui,
         "Import MobaXterm sessions",

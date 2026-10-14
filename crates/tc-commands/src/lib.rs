@@ -53,6 +53,19 @@ pub enum Command {
     SessionDuplicate {
         id: SessionId,
     },
+    /// "New folder" in the sessions tree (`a/b` = nested).
+    SessionFolderAdd {
+        path: String,
+    },
+    /// Rename / move a folder; its sessions and sub-folders follow.
+    SessionFolderRename {
+        from: String,
+        to: String,
+    },
+    /// Delete a folder with its sessions and sub-folders.
+    SessionFolderRemove {
+        path: String,
+    },
     /// Replace a saved session (matched by `session.id`) with new settings.
     SessionUpdate {
         session: Box<Session>,
@@ -169,6 +182,9 @@ impl Command {
             Self::SessionExportMobaxterm { .. } => "session_export_mobaxterm",
             Self::SessionRename { .. } => "session_rename",
             Self::SessionDuplicate { .. } => "session_duplicate",
+            Self::SessionFolderAdd { .. } => "session_folder_add",
+            Self::SessionFolderRename { .. } => "session_folder_rename",
+            Self::SessionFolderRemove { .. } => "session_folder_remove",
             Self::SessionUpdate { .. } => "session_update",
             Self::TabList {} => "tab_list",
             Self::TabOpen { .. } => "tab_open",
@@ -307,6 +323,35 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             let text = tc_import::read_text_lossy(std::path::Path::new(&path))
                 .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
             merge_import(host, tc_import::mobaxterm::parse(&text))
+        }
+        Command::SessionFolderAdd { path } => {
+            let path = host
+                .store()
+                .add_folder(&path)
+                .ok_or_else(|| CommandError::InvalidArgs("empty folder name".into()))?;
+            host.persist()?;
+            Ok(json!({ "folder": path }))
+        }
+        Command::SessionFolderRename { from, to } => {
+            if !host
+                .store()
+                .all_folders()
+                .contains(&tc_core::store::normalize_folder(&from))
+            {
+                return Err(CommandError::NotFound(format!("folder {from:?}")));
+            }
+            if !host.store().rename_folder(&from, &to) {
+                return Err(CommandError::InvalidArgs(format!(
+                    "cannot rename {from:?} to {to:?}"
+                )));
+            }
+            host.persist()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::SessionFolderRemove { path } => {
+            let removed = host.store().remove_folder(&path);
+            host.persist()?;
+            Ok(json!({ "removed_sessions": removed }))
         }
         Command::SessionImportPutty {} => {
             let report = tc_import::putty::load().map_err(CommandError::Failed)?;

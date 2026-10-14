@@ -58,6 +58,10 @@ pub enum Action {
     DeleteSession(SessionId),
     /// Drag and drop in the sessions tree: new folder ("" = top level).
     MoveSession(SessionId, String),
+    /// "New folder" inside this folder ("" = top level).
+    NewFolder(String),
+    RenameFolder(String),
+    DeleteFolder(String),
     /// Close several tabs (the "Close all …" family).
     CloseTabs(Vec<u64>),
     SetTabColor(u64, Option<[u8; 3]>),

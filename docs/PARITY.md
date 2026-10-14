@@ -115,7 +115,7 @@ refined against it.
 | P0 | [x] | Save / load sessions (TOML) | `tc-core` |
 | P0 | [~] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (13 types editable; Xdmcp and Aws S3 pending) | `tc-ui` |
 | P0 | [~] | Import MobaXterm sessions: SSH, Telnet, RDP, VNC, FTP, SFTP, Serial, Shell; lossless (every non-default parameter kept in `options`) | `tc-import` |
-| P1 | [~] | Folders tree, rename / duplicate / delete from context menu, drag a session onto a folder (or another session) to move it; empty folders ("New folder") pending | `tc-ui` |
+| P1 | [x] | Folders tree, rename / duplicate / delete from context menu, drag a session onto a folder (or another session) to move it, New folder / Rename folder / Delete folder (empty folders kept); session_folder_add / _rename / _remove commands | `tc-core` + `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |
 | P1 | [x] | Import PuTTY sessions (Windows registry, `~/.putty/sessions` on Unix: SSH, Telnet, rlogin, serial) and WSL sessions | `tc-import` |

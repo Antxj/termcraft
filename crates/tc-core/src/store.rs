@@ -20,8 +20,24 @@ pub enum StoreError {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStore {
+    /// Folders that exist even without sessions ("New folder").
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub folders: std::collections::BTreeSet<String>,
     #[serde(default, rename = "session")]
     pub sessions: Vec<Session>,
+}
+
+/// `a/b` from user input: trimmed parts, no empty parts.
+pub fn normalize_folder(path: &str) -> String {
+    path.split(['/', '\\'])
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn in_folder(path: &str, folder: &str) -> bool {
+    path == folder || path.starts_with(&format!("{folder}/"))
 }
 
 impl SessionStore {
@@ -51,6 +67,69 @@ impl SessionStore {
     pub fn remove(&mut self, id: SessionId) -> Option<Session> {
         let idx = self.sessions.iter().position(|s| s.id == id)?;
         Some(self.sessions.remove(idx))
+    }
+
+    /// Every folder: the ones kept on their own and the ones sessions use,
+    /// with their parents.
+    pub fn all_folders(&self) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        for f in self
+            .folders
+            .iter()
+            .chain(self.sessions.iter().map(|s| &s.folder))
+        {
+            let mut acc = String::new();
+            for part in f.split('/').filter(|p| !p.is_empty()) {
+                if !acc.is_empty() {
+                    acc.push('/');
+                }
+                acc.push_str(part);
+                out.insert(acc.clone());
+            }
+        }
+        out
+    }
+
+    /// "New folder".
+    pub fn add_folder(&mut self, path: &str) -> Option<String> {
+        let path = normalize_folder(path);
+        (!path.is_empty()).then(|| {
+            self.folders.insert(path.clone());
+            path
+        })
+    }
+
+    /// Rename a folder: sub-folders and sessions inside move with it.
+    pub fn rename_folder(&mut self, from: &str, to: &str) -> bool {
+        let (from, to) = (normalize_folder(from), normalize_folder(to));
+        if from.is_empty() || to.is_empty() || in_folder(&to, &from) && to != from {
+            return false;
+        }
+        let moved = |p: &str| format!("{to}{}", &p[from.len()..]);
+        let folders: Vec<String> = self.folders.iter().cloned().collect();
+        self.folders = folders
+            .into_iter()
+            .map(|f| if in_folder(&f, &from) { moved(&f) } else { f })
+            .collect();
+        self.folders.insert(to.clone());
+        for s in &mut self.sessions {
+            if in_folder(&s.folder, &from) {
+                s.folder = moved(&s.folder);
+            }
+        }
+        true
+    }
+
+    /// Delete a folder and everything in it; returns the sessions removed.
+    pub fn remove_folder(&mut self, path: &str) -> usize {
+        let path = normalize_folder(path);
+        if path.is_empty() {
+            return 0;
+        }
+        self.folders.retain(|f| !in_folder(f, &path));
+        let before = self.sessions.len();
+        self.sessions.retain(|s| !in_folder(&s.folder, &path));
+        before - self.sessions.len()
     }
 }
 
@@ -150,5 +229,46 @@ mod tests {
             SessionKind::Ssh { port, .. } => assert_eq!(*port, 22),
             other => panic!("unexpected kind {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+    use crate::SessionKind;
+
+    fn session(name: &str, folder: &str) -> Session {
+        let mut s = Session::new(name, SessionKind::LocalShell { program: None });
+        s.folder = folder.into();
+        s
+    }
+
+    #[test]
+    fn folders_add_rename_remove() {
+        let mut store = SessionStore::default();
+        store.add(session("a", "Prod/Web"));
+        store.add(session("b", "Prod"));
+        store.add(session("c", "Lab"));
+        assert_eq!(store.add_folder(" Empty / Sub "), Some("Empty/Sub".into()));
+        assert_eq!(store.add_folder("  /  "), None);
+        let all: Vec<_> = store.all_folders().into_iter().collect();
+        assert_eq!(all, ["Empty", "Empty/Sub", "Lab", "Prod", "Prod/Web"]);
+
+        assert!(
+            !store.rename_folder("Prod", "Prod/Inside"),
+            "not into itself"
+        );
+        assert!(store.rename_folder("Prod", "Clients/ACME"));
+        assert_eq!(store.find_by_name("a").unwrap().folder, "Clients/ACME/Web");
+        assert_eq!(store.find_by_name("b").unwrap().folder, "Clients/ACME");
+        assert_eq!(store.find_by_name("c").unwrap().folder, "Lab");
+
+        assert_eq!(store.remove_folder("Clients"), 2);
+        assert_eq!(store.sessions.len(), 1);
+        assert!(!store.all_folders().contains("Clients/ACME"));
+        // "Prodx" is not inside "Prod".
+        store.add(session("d", "Labx"));
+        assert_eq!(store.remove_folder("Lab"), 1);
+        assert!(store.find_by_name("d").is_some());
     }
 }
