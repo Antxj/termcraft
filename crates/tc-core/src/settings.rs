@@ -22,6 +22,10 @@ pub struct SshSettings {
     pub keepalive_secs: u64,
     /// "Remote-monitoring": resource bar below SSH terminals.
     pub remote_monitoring: bool,
+    /// "Use Windows SSH agent" (the OpenSSH agent; `SSH_AUTH_SOCK` on Unix).
+    pub use_system_agent: bool,
+    /// "Use PuTTY agent" (Pageant, Windows).
+    pub use_pageant: bool,
 }
 
 impl Default for SshSettings {
@@ -31,6 +35,8 @@ impl Default for SshSettings {
             switch_to_browser: true,
             keepalive_secs: 0,
             remote_monitoring: false,
+            use_system_agent: true,
+            use_pageant: true,
         }
     }
 }

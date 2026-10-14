@@ -23,3 +23,4 @@ workspace = true
 [dev-dependencies]
 tc-devserver.workspace = true
 tempfile.workspace = true
+futures = "0.3"

@@ -30,7 +30,7 @@ pub struct RunningTunnel {
     pub offers: VecDeque<(Target, String)>,
 }
 
-pub fn params(t: &Tunnel, known_hosts: PathBuf) -> TunnelParams {
+pub fn params(t: &Tunnel, known_hosts: PathBuf, agent: tc_ssh::AgentConfig) -> TunnelParams {
     let spec = match t.kind {
         TunnelKind::Local => TunnelSpec::Local {
             bind: t.bind.clone(),
@@ -50,6 +50,7 @@ pub fn params(t: &Tunnel, known_hosts: PathBuf) -> TunnelParams {
         },
     };
     TunnelParams {
+        agent,
         ssh: Endpoint {
             host: t.ssh_host.clone(),
             port: t.ssh_port,
@@ -68,11 +69,12 @@ impl RunningTunnel {
         known_hosts: PathBuf,
         vault: Arc<Vault>,
         passwords: &PasswordSettings,
+        agent: tc_ssh::AgentConfig,
         repaint: Arc<dyn Fn() + Send + Sync>,
     ) -> Self {
         Self {
             name: tunnel.name.clone(),
-            session: SshSession::tunnel(params(tunnel, known_hosts), repaint),
+            session: SshSession::tunnel(params(tunnel, known_hosts, agent), repaint),
             status: "Connecting…".into(),
             listening: false,
             host_key: None,

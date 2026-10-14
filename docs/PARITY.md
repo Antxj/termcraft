@@ -74,7 +74,7 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [x] | Native SSH (russh): password, public key (incl. encrypted keys), keyboard-interactive; in-terminal `login as:` / password prompts | `tc-ssh` |
 | P0 | [~] | SSH remote command ("Execute command"); keep-open after exit pending | `tc-ssh` |
-| P0 | [ ] | SSH agent (Pageant / ssh-agent / OpenSSH agent pipe) | `tc-ssh` |
+| P0 | [~] | SSH agent login: Pageant ("Use PuTTY agent"), OpenSSH agent pipe ("Use Windows SSH agent"), `SSH_AUTH_SOCK` on Unix; at most 5 agent keys before the password. Internal agent (MobAgent) and agent forwarding pending | `tc-ssh` |
 | P1 | [x] | SSH compression (zlib / zlib@openssh.com) | `tc-ssh` |
 | P1 | [~] | SSH gateway / jump host (session Network settings 3_9/3_10/3_11/3_16); single hop, multi-hop pending | `tc-ssh` |
 | P1 | [ ] | SOCKS / HTTP proxy for SSH | `tc-ssh` |

@@ -41,6 +41,8 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         keepalive: None,
         detect_login_shell: false,
         remote_monitoring: false,
+        // Tests must not pick up the developer's agent keys.
+        agent: Default::default(),
     }
 }
 
@@ -174,6 +176,48 @@ fn public_key_login() {
     let out = drive(&s, accept_and_login);
     assert_eq!(out.secret_prompts, 0, "{out:?}");
     assert!(out.output.contains("via-key"), "{out:?}");
+}
+
+/// Login with a key held by an SSH agent (russh's agent server on a Unix
+/// socket); TermCraft never sees the private key.
+#[cfg(unix)]
+#[test]
+fn agent_login() {
+    use russh::keys::agent::client::AgentClient;
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[43; 32]));
+    let server = start(DevConfig {
+        authorized_keys: vec![key.public_key().clone()],
+        ..DevConfig::default()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let sock = dir.path().join("agent.sock");
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let listener = rt
+        .block_on(async { tokio::net::UnixListener::bind(&sock) })
+        .unwrap();
+    let incoming = futures::stream::unfold(listener, |l| async move {
+        Some((l.accept().await.map(|(s, _)| s), l))
+    });
+    rt.spawn(russh::keys::agent::server::serve(Box::pin(incoming), ()));
+    rt.block_on(async {
+        let mut client = AgentClient::connect_uds(&sock).await.unwrap();
+        client.add_identity(&key, &[]).await.unwrap();
+    });
+
+    let mut p = params(
+        server.port,
+        &dir.path().join("known_hosts"),
+        "echo via-agent",
+    );
+    p.agent = tc_ssh::AgentConfig {
+        system: true,
+        pageant: false,
+        socket: Some(sock),
+    };
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert_eq!(out.secret_prompts, 0, "{out:?}");
+    assert!(out.output.contains("via-agent"), "{out:?}");
 }
 
 #[test]
@@ -450,6 +494,7 @@ fn endpoint(port: u16) -> tc_ssh::Endpoint {
 fn start_tunnel(server: &Server, spec: tc_ssh::TunnelSpec, known: &Path) -> (SshSession, String) {
     let s = SshSession::tunnel(
         tc_ssh::TunnelParams {
+            agent: Default::default(),
             ssh: endpoint(server.port),
             gateway: None,
             known_hosts: known.to_path_buf(),

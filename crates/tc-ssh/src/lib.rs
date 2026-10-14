@@ -9,9 +9,11 @@
 //!
 //! Both kinds of session can go through an SSH gateway (jump host).
 
+pub mod agent;
 pub mod sftp;
 pub mod tunnel;
 
+pub use agent::AgentConfig;
 pub use sftp::{RemoteEntry, SftpEvent, SftpRequest};
 pub use tunnel::{TunnelParams, TunnelSpec};
 
@@ -60,6 +62,8 @@ pub struct ConnectParams {
     pub detect_login_shell: bool,
     /// "Remote monitoring": report `SshEvent::Monitor` samples.
     pub remote_monitoring: bool,
+    /// SSH agents to try for public-key login.
+    pub agent: AgentConfig,
 }
 
 impl ConnectParams {
@@ -503,6 +507,7 @@ pub(crate) struct ConnectOptions<'a> {
     pub known_hosts: &'a std::path::Path,
     pub compression: bool,
     pub keepalive: Option<std::time::Duration>,
+    pub agent: AgentConfig,
 }
 
 fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
@@ -562,7 +567,7 @@ pub(crate) async fn establish(
             )
             .await
             .map_err(|e| format!("gateway connection failed: {e}"))?;
-            authenticate(&mut gw_handle, gw, replies, events).await?;
+            authenticate(&mut gw_handle, gw, &opts.agent, replies, events).await?;
             events.send(SshEvent::Info(format!(
                 "Connecting to {}:{} through the gateway …",
                 target.host, target.port
@@ -584,7 +589,7 @@ pub(crate) async fn establish(
             (handle, Some(gw_handle))
         }
     };
-    authenticate(&mut handle, target, replies, events).await?;
+    authenticate(&mut handle, target, &opts.agent, replies, events).await?;
     Ok(Connection {
         handle,
         forwards,
@@ -608,6 +613,7 @@ async fn run_shell(
             known_hosts: &params.known_hosts,
             compression: params.compression,
             keepalive: params.keepalive,
+            agent: params.agent.clone(),
         },
         &replies,
         &events,
@@ -792,9 +798,11 @@ async fn login_shell(session: &client::Handle<Handler>) -> Option<String> {
         .map(String::from)
 }
 
+/// Key file, then the SSH agents, then password / keyboard-interactive.
 async fn authenticate(
     session: &mut client::Handle<Handler>,
     endpoint: &Endpoint,
+    agent_config: &AgentConfig,
     replies: &Replies,
     events: &Events,
 ) -> Result<(), String> {
@@ -840,6 +848,10 @@ async fn authenticate(
             }
             events.send(SshEvent::Info("Server refused our key".into()));
         }
+    }
+
+    if agent::authenticate(session, &user, agent_config, events).await? {
+        return Ok(());
     }
 
     for _attempt in 0..3 {

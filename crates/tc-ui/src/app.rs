@@ -147,6 +147,7 @@ impl Host for Core {
             self.paths.known_hosts_file(),
             self.vault.clone(),
             &self.settings.passwords,
+            crate::tab::agent_config(&self.settings.ssh),
             self.repaint.clone(),
         );
         self.running.insert(tunnel.id, running);

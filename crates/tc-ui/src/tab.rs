@@ -30,6 +30,14 @@ pub struct TabEnv {
     pub save_key_passphrases: bool,
 }
 
+pub fn agent_config(ssh: &tc_core::settings::SshSettings) -> tc_ssh::AgentConfig {
+    tc_ssh::AgentConfig {
+        system: ssh.use_system_agent,
+        pageant: ssh.use_pageant,
+        socket: None,
+    }
+}
+
 fn shell_kind(shell: LocalShell) -> tc_pty::ShellKind {
     match shell {
         LocalShell::Bash => tc_pty::ShellKind::Bash,
@@ -374,6 +382,7 @@ impl Tab {
                 .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
             detect_login_shell: false,
             remote_monitoring: self.ssh_settings.remote_monitoring,
+            agent: agent_config(&self.ssh_settings),
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());

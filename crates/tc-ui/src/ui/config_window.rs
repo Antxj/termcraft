@@ -182,8 +182,15 @@ fn ssh(ui: &mut egui::Ui, s: &mut Settings) {
         );
     disabled_check(ui, "GSSAPI Kerberos");
     disabled_check(ui, "Use internal SSH agent");
-    disabled_check(ui, "Use PuTTY agent");
-    disabled_check(ui, "Use Windows SSH agent");
+    if cfg!(windows) {
+        ui.checkbox(&mut ssh.use_pageant, "Use PuTTY agent")
+            .on_hover_text("Log in with the keys loaded in Pageant");
+        ui.checkbox(&mut ssh.use_system_agent, "Use Windows SSH agent")
+            .on_hover_text("Log in with the keys of the OpenSSH agent service (ssh-add)");
+    } else {
+        ui.checkbox(&mut ssh.use_system_agent, "Use SSH agent")
+            .on_hover_text("Log in with the keys of the agent in SSH_AUTH_SOCK (ssh-add)");
+    }
     ui.weak("Host keys are always validated against known_hosts at first connection.");
 }
 

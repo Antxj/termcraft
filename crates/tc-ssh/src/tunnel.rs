@@ -37,6 +37,7 @@ pub struct TunnelParams {
     pub gateway: Option<Endpoint>,
     pub known_hosts: std::path::PathBuf,
     pub spec: TunnelSpec,
+    pub agent: crate::AgentConfig,
 }
 
 pub(crate) async fn run(
@@ -52,6 +53,7 @@ pub(crate) async fn run(
             known_hosts: &params.known_hosts,
             compression: false,
             keepalive: Some(std::time::Duration::from_secs(30)),
+            agent: params.agent.clone(),
         },
         &replies,
         &events,
