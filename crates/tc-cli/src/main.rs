@@ -122,6 +122,10 @@ impl Host for FileHost {
         Ok(&self.vault)
     }
 
+    fn known_hosts_file(&self) -> Result<std::path::PathBuf, CommandError> {
+        Ok(self.paths.known_hosts_file())
+    }
+
     fn macros(&mut self) -> Result<&mut MacroStore, CommandError> {
         Ok(&mut self.macros)
     }

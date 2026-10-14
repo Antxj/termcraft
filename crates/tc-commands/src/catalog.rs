@@ -284,6 +284,22 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "known_host_list",
+        title: "List known hosts",
+        description: "List the trusted SSH host keys (line, hosts, key type, SHA256 fingerprint).",
+        input_schema: EMPTY,
+        example_args: "{}",
+        mutating: false,
+    },
+    CommandSpec {
+        name: "known_host_remove",
+        title: "Forget a host key",
+        description: "Remove a known_hosts entry; line and fingerprint must both match (from known_host_list).",
+        input_schema: r#"{"type":"object","required":["line","fingerprint"],"properties":{"line":{"type":"integer"},"fingerprint":{"type":"string"}}}"#,
+        example_args: r#"{"line":3,"fingerprint":"SHA256:nmMMpUDqwvxrZAIzuZIRm7uBuRssL5IcFts5LoKWa1o"}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "credential_list",
         title: "List credentials",
         description: "List named credentials (name, username). Passwords are never returned.",

@@ -126,6 +126,13 @@ pub enum Command {
         target: tc_vault::Target,
     },
     PasswordForgetAll {},
+    /// Trusted SSH host keys (known_hosts).
+    KnownHostList {},
+    /// Forget a host key: `line` and `fingerprint` from `known_host_list`.
+    KnownHostRemove {
+        line: usize,
+        fingerprint: String,
+    },
     CredentialList {},
     /// Create or replace a named credential ("Credentials" tab).
     CredentialSet {
@@ -184,6 +191,8 @@ impl Command {
             Self::PasswordList {} => "password_list",
             Self::PasswordForget { .. } => "password_forget",
             Self::PasswordForgetAll {} => "password_forget_all",
+            Self::KnownHostList {} => "known_host_list",
+            Self::KnownHostRemove { .. } => "known_host_remove",
             Self::CredentialList {} => "credential_list",
             Self::CredentialSet { .. } => "credential_set",
             Self::CredentialRemove { .. } => "credential_remove",
@@ -257,6 +266,10 @@ pub trait Host {
     }
     fn tunnel_stop(&mut self, _id: TunnelId) -> Result<(), CommandError> {
         Err(CommandError::Unsupported("tunnels run in the GUI"))
+    }
+    /// The known_hosts file the SSH client trusts.
+    fn known_hosts_file(&self) -> Result<std::path::PathBuf, CommandError> {
+        Err(CommandError::Unsupported("no known_hosts file"))
     }
     /// Saved-password store; secrets are never returned through commands.
     fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {
@@ -554,6 +567,23 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             host.vault()?
                 .forget_all()
                 .map_err(|e| CommandError::Failed(e.to_string()))?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::KnownHostList {} => {
+            let path = host.known_hosts_file()?;
+            let hosts = tc_core::known_hosts::load(&path)
+                .map_err(|e| CommandError::Failed(format!("{}: {e}", path.display())))?;
+            to_json(&hosts)
+        }
+        Command::KnownHostRemove { line, fingerprint } => {
+            let path = host.known_hosts_file()?;
+            let removed = tc_core::known_hosts::remove(&path, line, &fingerprint)
+                .map_err(|e| CommandError::Failed(format!("{}: {e}", path.display())))?;
+            if !removed {
+                return Err(CommandError::NotFound(format!(
+                    "line {line} with {fingerprint}"
+                )));
+            }
             Ok(json!({ "ok": true }))
         }
         Command::CredentialList {} => {

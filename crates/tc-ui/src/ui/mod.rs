@@ -9,6 +9,7 @@ pub mod home;
 pub mod host_key_dialog;
 pub mod hotkeys_window;
 pub mod keygen_window;
+pub mod known_hosts_window;
 pub mod menus;
 pub mod monitor_bar;
 pub mod passwords_window;
@@ -64,6 +65,8 @@ pub enum Action {
     KeyboardShortcuts,
     /// Tools › SSH key generator.
     KeyGenerator,
+    /// Configuration › SSH › Known hosts.
+    KnownHosts,
     QuickConnect(String),
     ZoomIn,
     ZoomOut,

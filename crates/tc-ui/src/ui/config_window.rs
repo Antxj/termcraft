@@ -58,7 +58,7 @@ pub fn show(
                     ConfigTab::General => general(ui, paths),
                     ConfigTab::Terminal => terminal(ui, settings),
                     ConfigTab::X11 => x11(ui),
-                    ConfigTab::Ssh => ssh(ui, settings),
+                    ConfigTab::Ssh => ssh(ui, settings, out),
                     ConfigTab::Display => display(ui, settings),
                     ConfigTab::Toolbar => {
                         ui.weak("Toolbar customization (add / remove / reorder buttons) is not implemented yet.");
@@ -174,7 +174,7 @@ fn x11(ui: &mut egui::Ui) {
     ui.weak("The X11 server and X11 forwarding are not implemented yet.");
 }
 
-fn ssh(ui: &mut egui::Ui, s: &mut Settings) {
+fn ssh(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
     let ssh = &mut s.ssh;
     ui.checkbox(&mut ssh.browser, "Enable graphical SSH-browser");
     ui.checkbox(
@@ -211,7 +211,12 @@ fn ssh(ui: &mut egui::Ui, s: &mut Settings) {
         ui.checkbox(&mut ssh.use_system_agent, "Use SSH agent")
             .on_hover_text("Log in with the keys of the agent in SSH_AUTH_SOCK (ssh-add)");
     }
-    ui.weak("Host keys are always validated against known_hosts at first connection.");
+    ui.horizontal(|ui| {
+        if ui.button("Known hosts…").clicked() {
+            out.push(Action::KnownHosts);
+        }
+        ui.weak("Host keys are always validated against known_hosts at first connection.");
+    });
 }
 
 fn display(ui: &mut egui::Ui, s: &mut Settings) {

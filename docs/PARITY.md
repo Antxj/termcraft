@@ -135,7 +135,7 @@ refined against it.
 | P1 | [x] | Named credentials used by sessions as `[name]` in the username field; "Create or manage credentials" button | `tc-vault` + `tc-ui` |
 | P1 | [x] | SSH key generator (Ed25519, ECDSA P-256 / 384 / 521, RSA 2048–4096): load OpenSSH or PPK, save OpenSSH (bcrypt) or PPK v3 (Argon2id + AES-256-CBC), public key and fingerprint; .ppk keys work for SSH login | `tc-ssh` + `tc-ui` |
 | P1 | [x] | Host key validation like the reference (PuTTY alert: Accept / Connect Once / More info / Cancel; "POTENTIAL SECURITY BREACH" on a changed key, Cancel by default, Accept replaces the old known_hosts line); "more information" with SHA256, MD5, full key and paste-to-verify | `tc-ssh` + `tc-ui` |
-| P2 | [ ] | known_hosts management UI | `tc-ssh` |
+| P2 | [x] | Known hosts window (Configuration › SSH): filter, fingerprints, forget a key; known_host_list / known_host_remove commands | `tc-core` + `tc-ui` |
 
 ## 7. Tunnels and networking
 

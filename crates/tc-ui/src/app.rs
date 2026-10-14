@@ -130,6 +130,10 @@ impl Host for Core {
         Ok(&self.vault)
     }
 
+    fn known_hosts_file(&self) -> Result<std::path::PathBuf, CommandError> {
+        Ok(self.paths.known_hosts_file())
+    }
+
     fn macros(&mut self) -> Result<&mut tc_core::MacroStore, CommandError> {
         Ok(&mut self.macros)
     }
@@ -205,6 +209,7 @@ pub struct TermCraftApp {
     /// "Hotkeys edition" window.
     show_hotkeys: bool,
     keygen: crate::ui::keygen_window::KeygenWindow,
+    known_hosts: crate::ui::known_hosts_window::KnownHostsWindow,
     /// Loopback control channel (other processes send commands).
     control: Option<crate::control_server::ControlServer>,
     /// Commands from the command line, run on the first frame.
@@ -288,6 +293,7 @@ impl TermCraftApp {
             passwords: Default::default(),
             show_hotkeys: false,
             keygen: Default::default(),
+            known_hosts: Default::default(),
             control: None,
             startup,
             show_config: false,
@@ -430,6 +436,7 @@ impl TermCraftApp {
             }
             Action::KeyboardShortcuts => return self.show_hotkeys = true,
             Action::KeyGenerator => return self.keygen.open = true,
+            Action::KnownHosts => return self.known_hosts.open(),
             Action::SetTabColor(id, color) => {
                 if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
                     tab.color = color;
@@ -738,6 +745,8 @@ impl TermCraftApp {
         self.paste_confirm_dialog(ctx);
         self.upload_edited_dialog(ctx);
         self.keygen.show(ctx);
+        let known_hosts_file = self.core.paths.known_hosts_file();
+        self.known_hosts.show(ctx, &known_hosts_file, out);
         if self.show_hotkeys
             && crate::ui::hotkeys_window::show(
                 ctx,
@@ -1425,6 +1434,7 @@ impl eframe::App for TermCraftApp {
                 Some("credentials") => self.passwords.open_credentials(),
                 Some("hotkeys") => self.show_hotkeys = true,
                 Some("keygen") => self.keygen.open = true,
+                Some("known_hosts") => self.known_hosts.open(),
                 Some(w) if w.starts_with("new_session") => {
                     let index = w
                         .split(':')
