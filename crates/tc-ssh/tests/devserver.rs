@@ -44,6 +44,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         // Tests must not pick up the developer's agent keys.
         agent: Default::default(),
         shell: true,
+        proxy: None,
     }
 }
 
@@ -327,6 +328,76 @@ fn remote_monitoring_reports_samples() {
     };
     assert!(second.cpu_percent.is_some(), "{second:?}");
     s.close();
+}
+
+/// A tiny SOCKS5 proxy (no auth) on a thread; counts the connections.
+fn socks5_proxy() -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let used = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = used.clone();
+    std::thread::spawn(move || {
+        for client in listener.incoming().flatten() {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::thread::spawn(move || {
+                let mut c = client;
+                let mut hello = [0u8; 3];
+                c.read_exact(&mut hello).unwrap();
+                c.write_all(&[5, 0]).unwrap();
+                let mut head = [0u8; 4];
+                c.read_exact(&mut head).unwrap();
+                let host = match head[3] {
+                    1 => {
+                        let mut ip = [0u8; 4];
+                        c.read_exact(&mut ip).unwrap();
+                        std::net::Ipv4Addr::from(ip).to_string()
+                    }
+                    3 => {
+                        let mut len = [0u8; 1];
+                        c.read_exact(&mut len).unwrap();
+                        let mut name = vec![0u8; usize::from(len[0])];
+                        c.read_exact(&mut name).unwrap();
+                        String::from_utf8(name).unwrap()
+                    }
+                    _ => panic!("address type"),
+                };
+                let mut port = [0u8; 2];
+                c.read_exact(&mut port).unwrap();
+                let target =
+                    std::net::TcpStream::connect((host.as_str(), u16::from_be_bytes(port)))
+                        .unwrap();
+                c.write_all(&[5, 0, 0, 1, 0, 0, 0, 0, 0, 0]).unwrap();
+                let (mut c2, mut t2) = (c.try_clone().unwrap(), target.try_clone().unwrap());
+                let mut t = target;
+                std::thread::spawn(move || std::io::copy(&mut t2, &mut c2));
+                let _ = std::io::copy(&mut c, &mut t);
+            });
+        }
+    });
+    (port, used)
+}
+
+#[test]
+fn login_through_a_socks5_proxy() {
+    let server = start(DevConfig::default());
+    let (proxy_port, used) = socks5_proxy();
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(
+        server.port,
+        &dir.path().join("known_hosts"),
+        "echo via-proxy",
+    );
+    p.proxy = Some(tc_ssh::proxy::Proxy {
+        kind: tc_ssh::proxy::ProxyKind::Socks5,
+        host: "127.0.0.1".into(),
+        port: proxy_port,
+        user: None,
+    });
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.output.contains("via-proxy"), "{out:?}");
+    assert_eq!(used.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
 /// SFTP session: no terminal at all, only the browser.

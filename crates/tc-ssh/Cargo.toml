@@ -10,12 +10,13 @@ license.workspace = true
 tc-core.workspace = true
 russh = { version = "0.64", default-features = false, features = ["flate2", "ring", "rsa"] }
 russh-sftp = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "io-util", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "net", "time", "io-util", "fs", "process"] }
 anyhow.workspace = true
 thiserror.workspace = true
 crossbeam-channel.workspace = true
 md5 = "0.8"
 zeroize = "1"
+base64 = "0.23"
 
 [lints]
 workspace = true

@@ -10,6 +10,7 @@
 //! Both kinds of session can go through an SSH gateway (jump host).
 
 pub mod agent;
+pub mod proxy;
 pub mod sftp;
 pub mod tunnel;
 
@@ -67,6 +68,8 @@ pub struct ConnectParams {
     /// Open a terminal (shell or command). `false` = SFTP session: only
     /// the file browser.
     pub shell: bool,
+    /// Proxy for the first hop (session "Network settings").
+    pub proxy: Option<proxy::Proxy>,
 }
 
 impl ConnectParams {
@@ -511,6 +514,7 @@ pub(crate) struct ConnectOptions<'a> {
     pub compression: bool,
     pub keepalive: Option<std::time::Duration>,
     pub agent: AgentConfig,
+    pub proxy: Option<&'a proxy::Proxy>,
 }
 
 fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
@@ -529,6 +533,46 @@ fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> A
 }
 
 /// Connect (directly or through the gateway) and authenticate.
+/// TCP to the first SSH server, directly or through the session proxy.
+async fn first_hop(
+    config: Arc<client::Config>,
+    to: &Endpoint,
+    handler: Handler,
+    proxy: Option<&proxy::Proxy>,
+    replies: &Replies,
+    events: &Events,
+) -> Result<client::Handle<Handler>, String> {
+    let Some(p) = proxy else {
+        return client::connect(config, (to.host.as_str(), to.port), handler)
+            .await
+            .map_err(|e| e.to_string());
+    };
+    events.send(SshEvent::Info(format!(
+        "Connecting through proxy {}:{} …",
+        p.host, p.port
+    )));
+    let proxy_ep = Endpoint {
+        host: p.host.clone(),
+        port: p.port,
+        user: p.user.clone().unwrap_or_default(),
+        private_key: None,
+    };
+    let (events2, replies2) = (events.clone(), replies.clone());
+    let mut ask = move || -> proxy::PasswordFuture {
+        let (e, r, ep) = (events2.clone(), replies2.clone(), proxy_ep.clone());
+        Box::pin(async move {
+            let prompt = format!("Password for proxy {}@{}:", ep.user, ep.host);
+            ask_secret(&e, &r, &ep, prompt, SecretKind::Password).await
+        })
+    };
+    let stream = proxy::connect(p, &to.host, to.port, &mut ask)
+        .await
+        .map_err(|e| e.to_string())?;
+    client::connect_stream(config, stream, handler)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub(crate) async fn establish(
     opts: ConnectOptions<'_>,
     replies: &Replies,
@@ -552,10 +596,9 @@ pub(crate) async fn establish(
                 "Connecting to {}:{} …",
                 target.host, target.port
             )));
-            let handle =
-                client::connect(config, (target.host.as_str(), target.port), handler(target))
-                    .await
-                    .map_err(|e| format!("connection failed: {e}"))?;
+            let handle = first_hop(config, target, handler(target), opts.proxy, replies, events)
+                .await
+                .map_err(|e| format!("connection failed: {e}"))?;
             (handle, None)
         }
         Some(gw) => {
@@ -563,10 +606,13 @@ pub(crate) async fn establish(
                 "Connecting to SSH gateway {}:{} …",
                 gw.host, gw.port
             )));
-            let mut gw_handle = client::connect(
+            let mut gw_handle = first_hop(
                 client_config(false, opts.keepalive),
-                (gw.host.as_str(), gw.port),
+                gw,
                 handler(gw),
+                opts.proxy,
+                replies,
+                events,
             )
             .await
             .map_err(|e| format!("gateway connection failed: {e}"))?;
@@ -617,6 +663,7 @@ async fn run_shell(
             compression: params.compression,
             keepalive: params.keepalive,
             agent: params.agent.clone(),
+            proxy: params.proxy.as_ref(),
         },
         &replies,
         &events,

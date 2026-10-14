@@ -78,7 +78,7 @@ refined against it.
 | P0 | [~] | SSH agent login: Pageant ("Use PuTTY agent"), OpenSSH agent pipe ("Use Windows SSH agent"), `SSH_AUTH_SOCK` on Unix; at most 5 agent keys before the password. Internal agent (MobAgent) and agent forwarding pending | `tc-ssh` |
 | P1 | [x] | SSH compression (zlib / zlib@openssh.com) | `tc-ssh` |
 | P1 | [~] | SSH gateway / jump host (session Network settings 3_9/3_10/3_11/3_16); single hop, multi-hop pending | `tc-ssh` |
-| P1 | [ ] | SOCKS / HTTP proxy for SSH | `tc-ssh` |
+| P1 | [~] | Proxy for SSH (session Network settings 3_20…3_27): SOCKS4a, SOCKS5 (user / password asked when needed), HTTP CONNECT (Basic auth on 407), local proxy command (%h / %p). Telnet / SSH-forwarding / SSH-command proxy types pending | `tc-ssh` |
 | P1 | [x] | Telnet (ECHO, SGA, TERMINAL-TYPE, NAWS negotiation) | `tc-net` |
 | P1 | [x] | Serial (COM / tty, speed, data/stop bits, parity none/odd/even, flow none/XON/RTS); mark/space parity and DSR/DTR pending | `tc-net` |
 | P1 | [~] | SFTP session: SSH with only the file browser (no terminal), credentials and agents like SSH; the reference two-pane local / remote view is pending | `tc-ssh` + `tc-ui` |
