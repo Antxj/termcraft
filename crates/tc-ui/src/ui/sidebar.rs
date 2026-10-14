@@ -35,15 +35,51 @@ fn strip_button(ui: &mut egui::Ui, glyph: &str, selected: bool, hint: &str) -> e
     response.on_hover_text(hint)
 }
 
+/// A sidebar tab: icon on top, title written top to bottom, accent bar on
+/// the selected one (reference vertical tabs).
+fn strip_tab(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egui::Response {
+    let palette = crate::skin::current(ui.ctx());
+    let font = FontId::proportional(12.5);
+    let color = if selected {
+        palette.text
+    } else {
+        palette.weak_text
+    };
+    let galley = ui.painter().layout_no_wrap(title.to_string(), font, color);
+    let height = 30.0 + galley.size().x + 10.0;
+    let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::click());
+    let painter = ui.painter();
+    if selected {
+        painter.rect_filled(rect, 3.0, palette.tab_active);
+        let bar = egui::Rect::from_min_size(rect.min, vec2(3.0, rect.height()));
+        painter.rect_filled(bar, 1.0, palette.accent);
+    } else if response.hovered() {
+        painter.rect_filled(rect, 3.0, palette.tab_hover);
+    }
+    painter.text(
+        egui::pos2(rect.center().x, rect.top() + 15.0),
+        Align2::CENTER_CENTER,
+        glyph,
+        FontId::proportional(17.0),
+        if selected { palette.accent } else { color },
+    );
+    // Rotated a quarter turn clockwise: the text runs downwards.
+    let pos = egui::pos2(rect.center().x + galley.size().y / 2.0, rect.top() + 30.0);
+    painter.add(
+        egui::epaint::TextShape::new(pos, galley, color).with_angle(std::f32::consts::FRAC_PI_2),
+    );
+    response
+}
+
 pub fn strip(ui: &mut egui::Ui, view: &ViewSettings, out: &mut Vec<Action>) {
     ui.spacing_mut().item_spacing.y = 2.0;
     ui.add_space(4.0);
     if strip_button(ui, icon::PUSH_PIN, false, "Pin sidebar").clicked() {
         out.push(Action::ToggleSidebar);
     }
-    for (tab, glyph, hint) in TABS {
+    for (tab, glyph, title) in TABS {
         let selected = view.sidebar_visible && view.sidebar_tab == tab;
-        if strip_button(ui, glyph, selected, hint).clicked() {
+        if strip_tab(ui, glyph, title, selected).clicked() {
             if !view.sidebar_visible {
                 out.push(Action::ToggleSidebar);
             }
