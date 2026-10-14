@@ -63,14 +63,16 @@ impl FtpSession {
             next: AtomicU64::new(1),
         }
     }
+}
 
-    pub fn request(&self, request: FsRequest) -> u64 {
+impl crate::FsBackend for FtpSession {
+    fn request(&self, request: FsRequest) -> u64 {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let _ = self.requests.send((id, request));
         id
     }
 
-    pub fn events(&self) -> &Receiver<FsEvent> {
+    fn events(&self) -> &Receiver<FsEvent> {
         &self.events
     }
 }

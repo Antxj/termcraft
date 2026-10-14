@@ -7,6 +7,7 @@
 pub mod ftp;
 pub mod ftps;
 pub mod rlogin;
+pub mod s3;
 pub mod serial;
 pub mod telnet;
 
@@ -27,3 +28,11 @@ pub trait Stream: Send {
 }
 
 pub type Notify = Arc<dyn Fn() + Send + Sync>;
+
+/// A file browser connection (FTP, S3): requests in, [`FsEvent`]s out.
+///
+/// [`FsEvent`]: tc_core::remote_fs::FsEvent
+pub trait FsBackend: Send {
+    fn request(&self, request: tc_core::remote_fs::FsRequest) -> u64;
+    fn events(&self) -> &crossbeam_channel::Receiver<tc_core::remote_fs::FsEvent>;
+}

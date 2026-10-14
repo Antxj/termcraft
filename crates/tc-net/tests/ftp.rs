@@ -6,6 +6,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tc_core::remote_fs::{FsEvent, FsRequest};
+use tc_net::FsBackend as _;
 use tc_net::ftp::{FtpParams, FtpSession};
 
 #[derive(Default)]

@@ -246,7 +246,8 @@ enum Backend {
     Connecting(crossbeam_channel::Receiver<StreamResult>),
     Stream(Box<dyn tc_net::Stream>),
     /// FTP session: the browser is the UI, the terminal shows status.
-    Ftp(tc_net::ftp::FtpSession),
+    /// FTP / S3 file browser.
+    Ftp(Box<dyn tc_net::FsBackend>),
 }
 
 /// State of the SSH-browser (SFTP side panel) for one tab.
@@ -326,6 +327,8 @@ pub struct Tab {
     term_type: Option<String>,
     /// FTP connection waiting for its password prompt.
     pending_ftp: Option<tc_net::ftp::FtpParams>,
+    /// S3 login waiting for its secret access key.
+    pending_s3: Option<tc_net::s3::S3Params>,
     backend: Backend,
     pub status: Option<String>,
     /// SSH host key waiting for the user's decision.
@@ -439,6 +442,7 @@ impl Tab {
             ssh_settings: env.ssh.clone(),
             term_type: None,
             pending_ftp: None,
+            pending_s3: None,
             backend: Backend::None,
             status: None,
             host_key: None,
@@ -579,6 +583,7 @@ impl Tab {
                 tab.line = Some(LineInput::Login(String::new()));
             }
             Some(SessionKind::Wsl { distro }) => tab.open_wsl(&distro),
+            Some(SessionKind::AwsS3 { key_id }) => tab.open_s3(key_id),
             Some(SessionKind::File { path }) => {
                 let result = crate::external::open_path(&path);
                 tab.opened_externally("File", &path, result);
@@ -1251,6 +1256,59 @@ impl Tab {
         }
     }
 
+    /// A password (typed or saved) for a pending FTP / S3 login; given back
+    /// when no such login waits (it is then for the SSH connection).
+    fn pending_login(&mut self, secret: String) -> Option<String> {
+        if let Some(mut ftp) = self.pending_ftp.take() {
+            ftp.password = secret;
+            self.start_ftp(ftp);
+            return None;
+        }
+        if let Some(mut s3) = self.pending_s3.take() {
+            s3.secret = zeroize::Zeroizing::new(secret);
+            self.start_s3(s3);
+            return None;
+        }
+        Some(secret)
+    }
+
+    /// "Aws S3": the secret access key is asked for (or taken from the
+    /// password store), then the buckets are listed.
+    fn open_s3(&mut self, key_id: String) {
+        let key_id = key_id.trim().to_string();
+        if key_id.is_empty() {
+            self.message("\x1b[31mAws S3: no Key ID in this session\x1b[0m");
+            self.status = Some("no Key ID".into());
+            return;
+        }
+        self.pending_s3 = Some(tc_net::s3::S3Params {
+            key_id: key_id.clone(),
+            secret: zeroize::Zeroizing::new(String::new()),
+            region: "us-east-1".into(),
+            start_path: None,
+            endpoint: None,
+        });
+        let target = Target {
+            protocol: "s3".into(),
+            username: key_id.clone(),
+            server: "s3.amazonaws.com".into(),
+        };
+        self.on_secret_needed(
+            format!("Secret access key for {key_id}:"),
+            SecretKind::Password,
+            target,
+        );
+    }
+
+    fn start_s3(&mut self, params: tc_net::s3::S3Params) {
+        self.message("\x1b[90mConnecting to Amazon S3 …\x1b[0m");
+        self.sftp = SftpStatus::Connecting;
+        self.backend = Backend::Ftp(Box::new(tc_net::s3::S3Session::connect(
+            params,
+            self.repaint.clone(),
+        )));
+    }
+
     /// FTPS certificates the user trusted (next to known_hosts).
     fn ftps_certificates(&self) -> PathBuf {
         self.known_hosts.with_file_name("ftps_certificates")
@@ -1296,10 +1354,10 @@ impl Tab {
         ));
         self.last_ftp = Some(params.clone());
         self.sftp = SftpStatus::Connecting;
-        self.backend = Backend::Ftp(tc_net::ftp::FtpSession::connect(
+        self.backend = Backend::Ftp(Box::new(tc_net::ftp::FtpSession::connect(
             params,
             self.repaint.clone(),
-        ));
+        )));
     }
 
     fn pump_ftp(&mut self) -> bool {
@@ -1318,7 +1376,8 @@ impl Tab {
                     self.after_login();
                 }
                 SftpEvent::Unavailable(e) => {
-                    self.message(&format!("\x1b[31mFTP: {e}\x1b[0m"));
+                    let kind = self.session.as_ref().map_or("FTP", |s| s.kind.label());
+                    self.message(&format!("\x1b[31m{kind}: {e}\x1b[0m"));
                     self.status = Some("connection failed".into());
                 }
                 SftpEvent::UntrustedCertificate {
@@ -1575,10 +1634,9 @@ impl Tab {
                     "\x1b[90mUsing saved password for {}\x1b[0m",
                     target.key()
                 ));
-                if let Some(mut ftp) = self.pending_ftp.take() {
-                    ftp.password = password;
-                    self.start_ftp(ftp);
-                } else if let Backend::Ssh(ssh) = &self.backend {
+                if let Some(password) = self.pending_login(password)
+                    && let Backend::Ssh(ssh) = &self.backend
+                {
                     ssh.reply(Reply::Secret(password));
                 }
             }
@@ -1931,10 +1989,9 @@ impl Tab {
                         }
                         Some(LineInput::Secret(secret, kind, target)) => {
                             self.credentials.on_typed(kind, target, secret.clone());
-                            if let Some(mut ftp) = self.pending_ftp.take() {
-                                ftp.password = secret;
-                                self.start_ftp(ftp);
-                            } else if let Backend::Ssh(ssh) = &self.backend {
+                            if let Some(secret) = self.pending_login(secret)
+                                && let Backend::Ssh(ssh) = &self.backend
+                            {
                                 ssh.reply(Reply::Secret(secret));
                             }
                         }
@@ -1994,7 +2051,7 @@ impl Tab {
     pub fn is_file_session(&self) -> bool {
         matches!(
             self.session.as_ref().map(|s| &s.kind),
-            Some(SessionKind::Sftp { .. } | SessionKind::Ftp { .. })
+            Some(SessionKind::Sftp { .. } | SessionKind::Ftp { .. } | SessionKind::AwsS3 { .. })
         )
     }
 

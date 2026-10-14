@@ -87,6 +87,7 @@ refined against it.
 | P1 | [x] | FTP / FTPS in the file browser (passive / active, ASCII, startup folder, saved password; FTPS explicit or implicit over rustls, TLS 1.2 / 1.3, data channel encrypted, untrusted certificates shown with their fingerprint and pinned on Accept). SSL2 / SSL3 / TLS 1.0 / 1.1 are not offered | `tc-net` |
 | P2 | [~] | RDP opens in the system client (mstsc with .rdp file / macOS rdp:// / FreeRDP or Remmina); embedded IronRDP view pending | `tc-ui` |
 | P2 | [~] | VNC opens in the system viewer (Screen Sharing / TigerVNC / TightVNC / Remmina); embedded view pending | `tc-ui` |
+| P2 | [x] | Aws S3 session (3_2 Key ID; secret access key asked or taken from the password store): buckets and prefixes browsed like folders in the two-pane view, download / upload (single PUT, progress), new folder / empty file, rename (copy + delete), delete (non-empty folders refused); AWS Signature V4 (checked against the AWS test suite), per-bucket region, virtual-hosted style (path style for dotted names) | `tc-net` + `tc-ui` |
 | P2 | [~] | Mosh: mosh-server started over SSH (UDP port, charset, prediction, server path), then the local `mosh-client` with the key in its environment; needs Mosh installed (a built-in Mosh client is pending) | `tc-ui` |
 | P2 | [x] | WSL as local shell and WSL sessions (installed distributions listed, user, startup directory); graphical environments pending (X server) | `tc-pty` + `tc-ui` |
 | P2 | [ ] | Custom shell-script bookmark | `tc-core` |
@@ -115,8 +116,8 @@ refined against it.
 |-----|--------|---------|-------|
 | P0 | [x] | Session model (host, port, user, kind, folder) | `tc-core` |
 | P0 | [x] | Save / load sessions (TOML) | `tc-core` |
-| P0 | [~] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (13 types editable; Xdmcp and Aws S3 pending) | `tc-ui` |
-| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, Rsh, RDP, VNC, FTP, SFTP, Serial, Shell, File, Browser, Mosh, WSL (Xdmcp and S3 not yet); lossless (every non-default parameter kept in `options`) | `tc-import` |
+| P0 | [~] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (14 types editable; Xdmcp pending) | `tc-ui` |
+| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, Rsh, RDP, VNC, FTP, SFTP, Serial, Shell, File, Browser, Mosh, Aws S3, WSL (Xdmcp not yet); lossless (every non-default parameter kept in `options`) | `tc-import` |
 | P1 | [x] | Folders tree, rename / duplicate / delete from context menu, drag a session onto a folder (or another session) to move it, New folder / Rename folder / Delete folder (empty folders kept); session_folder_add / _rename / _remove commands | `tc-core` + `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |

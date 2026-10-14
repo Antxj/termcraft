@@ -98,6 +98,9 @@ pub enum SessionKind {
         #[serde(default = "default_ssh_port")]
         ssh_port: u16,
     },
+    /// "Aws S3": browse buckets with an access key (the secret is asked
+    /// for, or saved in the password store).
+    AwsS3 { key_id: String },
     /// Windows Subsystem for Linux; `distro` "Default" = the default one.
     Wsl {
         #[serde(default = "default_wsl_distro")]
@@ -144,6 +147,7 @@ impl SessionKind {
             Self::Browser { .. } => "Browser",
             Self::Mosh { .. } => "Mosh",
             Self::Wsl { .. } => "WSL",
+            Self::AwsS3 { .. } => "Aws S3",
         }
     }
 
@@ -163,6 +167,7 @@ impl SessionKind {
             Self::Browser { .. } => 11,
             Self::Mosh { .. } => 12,
             Self::Wsl { .. } => 14,
+            Self::AwsS3 { .. } => 13,
         }
     }
 
@@ -217,6 +222,9 @@ impl SessionKind {
                 user: None,
                 ssh_port: 22,
             },
+            13 => Self::AwsS3 {
+                key_id: String::new(),
+            },
             14 => Self::Wsl {
                 distro: default_wsl_distro(),
             },
@@ -234,7 +242,9 @@ impl SessionKind {
             Self::Serial { .. } => &["3_9", "3_3"],
             Self::LocalShell { .. } => &[],
             Self::Rsh { .. } => &["3_2", "3_3"],
-            Self::File { .. } | Self::Browser { .. } | Self::Wsl { .. } => &["3_2"],
+            Self::File { .. } | Self::Browser { .. } | Self::Wsl { .. } | Self::AwsS3 { .. } => {
+                &["3_2"]
+            }
             Self::Mosh { .. } => &["3_2", "3_3", "3_4"],
         }
     }
@@ -280,6 +290,7 @@ impl SessionKind {
             (Self::File { path }, "3_2") => path.clone(),
             (Self::Browser { url }, "3_2") => url.clone(),
             (Self::Wsl { distro }, "3_2") => distro.clone(),
+            (Self::AwsS3 { key_id }, "3_2") => key_id.clone(),
             _ => return None,
         })
     }
@@ -344,6 +355,7 @@ impl SessionKind {
             }
             (Self::File { path }, "3_2") => *path = value.to_string(),
             (Self::Browser { url }, "3_2") => *url = value.to_string(),
+            (Self::AwsS3 { key_id }, "3_2") => *key_id = value.to_string(),
             (Self::Wsl { distro }, "3_2") => {
                 *distro = if value.is_empty() {
                     default_wsl_distro()
@@ -369,7 +381,7 @@ impl SessionKind {
             Self::Rsh { host, .. } | Self::Mosh { host, .. } => Some(host.as_str()),
             Self::File { path } => Some(path.as_str()),
             Self::Browser { url } => Some(url.as_str()),
-            Self::LocalShell { .. } | Self::Wsl { .. } => None,
+            Self::LocalShell { .. } | Self::Wsl { .. } | Self::AwsS3 { .. } => None,
         }
         .filter(|s| !s.is_empty())
     }

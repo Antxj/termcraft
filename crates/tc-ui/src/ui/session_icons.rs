@@ -141,6 +141,7 @@ pub fn kind_glyph(kind: &SessionKind) -> &'static str {
         K::Browser { .. } => icon::BROWSER,
         K::Mosh { .. } => icon::LIGHTNING,
         K::Wsl { .. } => icon::LINUX_LOGO,
+        K::AwsS3 { .. } => icon::CLOUD,
     }
 }
 

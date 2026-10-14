@@ -190,10 +190,11 @@ fn parse_bookmark(name: &str, value: &str, folder: &str, report: &mut ImportRepo
         },
         (9, Some(path)) => SessionKind::File { path },
         (11, Some(url)) => SessionKind::Browser { url },
+        (13, Some(key_id)) => SessionKind::AwsS3 { key_id },
         (14, distro) => SessionKind::Wsl {
             distro: distro.unwrap_or_else(|| "Default".into()),
         },
-        (0 | 1 | 2 | 4 | 5 | 6 | 7 | 9 | 11 | 12, None) => {
+        (0 | 1 | 2 | 4 | 5 | 6 | 7 | 9 | 11 | 12 | 13, None) => {
             report
                 .unsupported
                 .push(unsupported(type_name, "bookmark without host"));
@@ -270,6 +271,7 @@ fn export_icon(type_index: usize) -> u32 {
         4 => 91,
         8 => 131,
         12 => 145,
+        13 => 343,
         _ => 109,
     }
 }
@@ -376,6 +378,12 @@ mod tests {
         tricky.folder = "A/B".into();
         let mut all = original.clone();
         all.push(tricky);
+        all.push(Session::new(
+            "buckets",
+            SessionKind::AwsS3 {
+                key_id: "AKIAEXAMPLE".into(),
+            },
+        ));
         let text = export(&all);
         let back = parse(&text);
         assert!(back.unsupported.is_empty(), "{:?}", back.unsupported);

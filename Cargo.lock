@@ -5015,6 +5015,7 @@ name = "tc-net"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "hmac",
  "rustls",
  "serialport",
  "sha2",
@@ -5022,7 +5023,9 @@ dependencies = [
  "suppaftp",
  "tc-core",
  "tempfile",
+ "ureq",
  "webpki-roots",
+ "zeroize",
 ]
 
 [[package]]

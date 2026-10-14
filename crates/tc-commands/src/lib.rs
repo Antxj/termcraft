@@ -815,7 +815,8 @@ fn session_host(s: &Session) -> Option<&str> {
         | K::Serial { .. }
         | K::File { .. }
         | K::Browser { .. }
-        | K::Wsl { .. } => None,
+        | K::Wsl { .. }
+        | K::AwsS3 { .. } => None,
     }
 }
 
