@@ -151,8 +151,10 @@ Passwords are never written in these files in clear text.
 ## For power users
 
 `termcraft-cli` (included) runs the same actions from scripts: list or add
-sessions, open tabs in the running window, start tunnels and servers. Run
-`termcraft-cli commands` to see them all. AI assistants can drive TermCraft
+sessions, open tabs, type into them, start tunnels and servers. Run
+`termcraft-cli commands` to see them all. When TermCraft is open, the
+commands go to its window; otherwise they change your saved sessions
+directly (tabs then need the window). AI assistants can drive TermCraft
 through `termcraft-cli mcp` (Model Context Protocol).
 
 ## License and credits

@@ -4,12 +4,21 @@
 
 use serde_json::{Value, json};
 use std::io::{BufRead, Write};
-use tc_commands::{CATALOG, Command, Host, execute};
+use tc_commands::{CATALOG, Command, CommandError, Host, execute};
+
+/// Runs one command: `execute` on a [`Host`], or a forwarder to the
+/// running window.
+pub type Run<'a> = dyn FnMut(Command) -> Result<Value, CommandError> + 'a;
 
 const DEFAULT_PROTOCOL: &str = "2025-06-18";
 
-pub fn serve(
-    host: &mut dyn Host,
+pub fn serve(host: &mut dyn Host, input: impl BufRead, output: impl Write) -> std::io::Result<()> {
+    serve_with(&mut |cmd| execute(host, cmd), input, output)
+}
+
+/// [`serve`], with each tool call run by `run`.
+pub fn serve_with(
+    run: &mut Run<'_>,
     input: impl BufRead,
     mut output: impl Write,
 ) -> std::io::Result<()> {
@@ -18,7 +27,7 @@ pub fn serve(
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(reply) = handle_line(host, &line) {
+        if let Some(reply) = handle_line_with(run, &line) {
             serde_json::to_writer(&mut output, &reply)?;
             output.write_all(b"\n")?;
             output.flush()?;
@@ -29,6 +38,11 @@ pub fn serve(
 
 /// Handle one JSON-RPC message; `None` for notifications.
 pub fn handle_line(host: &mut dyn Host, line: &str) -> Option<Value> {
+    handle_line_with(&mut |cmd| execute(host, cmd), line)
+}
+
+/// [`handle_line`], with tool calls run by `run`.
+pub fn handle_line_with(run: &mut Run<'_>, line: &str) -> Option<Value> {
     let msg: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         Err(e) => return Some(error(Value::Null, -32700, &format!("parse error: {e}"))),
@@ -44,7 +58,7 @@ pub fn handle_line(host: &mut dyn Host, line: &str) -> Option<Value> {
         "initialize" => Ok(initialize(&params)),
         "ping" => Ok(json!({})),
         "tools/list" => Ok(tools_list()),
-        "tools/call" => Ok(tools_call(host, &params)),
+        "tools/call" => Ok(tools_call(run, &params)),
         m if m.starts_with("notifications/") => return None,
         m => Err((-32601, format!("method not found: {m}"))),
     };
@@ -87,13 +101,13 @@ fn tools_list() -> Value {
     json!({ "tools": tools })
 }
 
-fn tools_call(host: &mut dyn Host, params: &Value) -> Value {
+fn tools_call(run: &mut Run<'_>, params: &Value) -> Value {
     let name = params
         .get("name")
         .and_then(Value::as_str)
         .unwrap_or_default();
     let args = params.get("arguments").cloned().unwrap_or(Value::Null);
-    let outcome = Command::from_call(name, args).and_then(|cmd| execute(host, cmd));
+    let outcome = Command::from_call(name, args).and_then(run);
     match outcome {
         Ok(value) => json!({
             "content": [{ "type": "text", "text": value.to_string() }],
@@ -114,7 +128,6 @@ fn error(id: Value, code: i64, message: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tc_commands::CommandError;
     use tc_core::SessionStore;
 
     #[derive(Default)]

@@ -76,6 +76,15 @@ fn bad_input_fails_cleanly() {
 }
 
 #[test]
+fn window_commands_say_the_window_is_needed() {
+    let cli = Portable::new();
+    let out = cli.run(&["run", "tab_list"]);
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("start TermCraft"), "{err}");
+}
+
+#[test]
 fn release_signing_round_trip() {
     let cli = Portable::new();
     let dir = cli.dir.path();

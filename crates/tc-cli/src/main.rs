@@ -2,6 +2,7 @@ use anyhow::{Context as _, bail};
 use base64::Engine as _;
 use clap::{Parser, Subcommand};
 use serde_json::Value;
+use tc_commands::control::SendError;
 use tc_commands::{CATALOG, Command, CommandError, Host, execute};
 use tc_core::{MacroStore, Paths, SessionStore, Settings, TunnelStore};
 
@@ -162,8 +163,27 @@ fn channel_name(settings: &Settings) -> &'static str {
     }
 }
 
+/// Run a command where the state lives: in the running window when there
+/// is one (it would otherwise overwrite our changes to the files when it
+/// saves), else on the files directly.
+fn dispatch(host: &mut FileHost, cmd: Command) -> Result<Value, CommandError> {
+    let window = match tc_commands::control::request(&host.paths.control_file(), cmd.clone()) {
+        Ok(v) => return Ok(v),
+        Err(SendError::Failed(e)) => return Err(CommandError::Failed(e)),
+        // The window leaves this one (e.g. `update_check`) to us.
+        Err(SendError::Unsupported(_)) => true,
+        Err(SendError::NotRunning) => false,
+    };
+    execute(host, cmd).map_err(|e| match e {
+        CommandError::Unsupported(why) if !window => {
+            CommandError::Failed(format!("{why}: start TermCraft and try again"))
+        }
+        e => e,
+    })
+}
+
 fn run_command(host: &mut FileHost, cmd: Command) -> anyhow::Result<()> {
-    let out = execute(host, cmd)?;
+    let out = dispatch(host, cmd)?;
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
 }
@@ -200,7 +220,11 @@ fn main() -> anyhow::Result<()> {
         Cmd::Mcp => {
             let mut host = FileHost::open()?;
             let stdin = std::io::stdin().lock();
-            tc_mcp::serve(&mut host, stdin, std::io::stdout().lock())?;
+            tc_mcp::serve_with(
+                &mut |cmd| dispatch(&mut host, cmd),
+                stdin,
+                std::io::stdout().lock(),
+            )?;
         }
         Cmd::Update { cmd } => update(cmd)?,
     }

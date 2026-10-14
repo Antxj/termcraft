@@ -23,11 +23,11 @@
 | `tc-term` | VT emulation wrapper, palette, key encoding |
 | `tc-pty` | Local shell over ConPTY / PTY |
 | `tc-ssh` | Native SSH client (russh): auth, host keys, shell / exec channels |
-| `tc-net` | Telnet and serial terminal backends |
+| `tc-net` | Telnet, rlogin and serial terminals; FTP / FTPS and Amazon S3 file browsers |
 | `tc-servers` | Network services of the "Servers" window (TFTP, HTTP) |
 | `tc-devserver` | Loopback SSH server for tests and manual runs (docs/DEV.md) |
 | `tc-vault` | Saved passwords and credentials: OS keychain or Master-Password-encrypted file (index of names only) |
-| `tc-import` | MobaXterm (and later PuTTY, ssh_config) importers |
+| `tc-import` | MobaXterm, PuTTY, OpenSSH config and WSL importers |
 | `tc-update` | Signed self-update |
 | `tc-mcp` | MCP server over stdio |
 | `tc-cli` | `termcraft-cli` binary |

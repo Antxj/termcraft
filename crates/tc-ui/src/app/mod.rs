@@ -639,18 +639,10 @@ impl TermCraftApp {
         let incoming = control.take();
         for msg in incoming {
             let opens_tab = matches!(msg.command, Command::TabOpen { .. });
-            let response = match tc_commands::execute(&mut self.core, msg.command) {
-                Ok(result) => tc_commands::control::Response {
-                    ok: true,
-                    result,
-                    error: None,
-                },
-                Err(e) => tc_commands::control::Response {
-                    ok: false,
-                    result: serde_json::Value::Null,
-                    error: Some(e.to_string()),
-                },
-            };
+            let response = tc_commands::control::Response::from_result(tc_commands::execute(
+                &mut self.core,
+                msg.command,
+            ));
             if opens_tab && response.ok {
                 // Like opening a bookmark from the shell: bring us forward.
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);

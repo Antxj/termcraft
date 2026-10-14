@@ -78,15 +78,15 @@ fn main() -> eframe::Result<()> {
 /// Send the commands to an already running window. False when none runs.
 fn forward(paths: &tc_core::Paths, commands: &[tc_commands::Command]) -> bool {
     let file = paths.control_file();
-    for (i, cmd) in commands.iter().enumerate() {
-        match tc_commands::control::send(&file, cmd.clone()) {
+    for cmd in commands {
+        match tc_commands::control::request(&file, cmd.clone()) {
             Ok(_) => {}
-            // Nothing listening: start a window (only if nothing was sent).
-            Err(_) if i == 0 => return false,
-            Err(e) => {
-                eprintln!("termcraft: {e}");
-                return true;
-            }
+            // Nothing listening: start a window. Only the first command can
+            // get here, as it already tells whether a window runs.
+            Err(tc_commands::control::SendError::NotRunning) => return false,
+            // A running window refused it (an unknown session...): say so,
+            // and do not start a second window.
+            Err(e) => eprintln!("termcraft: {e}"),
         }
     }
     true

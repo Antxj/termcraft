@@ -67,14 +67,7 @@ impl Drop for ControlServer {
 }
 
 fn refuse(stream: &TcpStream, error: &str) {
-    let _ = control::write_response(
-        stream,
-        &Response {
-            ok: false,
-            result: serde_json::Value::Null,
-            error: Some(error.into()),
-        },
-    );
+    let _ = control::write_response(stream, &Response::refused(error));
 }
 
 fn serve(
