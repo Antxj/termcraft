@@ -141,13 +141,7 @@ pub fn sessions_menu(ui: &mut egui::Ui, sessions: &[Session], out: &mut Vec<Acti
 pub fn view_menu(ui: &mut egui::Ui, v: &ViewSettings, out: &mut Vec<Action>) {
     split_items(ui, v.split, out);
     ui.separator();
-    check(
-        ui,
-        "Compact mode",
-        v.compact,
-        Action::ToggleCompact,
-        out,
-    );
+    check(ui, "Compact mode", v.compact, Action::ToggleCompact, out);
     item(ui, "Fullscreen mode", Some(Action::ToggleFullscreen), out);
     item(ui, "Iconify TermCraft", Some(Action::Minimize), out);
     ui.separator();

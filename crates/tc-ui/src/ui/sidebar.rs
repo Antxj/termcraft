@@ -163,7 +163,27 @@ fn session_tree(ui: &mut egui::Ui, sessions: &Sessions<'_>, filter: &str, out: &
         .id_salt("user-sessions")
         .default_open(true)
         .show(ui, |ui| draw_folder(ui, &root, "", sessions, out));
+    drop_target(ui, &header.header_response, "", out);
     header.header_response.context_menu(|ui| root_menu(ui, out));
+}
+
+/// A folder (or session row) where a dragged session can be dropped.
+fn drop_target(ui: &egui::Ui, target: &egui::Response, folder: &str, out: &mut Vec<Action>) {
+    if target.dnd_hover_payload::<SessionId>().is_some() {
+        let p = crate::skin::current(ui.ctx());
+        ui.painter().rect_stroke(
+            target.rect.expand(1.0),
+            3.0,
+            egui::Stroke::new(1.5, p.accent),
+            egui::StrokeKind::Outside,
+        );
+    }
+    if let Some(id) = target.dnd_release_payload::<SessionId>() {
+        out.push(Action::MoveSession(
+            *id,
+            folder.trim_matches('/').to_string(),
+        ));
+    }
 }
 
 fn draw_folder(
@@ -175,23 +195,29 @@ fn draw_folder(
 ) {
     for (name, sub) in &folder.folders {
         let sub_path = format!("{path}/{name}");
-        egui::CollapsingHeader::new(format!("{}  {name}", icon::FOLDER))
+        let header = egui::CollapsingHeader::new(format!("{}  {name}", icon::FOLDER))
             .id_salt(&sub_path)
             .default_open(true)
             .show(ui, |ui| draw_folder(ui, sub, &sub_path, sessions, out));
+        drop_target(ui, &header.header_response, &sub_path, out);
     }
     for s in &folder.sessions {
         let row = ui
             .horizontal(|ui| {
+                // Click (open / menu) and drag (move to another folder).
                 let row = match session_icons::session_texture(ui.ctx(), s) {
                     Some(tex) => ui.add(
                         egui::Button::image_and_text(
                             egui::Image::new(&tex).fit_to_exact_size(vec2(16.0, 16.0)),
                             format!(" {}", s.name),
                         )
-                        .frame(false),
+                        .frame(false)
+                        .sense(Sense::click_and_drag()),
                     ),
-                    None => ui.selectable_label(false, session_icons::label(s, ui)),
+                    None => ui.add(
+                        egui::Button::selectable(false, session_icons::label(s, ui))
+                            .sense(Sense::click_and_drag()),
+                    ),
                 };
                 if sessions.dots
                     && let Some(alive) = sessions.open.get(&s.id)
@@ -210,6 +236,8 @@ fn draw_folder(
         if row.double_clicked() {
             out.push(open(s));
         }
+        row.dnd_set_drag_payload(s.id);
+        drop_target(ui, &row, path, out);
         row.context_menu(|ui| session_menu(ui, s, out));
     }
 }

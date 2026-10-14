@@ -418,6 +418,17 @@ impl TermCraftApp {
                 return;
             }
             Action::DeleteSession(id) => return self.confirm_delete = Some(id),
+            Action::MoveSession(id, folder) => {
+                if let Some(mut session) = self.core.store.get(id).cloned()
+                    && session.folder != folder
+                {
+                    session.folder = folder;
+                    self.run(Command::SessionUpdate {
+                        session: Box::new(session),
+                    });
+                }
+                return;
+            }
             Action::CloseTabs(ids) => {
                 for id in ids {
                     self.run(Command::TabClose { tab: Some(id) });

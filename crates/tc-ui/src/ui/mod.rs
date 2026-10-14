@@ -56,6 +56,8 @@ pub enum Action {
     RenameTab(u64),
     RenameSession(SessionId),
     DeleteSession(SessionId),
+    /// Drag and drop in the sessions tree: new folder ("" = top level).
+    MoveSession(SessionId, String),
     /// Close several tabs (the "Close all …" family).
     CloseTabs(Vec<u64>),
     SetTabColor(u64, Option<[u8; 3]>),
