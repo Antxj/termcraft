@@ -237,6 +237,8 @@ pub struct TermCraftApp {
     /// Shared sessions (read-only) and their management window.
     shared: crate::shared::SharedSessions,
     shared_window: Option<crate::ui::shared_window::SharedWindow>,
+    /// "Connect as...": the session and the user being typed.
+    connect_as: Option<(Box<tc_core::Session>, String)>,
     diff_tool: crate::ui::diff_window::DiffWindow,
     ascii_table: crate::ui::diff_window::AsciiTable,
     /// "Servers management" window and its page.
@@ -346,6 +348,7 @@ impl TermCraftApp {
             text_editor: Default::default(),
             shared: Default::default(),
             shared_window: None,
+            connect_as: None,
             diff_tool: Default::default(),
             ascii_table: Default::default(),
             show_servers: false,
@@ -467,6 +470,10 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::ConnectAs(session) => {
+                self.connect_as = Some((session, String::new()));
+                return;
+            }
             Action::OpenSharedSession(session) => {
                 if let Err(e) = self.core.tab_open(Some(*session)) {
                     self.status = e.to_string();
@@ -770,6 +777,48 @@ impl TermCraftApp {
         }
     }
 
+    /// "Connect as...": open a copy of the session as another user.
+    fn connect_as_dialog(&mut self, ctx: &egui::Context) {
+        let Some((session, user)) = &mut self.connect_as else {
+            return;
+        };
+        let mut answer = None;
+        egui::Window::new("Connect as...")
+            .id(egui::Id::new("connect-as"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(format!("Connect to \"{}\" as:", session.name));
+                let r = ui.add(egui::TextEdit::singleline(user).hint_text("user name"));
+                r.request_focus();
+                if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    answer = Some(true);
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("OK").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        match answer {
+            Some(true) => {
+                let (session, user) = self.connect_as.take().expect("open");
+                if let Some(kind) = session.kind.with_user(&user) {
+                    let copy = tc_core::Session { kind, ..*session };
+                    if let Err(e) = self.core.tab_open(Some(copy)) {
+                        self.status = e.to_string();
+                    }
+                }
+            }
+            Some(false) => self.connect_as = None,
+            None => {}
+        }
+    }
+
     /// Reference `TFORMDESKTOPSHORTCUT`: options, then the shortcut is
     /// created on the desktop.
     fn shortcut_options_dialog(&mut self, ctx: &egui::Context) {
@@ -1025,6 +1074,7 @@ impl TermCraftApp {
         if let Some(file) = compares.last() {
             self.diff_tool.compare_with(file);
         }
+        self.connect_as_dialog(ctx);
         self.shared.poll();
         if let Some(window) = &mut self.shared_window {
             use crate::ui::shared_window::Outcome;

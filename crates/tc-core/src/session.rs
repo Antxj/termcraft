@@ -383,6 +383,37 @@ impl SessionKind {
         Ok(())
     }
 
+    /// The same session as another user ("Connect as..."); `None` for
+    /// kinds without a user.
+    pub fn with_user(&self, user: &str) -> Option<Self> {
+        let user = Some(user.trim().to_string()).filter(|u| !u.is_empty());
+        let mut kind = self.clone();
+        match &mut kind {
+            Self::Ssh { user: u, .. }
+            | Self::Rdp { user: u, .. }
+            | Self::Ftp { user: u, .. }
+            | Self::Sftp { user: u, .. }
+            | Self::Rsh { user: u, .. }
+            | Self::Mosh { user: u, .. } => *u = user,
+            _ => return None,
+        }
+        Some(kind)
+    }
+
+    /// "SFTP session" for an SSH session: same host, port and user.
+    pub fn sftp_of(&self) -> Option<Self> {
+        match self {
+            Self::Ssh {
+                host, port, user, ..
+            } => Some(Self::Sftp {
+                host: host.clone(),
+                port: *port,
+                user: user.clone(),
+            }),
+            _ => None,
+        }
+    }
+
     /// Hostname-like target used for default session names.
     pub fn target(&self) -> Option<&str> {
         match self {
@@ -407,6 +438,26 @@ impl SessionKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connect_as_and_sftp_of() {
+        let ssh = SessionKind::default_for(0).unwrap();
+        let SessionKind::Ssh { user, .. } = ssh.with_user(" bob ").unwrap() else {
+            panic!()
+        };
+        assert_eq!(user.as_deref(), Some("bob"));
+        assert!(matches!(
+            ssh.sftp_of(),
+            Some(SessionKind::Sftp { port: 22, .. })
+        ));
+        assert!(
+            SessionKind::default_for(8)
+                .unwrap()
+                .with_user("x")
+                .is_none()
+        );
+        assert!(SessionKind::default_for(1).unwrap().sftp_of().is_none());
+    }
 
     #[test]
     fn typed_ids_roundtrip() {

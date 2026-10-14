@@ -56,6 +56,8 @@ pub enum Action {
     Servers,
     /// Tools › "Text editor".
     TextEditor,
+    /// "Connect as...": ask for a user, then open a copy as that user.
+    ConnectAs(Box<tc_core::Session>),
     /// Open a shared session (a read-only copy) in a tab.
     OpenSharedSession(Box<tc_core::Session>),
     /// "Refresh shared sessions" / "Manage existing shared sessions".

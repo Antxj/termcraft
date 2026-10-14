@@ -339,8 +339,22 @@ fn open(s: &Session) -> Action {
 /// Reference `PopupSessions`, implemented entries enabled.
 fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
     item(ui, "Execute", Some(open(s)), out);
-    item(ui, "Connect as...", None, out);
-    item(ui, "SFTP session", None, out);
+    item(
+        ui,
+        "Connect as...",
+        s.kind
+            .with_user("")
+            .map(|_| Action::ConnectAs(Box::new(s.clone()))),
+        out,
+    );
+    item(
+        ui,
+        "SFTP session",
+        s.kind.sftp_of().map(|kind| {
+            Action::OpenSharedSession(Box::new(tc_core::Session { kind, ..s.clone() }))
+        }),
+        out,
+    );
     item(ui, "Ping host", None, out);
     ui.separator();
     item(ui, "New session", Some(Action::NewSession), out);
