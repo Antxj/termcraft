@@ -18,7 +18,7 @@ pub enum Command {
     AppVersion {},
     SessionList {},
     SessionAdd {
-        session: Session,
+        session: Box<Session>,
     },
     SessionRemove {
         id: SessionId,
@@ -35,7 +35,7 @@ pub enum Command {
     },
     /// Replace a saved session (matched by `session.id`) with new settings.
     SessionUpdate {
-        session: Session,
+        session: Box<Session>,
     },
     TabList {},
     TabOpen {
@@ -254,7 +254,7 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
                     session.name
                 )));
             }
-            let id = host.store().add(session);
+            let id = host.store().add(*session);
             host.persist()?;
             Ok(json!({ "id": id }))
         }
@@ -339,7 +339,7 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             *slot = Session {
                 name: name.to_string(),
                 last_used: slot.last_used,
-                ..session
+                ..*session
             };
             host.persist()?;
             Ok(json!({ "ok": true }))
@@ -727,7 +727,13 @@ mod tests {
         edited.name = " b ".into();
         edited.last_used = None;
         edited.options.insert("3_7".into(), "-1".into());
-        execute(&mut host, Command::SessionUpdate { session: edited }).unwrap();
+        execute(
+            &mut host,
+            Command::SessionUpdate {
+                session: Box::new(edited),
+            },
+        )
+        .unwrap();
         let s = host.store.get(id).unwrap();
         assert_eq!(s.name, "b");
         assert_eq!(s.last_used, Some(42));
@@ -735,7 +741,15 @@ mod tests {
 
         let mut ghost = s.clone();
         ghost.id = SessionId::new();
-        assert!(execute(&mut host, Command::SessionUpdate { session: ghost }).is_err());
+        assert!(
+            execute(
+                &mut host,
+                Command::SessionUpdate {
+                    session: Box::new(ghost)
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]

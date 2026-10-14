@@ -334,6 +334,36 @@ mod tests {
     }
 }
 
+/// "Bookmark icon": a built-in icon (optionally tinted) or a small PNG
+/// stored in the session so it travels with it ("Select a specific icon
+/// for this session").
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SessionIcon {
+    /// Built-in icon name (`"server"`, `"linux"`, …); empty = type default.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// Tint as `#rrggbb`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    /// Base64 PNG (at most [`SessionIcon::MAX_PNG_BYTES`] bytes decoded).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub png: Option<String>,
+}
+
+impl SessionIcon {
+    pub const MAX_PNG_BYTES: usize = 64 * 1024;
+
+    /// `#rrggbb` → RGB.
+    pub fn rgb(&self) -> Option<[u8; 3]> {
+        let hex = self.color.as_deref()?.strip_prefix('#')?;
+        if hex.len() != 6 {
+            return None;
+        }
+        let byte = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
+        Some([byte(0)?, byte(2)?, byte(4)?])
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {
     #[serde(default)]
@@ -351,6 +381,8 @@ pub struct Session {
     /// only values that differ from the schema default are stored.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub options: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<SessionIcon>,
 }
 
 impl Session {
@@ -362,6 +394,7 @@ impl Session {
             last_used: None,
             kind,
             options: BTreeMap::new(),
+            icon: None,
         }
     }
 

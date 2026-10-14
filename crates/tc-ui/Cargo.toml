@@ -27,6 +27,7 @@ anyhow.workspace = true
 egui-phosphor = "0.14"
 rfd = "0.17"
 zeroize = "1"
+base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 

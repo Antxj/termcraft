@@ -2,12 +2,12 @@
 //! (pin, Sessions, Tools, Macros, Sftp) and a 240px content panel with the
 //! "Quick connect..." box on top.
 
-use super::{Action, icon, item, kind_icon, menus};
+use super::{Action, icon, item, menus, session_icons};
 use egui::{Align2, FontId, Sense, vec2};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use tc_commands::Command;
-use tc_core::Session;
 use tc_core::settings::{SidebarTab, ViewSettings};
+use tc_core::{Session, SessionId};
 
 pub const STRIP_WIDTH: f32 = 34.0;
 pub const PANEL_WIDTH: f32 = 300.0;
@@ -52,6 +52,15 @@ pub fn strip(ui: &mut egui::Ui, view: &ViewSettings, out: &mut Vec<Action>) {
     }
 }
 
+/// What the Sessions tab shows.
+pub struct Sessions<'a> {
+    pub list: &'a [Session],
+    /// Sessions open in a tab: `true` = connected (green), `false` = closed (orange).
+    pub open: &'a HashMap<SessionId, bool>,
+    /// "Show green/orange buttons next to each open session".
+    pub dots: bool,
+}
+
 /// What the Macros tab shows.
 pub struct Macros<'a> {
     pub list: &'a [tc_core::Macro],
@@ -62,7 +71,7 @@ pub fn content(
     ui: &mut egui::Ui,
     quick_connect: &mut String,
     view: &ViewSettings,
-    sessions: &[Session],
+    sessions: Sessions<'_>,
     macros: Macros<'_>,
     active_tab: Option<&mut crate::tab::Tab>,
     out: &mut Vec<Action>,
@@ -89,7 +98,7 @@ pub fn content(
     egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .show(ui, |ui| match view.sidebar_tab {
-            SidebarTab::Sessions => session_tree(ui, sessions, &quick_connect.to_lowercase(), out),
+            SidebarTab::Sessions => session_tree(ui, &sessions, &quick_connect.to_lowercase(), out),
             SidebarTab::Tools => tools(ui, out),
             SidebarTab::Macros => macro_list(ui, macros.list, macros.recording, has_tab, out),
             SidebarTab::Sftp => {}
@@ -102,9 +111,9 @@ struct Folder<'a> {
     sessions: Vec<&'a Session>,
 }
 
-fn session_tree(ui: &mut egui::Ui, sessions: &[Session], filter: &str, out: &mut Vec<Action>) {
+fn session_tree(ui: &mut egui::Ui, sessions: &Sessions<'_>, filter: &str, out: &mut Vec<Action>) {
     let mut root = Folder::default();
-    for s in sessions {
+    for s in sessions.list {
         if !filter.is_empty() && !s.name.to_lowercase().contains(filter) {
             continue;
         }
@@ -117,20 +126,51 @@ fn session_tree(ui: &mut egui::Ui, sessions: &[Session], filter: &str, out: &mut
     let header = egui::CollapsingHeader::new(format!("{}  User sessions", icon::STAR))
         .id_salt("user-sessions")
         .default_open(true)
-        .show(ui, |ui| draw_folder(ui, &root, "", out));
+        .show(ui, |ui| draw_folder(ui, &root, "", sessions, out));
     header.header_response.context_menu(|ui| root_menu(ui, out));
 }
 
-fn draw_folder(ui: &mut egui::Ui, folder: &Folder<'_>, path: &str, out: &mut Vec<Action>) {
+fn draw_folder(
+    ui: &mut egui::Ui,
+    folder: &Folder<'_>,
+    path: &str,
+    sessions: &Sessions<'_>,
+    out: &mut Vec<Action>,
+) {
     for (name, sub) in &folder.folders {
         let sub_path = format!("{path}/{name}");
         egui::CollapsingHeader::new(format!("{}  {name}", icon::FOLDER))
             .id_salt(&sub_path)
             .default_open(true)
-            .show(ui, |ui| draw_folder(ui, sub, &sub_path, out));
+            .show(ui, |ui| draw_folder(ui, sub, &sub_path, sessions, out));
     }
     for s in &folder.sessions {
-        let row = ui.selectable_label(false, format!("{}  {}", kind_icon(&s.kind), s.name));
+        let row = ui
+            .horizontal(|ui| {
+                let row = match session_icons::session_texture(ui.ctx(), s) {
+                    Some(tex) => ui.add(
+                        egui::Button::image_and_text(
+                            egui::Image::new(&tex).fit_to_exact_size(vec2(16.0, 16.0)),
+                            format!(" {}", s.name),
+                        )
+                        .frame(false),
+                    ),
+                    None => ui.selectable_label(false, session_icons::label(s, ui)),
+                };
+                if sessions.dots
+                    && let Some(alive) = sessions.open.get(&s.id)
+                {
+                    let p = crate::skin::current(ui.ctx());
+                    let (rect, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
+                    ui.painter().circle_filled(
+                        rect.center(),
+                        4.0,
+                        if *alive { p.ok } else { p.warn },
+                    );
+                }
+                row
+            })
+            .inner;
         if row.double_clicked() {
             out.push(open(s));
         }

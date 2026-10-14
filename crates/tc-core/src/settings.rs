@@ -62,13 +62,81 @@ pub struct PasswordSettings {
     pub master_prompt: MasterPrompt,
 }
 
+/// "Skin selection" (Configuration › Display).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
-    #[default]
+    /// Follow the OS light / dark mode.
     System,
+    /// Light grey and blue, like the reference (default).
+    #[default]
     Light,
+    /// Between light and dark.
+    Dim,
     Dark,
+}
+
+impl Theme {
+    pub const ALL: [Theme; 4] = [Self::Light, Self::Dim, Self::Dark, Self::System];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => "Follow system",
+            Self::Light => "Light",
+            Self::Dim => "Dim",
+            Self::Dark => "Dark",
+        }
+    }
+}
+
+/// "Graphical interface elements size".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UiSize {
+    #[default]
+    Autodetect,
+    Small,
+    Normal,
+    Big,
+    Huge,
+    HighDpi4k,
+    HighDpiBig,
+}
+
+impl UiSize {
+    pub const ALL: [UiSize; 7] = [
+        Self::Autodetect,
+        Self::Small,
+        Self::Normal,
+        Self::Big,
+        Self::Huge,
+        Self::HighDpi4k,
+        Self::HighDpiBig,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Autodetect => "Autodetect",
+            Self::Small => "Small",
+            Self::Normal => "Normal",
+            Self::Big => "Big",
+            Self::Huge => "Huge",
+            Self::HighDpi4k => "HighDPI 4K",
+            Self::HighDpiBig => "HighDPI big",
+        }
+    }
+
+    /// Zoom on top of the OS scale factor (`Autodetect` = the OS factor).
+    pub fn zoom(self) -> f32 {
+        match self {
+            Self::Autodetect | Self::Normal => 1.0,
+            Self::Small => 0.85,
+            Self::Big => 1.15,
+            Self::Huge => 1.3,
+            Self::HighDpi4k => 1.5,
+            Self::HighDpiBig => 1.75,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -128,6 +196,12 @@ pub struct ViewSettings {
     pub show_close_button: bool,
     pub theme: Theme,
     pub split: SplitMode,
+    /// "Rounded tabs".
+    pub rounded_tabs: bool,
+    /// "Graphical interface elements size".
+    pub ui_size: UiSize,
+    /// "Show green/orange buttons next to each open session in the sessions tree".
+    pub session_dots: bool,
 }
 
 impl Default for ViewSettings {
@@ -143,6 +217,9 @@ impl Default for ViewSettings {
             show_close_button: true,
             theme: Theme::default(),
             split: SplitMode::default(),
+            rounded_tabs: true,
+            ui_size: UiSize::default(),
+            session_dots: true,
         }
     }
 }

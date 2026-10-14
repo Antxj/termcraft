@@ -115,7 +115,7 @@ pub fn sessions_menu(ui: &mut egui::Ui, sessions: &[Session], out: &mut Vec<Acti
         ui.weak("No saved sessions");
     }
     for s in sessions {
-        let label = format!("{}  {}", super::kind_icon(&s.kind), s.name);
+        let label = format!("{}  {}", super::session_icon(s), s.name);
         let open = Command::TabOpen {
             session: Some(s.id.to_string()),
         };
@@ -212,7 +212,7 @@ pub fn view_menu(ui: &mut egui::Ui, v: &ViewSettings, out: &mut Vec<Action>) {
     ui.separator();
     item(
         ui,
-        "Toggle light/dark theme",
+        "Switch skin (light / dim / dark)",
         Some(Action::ToggleTheme),
         out,
     );

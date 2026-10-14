@@ -3,7 +3,7 @@
 //! live; the rest are shown disabled so the layout matches.
 
 use super::{Action, NOT_YET};
-use tc_core::settings::{LocalShell, Theme, ToolbarStyle, UpdateChannel};
+use tc_core::settings::{LocalShell, Theme, ToolbarStyle, UiSize, UpdateChannel};
 use tc_core::{Paths, Settings};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -191,15 +191,20 @@ fn display(ui: &mut egui::Ui, s: &mut Settings) {
         .show(ui, |ui| {
             ui.label("Skin selection:");
             egui::ComboBox::from_id_salt("cfg-theme")
-                .selected_text(match v.theme {
-                    Theme::System => "Follow system",
-                    Theme::Light => "Light",
-                    Theme::Dark => "Dark",
-                })
+                .selected_text(v.theme.label())
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut v.theme, Theme::System, "Follow system");
-                    ui.selectable_value(&mut v.theme, Theme::Light, "Light");
-                    ui.selectable_value(&mut v.theme, Theme::Dark, "Dark");
+                    for theme in Theme::ALL {
+                        ui.selectable_value(&mut v.theme, theme, theme.label());
+                    }
+                });
+            ui.end_row();
+            ui.label("Graphical interface elements size:");
+            egui::ComboBox::from_id_salt("cfg-ui-size")
+                .selected_text(v.ui_size.label())
+                .show_ui(ui, |ui| {
+                    for size in UiSize::ALL {
+                        ui.selectable_value(&mut v.ui_size, size, size.label());
+                    }
                 });
             ui.end_row();
             ui.label("Menus and buttons:");
@@ -261,10 +266,18 @@ fn display(ui: &mut egui::Ui, s: &mut Settings) {
                 });
             ui.end_row();
         });
+    ui.add_space(6.0);
     ui.horizontal(|ui| {
+        ui.label("Tabs settings:");
+        ui.checkbox(&mut v.rounded_tabs, "Rounded tabs");
         ui.checkbox(&mut v.show_tab_numbers, "Show tab numbers");
         ui.checkbox(&mut v.show_close_button, "Show close buttons");
     });
+    ui.checkbox(
+        &mut v.session_dots,
+        "Show green/orange buttons next to each open session in the sessions tree",
+    );
+    disabled_check(ui, "Disable \"Quick connect\" when sidebar is hidden");
 }
 
 fn misc(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {

@@ -34,10 +34,13 @@ refined against it.
 | P1 | [~] | Tab context menu: rename, duplicate, close / close left / right / others / all (reconnect pending) | `tc-ui` |
 | P1 | [ ] | Configurable keyboard shortcuts | `tc-ui` |
 | P1 | [~] | Settings › Configuration dialog (General / Terminal / X11 / SSH / Display / Toolbar / Misc); supported options live, others shown disabled | `tc-ui` |
-| P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close button, light/dark (compact mode pending) | `tc-ui` |
+| P2 | [~] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close buttons, rounded tabs, open-session dots (compact mode, transparency, colour saturation pending) | `tc-ui` |
+| P1 | [x] | Skins: Light (default, like the reference), Dim, Dark, Follow system; own palettes, contrast checked by a test | `tc-ui` |
+| P1 | [x] | Chrome-style tab strip: rounded tabs, accent on the active tab, close button, middle-click closes, session icon | `tc-ui` |
+| P1 | [x] | Bookmark icon chooser: built-in icons by group (sessions, servers, systems, network, cloud, symbols), tint, custom PNG stored in the session (≤ 64 KiB, ≤ 256 px) | `tc-core` + `tc-ui` |
 | P2 | [ ] | Minimize to system tray | `tc-ui` |
 | P2 | [ ] | Popup ("quake") terminal shortcut | `tc-ui` |
-| P2 | [ ] | HiDPI / manual UI scale (`--dpi`) | `tc-ui` |
+| P2 | [~] | "Graphical interface elements size" (Autodetect … HighDPI big); `--dpi` command-line pending | `tc-ui` |
 | P3 | [ ] | Branding customizer (logo / default settings) | `xtask` |
 
 ## 2. Terminal

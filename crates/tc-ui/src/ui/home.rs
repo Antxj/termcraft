@@ -2,7 +2,7 @@
 //! title, "Start local terminal", session search, and a 3×3 grid of recent
 //! sessions.
 
-use super::{Action, icon, kind_icon};
+use super::{Action, icon, session_icon};
 use tc_commands::Command;
 use tc_core::Session;
 
@@ -105,7 +105,7 @@ fn recent_grid(ui: &mut egui::Ui, recent: &[&Session], cell: egui::Vec2, out: &m
 }
 
 fn label(s: &Session) -> String {
-    format!("{}  {}", kind_icon(&s.kind), s.name)
+    format!("{}  {}", session_icon(s), s.name)
 }
 
 fn open(s: &Session) -> Action {

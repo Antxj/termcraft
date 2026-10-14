@@ -5,11 +5,12 @@
 //! Every field is drawn from the generated parameter schema; values are kept
 //! as strings in the schema encoding and written back on OK.
 
+use super::session_icons::{self, Choice, IconChooser};
 use super::{Action, NOT_YET, icon};
 use std::collections::BTreeMap;
 use tc_commands::Command;
 use tc_core::schema::{self, Param, SESSION_TYPES, Widget};
-use tc_core::{Session, SessionKind};
+use tc_core::{Session, SessionIcon, SessionKind};
 
 /// Shell session "Terminal shell" (3_2), in `LocalShell::from_option` order.
 const SHELL_CHOICES: [&str; 6] = [
@@ -60,6 +61,9 @@ pub struct SessionEditor {
     values: BTreeMap<&'static str, String>,
     tab: Tab,
     error: Option<String>,
+    /// "Bookmark icon" and its chooser.
+    icon: Option<SessionIcon>,
+    chooser: Option<IconChooser>,
     /// Named credentials offered next to "Username" (set by the app).
     pub credentials: Vec<String>,
     manage_credentials: bool,
@@ -80,11 +84,13 @@ impl SessionEditor {
             type_index: session.kind.type_index(),
             name: session.name.clone(),
             folder: session.folder.clone(),
+            icon: session.icon.clone(),
             original: session,
             is_new,
             values: BTreeMap::new(),
             tab: Tab::Advanced,
             error: None,
+            chooser: None,
             credentials: Vec::new(),
             manage_credentials: false,
         };
@@ -202,6 +208,7 @@ impl SessionEditor {
             last_used: self.original.last_used,
             kind,
             options,
+            icon: self.icon.clone(),
         })
     }
 
@@ -209,6 +216,16 @@ impl SessionEditor {
     pub fn show(&mut self, ctx: &egui::Context, out: &mut Vec<Action>) -> bool {
         if std::mem::take(&mut self.manage_credentials) {
             out.push(Action::ManageCredentials);
+        }
+        if let Some(chooser) = &mut self.chooser {
+            match chooser.show(ctx) {
+                Choice::Pending => {}
+                Choice::Cancel => self.chooser = None,
+                Choice::Chosen(icon) => {
+                    self.icon = icon;
+                    self.chooser = None;
+                }
+            }
         }
         let mut open = true;
         let mut close = false;
@@ -250,10 +267,14 @@ impl SessionEditor {
                             Ok(session) => {
                                 let id = session.id.to_string();
                                 if self.is_new {
-                                    out.push(Action::Run(Command::SessionAdd { session }));
+                                    out.push(Action::Run(Command::SessionAdd {
+                                        session: Box::new(session),
+                                    }));
                                     out.push(Action::Run(Command::TabOpen { session: Some(id) }));
                                 } else {
-                                    out.push(Action::Run(Command::SessionUpdate { session }));
+                                    out.push(Action::Run(Command::SessionUpdate {
+                                        session: Box::new(session),
+                                    }));
                                 }
                                 close = true;
                             }
@@ -394,6 +415,24 @@ impl SessionEditor {
                 ui.end_row();
                 ui.label("Folder");
                 ui.add(egui::TextEdit::singleline(&mut self.folder).hint_text("e.g. Clients/ACME"));
+                ui.end_row();
+                ui.label("Bookmark icon");
+                let preview = Session {
+                    icon: self.icon.clone(),
+                    ..self.original.clone()
+                };
+                let glyph = egui::RichText::new(session_icons::glyph(&preview)).size(20.0);
+                let glyph = match session_icons::tint(&preview) {
+                    Some(c) => glyph.color(c),
+                    None => glyph,
+                };
+                if ui
+                    .button(glyph)
+                    .on_hover_text("Choose the icon shown for this session")
+                    .clicked()
+                {
+                    self.chooser = Some(IconChooser::new(self.icon.as_ref()));
+                }
                 ui.end_row();
             });
         ui.separator();

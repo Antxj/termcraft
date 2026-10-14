@@ -9,6 +9,7 @@ pub mod home;
 pub mod menus;
 pub mod passwords_window;
 pub mod session_editor;
+pub mod session_icons;
 pub mod sftp_browser;
 pub mod sidebar;
 pub mod tabbar;
@@ -95,15 +96,7 @@ pub fn header(ui: &mut egui::Ui, label: &str) {
     ui.label(egui::RichText::new(label).strong().small());
 }
 
-pub fn kind_icon(kind: &tc_core::SessionKind) -> &'static str {
-    use tc_core::SessionKind as K;
-    match kind {
-        K::LocalShell { .. } => icon::TERMINAL_WINDOW,
-        K::Ssh { .. } => icon::TERMINAL_WINDOW,
-        K::Telnet { .. } => icon::PLUGS,
-        K::Serial { .. } => icon::USB,
-        K::Rdp { .. } => icon::DESKTOP,
-        K::Vnc { .. } => icon::DESKTOP,
-        K::Sftp { .. } | K::Ftp { .. } => icon::FOLDER,
-    }
+/// Glyph for a session: its chosen icon, else its type's icon.
+pub fn session_icon(session: &tc_core::Session) -> &'static str {
+    session_icons::glyph(session)
 }

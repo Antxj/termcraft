@@ -13,7 +13,7 @@ pub mod tunnel;
 
 pub use macros::{Macro, MacroId, MacroStore};
 pub use paths::Paths;
-pub use session::{Session, SessionId, SessionKind};
+pub use session::{Session, SessionIcon, SessionId, SessionKind};
 pub use settings::Settings;
 pub use store::{SessionStore, StoreError};
 pub use tunnel::{Tunnel, TunnelId, TunnelKind, TunnelStore};

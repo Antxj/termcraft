@@ -231,7 +231,7 @@ impl TermCraftApp {
             paths.passwords_index_file(),
             Box::new(tc_vault::OsKeychain),
         ));
-        apply_theme(&cc.egui_ctx, settings.view.theme);
+        crate::skin::apply(&cc.egui_ctx, settings.view.theme);
         let ctx = cc.egui_ctx.clone();
         let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(move || ctx.request_repaint());
 
@@ -396,12 +396,12 @@ impl TermCraftApp {
             Action::SidebarRight(right) => view.sidebar_right = right,
             Action::SidebarTab(tab) => view.sidebar_tab = tab,
             Action::ToggleTheme => {
-                view.theme = if ctx.theme() == egui::Theme::Dark {
-                    Theme::Light
-                } else {
-                    Theme::Dark
+                // Light -> Dim -> Dark -> Light.
+                view.theme = match view.theme {
+                    Theme::Light => Theme::Dim,
+                    Theme::Dim => Theme::Dark,
+                    Theme::Dark | Theme::System => Theme::Light,
                 };
-                apply_theme(ctx, view.theme);
             }
             Action::Bars { menu, toolbar } => {
                 view.show_menu_bar = menu;
@@ -467,11 +467,8 @@ impl TermCraftApp {
                 out,
             );
             self.show_config = open;
-            if changed {
-                apply_theme(ctx, self.core.settings.view.theme);
-                if let Err(e) = self.core.save_settings() {
-                    self.status = format!("could not save settings: {e}");
-                }
+            if changed && let Err(e) = self.core.save_settings() {
+                self.status = format!("could not save settings: {e}");
             }
         }
         if self.confirm_exit {
@@ -924,20 +921,27 @@ fn terminals(
     outputs
 }
 
-fn apply_theme(ctx: &egui::Context, theme: Theme) {
-    ctx.set_theme(match theme {
-        Theme::System => egui::ThemePreference::System,
-        Theme::Light => egui::ThemePreference::Light,
-        Theme::Dark => egui::ThemePreference::Dark,
-    });
+/// Skin and "Graphical interface elements size"; both are no-ops when
+/// nothing changed.
+fn apply_view(ctx: &egui::Context, view: &tc_core::settings::ViewSettings) {
+    crate::skin::apply(ctx, view.theme);
+    let zoom = view.ui_size.zoom();
+    if (ctx.zoom_factor() - zoom).abs() > f32::EPSILON {
+        ctx.set_zoom_factor(zoom);
+    }
 }
 
 impl eframe::App for TermCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        apply_view(&ctx, &self.core.settings.view);
         // The window close button goes through the same "Close prompt".
         if ctx.input(|i| i.viewport().close_requested()) && !self.exit_confirmed {
-            if self.core.settings.terminal.confirm_exit && self.live_sessions() > 0 {
+            // Snapshot runs close themselves without asking.
+            if self.core.settings.terminal.confirm_exit
+                && self.live_sessions() > 0
+                && self.snapshot.is_none()
+            {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 self.confirm_exit = true;
             } else {
@@ -1036,6 +1040,13 @@ impl eframe::App for TermCraftApp {
             .resizable(false)
             .show(ui, |ui| sidebar::strip(ui, &view, &mut out));
         if view.sidebar_visible {
+            // Open sessions: connected if any of their tabs is.
+            let mut open_sessions = std::collections::HashMap::new();
+            for t in &self.core.tabs {
+                if let Some(s) = &t.session {
+                    *open_sessions.entry(s.id).or_insert(false) |= t.is_alive();
+                }
+            }
             let sessions = &self.core.store.sessions;
             let quick = &mut self.quick_connect;
             let macros = &self.core.macros.macros;
@@ -1050,6 +1061,11 @@ impl eframe::App for TermCraftApp {
                         list: macros,
                         recording,
                     };
+                    let sessions = sidebar::Sessions {
+                        list: sessions,
+                        open: &open_sessions,
+                        dots: view.session_dots,
+                    };
                     sidebar::content(ui, quick, &view, sessions, macros, active_tab, &mut out)
                 });
         }
@@ -1062,6 +1078,10 @@ impl eframe::App for TermCraftApp {
                 id: t.id,
                 title: t.title.clone(),
                 alive: t.is_alive(),
+                icon: t
+                    .session
+                    .as_ref()
+                    .map_or(crate::ui::icon::TERMINAL_WINDOW, crate::ui::session_icon),
             })
             .collect();
         let font_size = self.core.settings.terminal.font_size;
