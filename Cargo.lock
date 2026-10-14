@@ -6536,6 +6536,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "egui-phosphor",
  "flate2",
  "lzma-rs",
  "tar",
@@ -6543,6 +6544,7 @@ dependencies = [
  "tc-import",
  "tempfile",
  "toml",
+ "ttf-parser",
  "zip",
 ]
 

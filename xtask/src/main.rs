@@ -10,6 +10,7 @@
 
 mod brand;
 mod dfm;
+mod icons;
 mod inventory;
 mod package;
 mod pe;
@@ -38,6 +39,8 @@ enum Cmd {
     Inventory { input: Option<PathBuf> },
     /// Generate crates/tc-core/src/schema_gen.rs (session parameter schema).
     Schema { input: Option<PathBuf> },
+    /// SVG icons for the README (docs/icons/).
+    Icons,
     /// A portable TermCraft with default settings and sessions for a team.
     Brand {
         /// Folder with termcraft and termcraft-cli (default: target/release).
@@ -124,6 +127,12 @@ fn main() -> Result<()> {
             let out = root().join("docs/inventory");
             inventory::write_all(&reference, &out)?;
             println!("wrote {}", out.display());
+            Ok(())
+        }
+        Cmd::Icons => {
+            let out = root().join("docs/icons");
+            let n = icons::write_all(&out)?;
+            println!("wrote {n} icons to {}", out.display());
             Ok(())
         }
         Cmd::Brand {
