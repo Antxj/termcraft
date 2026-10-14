@@ -4,7 +4,7 @@
 //! uploaded; remote files dropped here are downloaded into this folder.
 
 use super::icon;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Local files being dragged to the remote list.
@@ -32,6 +32,42 @@ pub struct LocalPane {
     selected: BTreeSet<String>,
     error: Option<String>,
     new_folder: Option<String>,
+    /// Folder tree: sub-folder names of the folders opened in it.
+    tree: HashMap<PathBuf, Vec<String>>,
+}
+
+/// Sub-folders shown per tree node at most.
+const MAX_TREE_CHILDREN: usize = 500;
+
+/// Tree roots: the drives on Windows, `/` and the home folder elsewhere.
+fn tree_roots() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        (b'A'..=b'Z')
+            .map(|d| PathBuf::from(format!("{}:\\", d as char)))
+            .filter(|p| p.is_dir())
+            .collect()
+    } else {
+        let mut roots = vec![PathBuf::from("/")];
+        if let Some(home) = directories::UserDirs::new().map(|d| d.home_dir().to_path_buf()) {
+            roots.push(home);
+        }
+        roots
+    }
+}
+
+/// Sub-folder names of `dir`, sorted, bounded.
+fn subfolders(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|d| {
+            d.filter_map(Result::ok)
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .take(MAX_TREE_CHILDREN)
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort_by_key(|n| n.to_lowercase());
+    names
 }
 
 /// What the local pane asks the session to do.
@@ -62,7 +98,54 @@ impl LocalPane {
             selected: BTreeSet::new(),
             error: None,
             new_folder: None,
+            tree: HashMap::new(),
         }
+    }
+
+    /// The folder tree above the list (reference `sShellTreeView1`).
+    fn tree_ui(&mut self, ui: &mut egui::Ui) {
+        let mut go = None;
+        egui::ScrollArea::vertical()
+            .id_salt("local-tree")
+            .max_height((ui.available_height() * 0.35).max(60.0))
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for root in tree_roots() {
+                    let label = root.display().to_string();
+                    self.node(ui, &root, &label, &mut go);
+                }
+            });
+        if let Some(dir) = go {
+            self.cd(dir);
+        }
+    }
+
+    fn node(&mut self, ui: &mut egui::Ui, dir: &Path, label: &str, go: &mut Option<PathBuf>) {
+        let id = ui.make_persistent_id(("local-tree", dir));
+        // Folders on the way to the current one start open.
+        let on_path = self.cwd.starts_with(dir);
+        let state =
+            egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, on_path);
+        let open = state.is_open();
+        state
+            .show_header(ui, |ui| {
+                let current = self.cwd == dir;
+                if ui
+                    .selectable_label(current, format!("{}  {label}", icon::FOLDER))
+                    .clicked()
+                {
+                    *go = Some(dir.to_path_buf());
+                }
+            })
+            .body(|ui| {
+                if open && !self.tree.contains_key(dir) {
+                    self.tree.insert(dir.to_path_buf(), subfolders(dir));
+                }
+                let children = self.tree.get(dir).cloned().unwrap_or_default();
+                for name in children {
+                    self.node(ui, &dir.join(&name), &name, go);
+                }
+            });
     }
 
     fn cd(&mut self, dir: PathBuf) {
@@ -118,6 +201,8 @@ impl LocalPane {
             self.refresh();
         }
         self.toolbar(ui, out);
+        self.tree_ui(ui);
+        ui.separator();
         let r =
             ui.add(egui::TextEdit::singleline(&mut self.path_input).desired_width(f32::INFINITY));
         if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -200,6 +285,7 @@ impl LocalPane {
             }
             if tool(ui, icon::ARROWS_CLOCKWISE, "Refresh folder", true) {
                 self.listed = None;
+                self.tree.clear();
             }
             if tool(ui, icon::HOUSE, "Home folder", true)
                 && let Some(home) = directories::UserDirs::new().map(|d| d.home_dir().to_path_buf())
@@ -338,5 +424,7 @@ mod tests {
         assert!(pane.selected.is_empty() && pane.listed.is_none());
         assert!(!valid_name("a/b") && !valid_name("..") && valid_name("new folder"));
         assert!(LocalPane::new(Some("/definitely/not/here")).cwd.is_dir());
+        assert_eq!(subfolders(dir.path()), ["Zed"], "folders only");
+        assert!(!tree_roots().is_empty());
     }
 }
