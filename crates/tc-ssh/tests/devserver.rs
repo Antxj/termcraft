@@ -939,3 +939,78 @@ fn two_jump_hosts_shell() {
     assert_eq!(out.secret_prompts, 3, "one login per hop");
     assert!(out.output.contains("via-two-gateways"), "{out:?}");
 }
+
+fn ssh_proxy(kind: tc_ssh::proxy::ProxyKind, port: u16) -> tc_ssh::proxy::Proxy {
+    tc_ssh::proxy::Proxy {
+        kind,
+        host: "127.0.0.1".into(),
+        port,
+        user: Some(DEV_USER.into()),
+    }
+}
+
+/// Proxy type "SSH forwarding": the proxy is an SSH server, logged in to
+/// first, that forwards the connection like a gateway.
+#[test]
+fn login_through_an_ssh_forwarding_proxy() {
+    let proxy = start(DevConfig::default());
+    let target = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(target.port, &dir.path().join("kh"), "echo via-ssh-proxy");
+    p.proxy = Some(ssh_proxy(tc_ssh::proxy::ProxyKind::SshForward, proxy.port));
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.errors.is_empty(), "{out:?}");
+    assert_eq!(out.host_key_prompts, 2, "proxy and target keys are checked");
+    assert_eq!(out.secret_prompts, 2, "one login for each");
+    assert!(out.output.contains("via-ssh-proxy"), "{out:?}");
+}
+
+/// Proxy type "SSH command": `nc` on the proxy carries the connection.
+#[cfg(unix)]
+#[test]
+fn login_through_an_ssh_command_proxy() {
+    let has_nc = std::process::Command::new("sh")
+        .args(["-c", "command -v nc"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !has_nc {
+        eprintln!("skipped: no nc");
+        return;
+    }
+    // The command's output must be streamed, not buffered until it ends.
+    let proxy = start(DevConfig {
+        exec_shell: Some("sh".into()),
+        ..DevConfig::default()
+    });
+    let target = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(target.port, &dir.path().join("kh"), "echo via-nc");
+    p.proxy = Some(ssh_proxy(
+        tc_ssh::proxy::ProxyKind::SshCommand(tc_ssh::proxy::DEFAULT_SSH_COMMAND.into()),
+        proxy.port,
+    ));
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.errors.is_empty(), "{out:?}");
+    assert!(out.output.contains("via-nc"), "{out:?}");
+}
+
+/// Names that could change the proxy command are refused.
+#[test]
+fn ssh_command_proxy_refuses_odd_host_names() {
+    let proxy = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let mut p = params(1, &dir.path().join("kh"), "true");
+    p.host = "x;touch pwned".into();
+    p.proxy = Some(ssh_proxy(
+        tc_ssh::proxy::ProxyKind::SshCommand(tc_ssh::proxy::DEFAULT_SSH_COMMAND.into()),
+        proxy.port,
+    ));
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(
+        out.errors.iter().any(|e| e.contains("cannot be passed")),
+        "{out:?}"
+    );
+}

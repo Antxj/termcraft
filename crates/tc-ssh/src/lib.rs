@@ -690,7 +690,50 @@ pub(crate) async fn establish(
 
     // Each gateway is reached through the previous one (the first one
     // directly or through the proxy), then the target through the last.
-    let mut chain: Vec<client::Handle<Handler>> = Vec::with_capacity(opts.gateways.len());
+    let mut chain: Vec<client::Handle<Handler>> = Vec::with_capacity(opts.gateways.len() + 1);
+    // An SSH server as proxy is the very first hop; with "SSH command" the
+    // next hop goes through that command instead of a forwarding channel.
+    let (ssh_proxy, proxy) = match opts.proxy {
+        Some(p)
+            if matches!(
+                p.kind,
+                proxy::ProxyKind::SshForward | proxy::ProxyKind::SshCommand(_)
+            ) =>
+        {
+            (Some(p), None)
+        }
+        other => (None, other),
+    };
+    let mut via_command = None;
+    if let Some(p) = ssh_proxy {
+        let ep = Endpoint {
+            host: p.host.clone(),
+            port: p.port,
+            user: p.user.clone().unwrap_or_default(),
+            private_key: None,
+        };
+        events.send(SshEvent::Info(format!(
+            "Connecting to SSH proxy {}:{} …",
+            ep.host, ep.port
+        )));
+        let mut proxy_handle = open_hop(
+            None,
+            None,
+            client_config(false, opts.keepalive),
+            &ep,
+            handler(&ep),
+            None,
+            replies,
+            events,
+        )
+        .await
+        .map_err(|e| format!("SSH proxy connection failed: {e}"))?;
+        authenticate(&mut proxy_handle, &ep, &opts.agent, replies, events).await?;
+        chain.push(proxy_handle);
+        if let proxy::ProxyKind::SshCommand(cmd) = &p.kind {
+            via_command = Some(cmd.as_str());
+        }
+    }
     let count = opts.gateways.len();
     for (i, gw) in opts.gateways.iter().enumerate() {
         let which = if count > 1 {
@@ -704,10 +747,11 @@ pub(crate) async fn establish(
         )));
         let mut gw_handle = open_hop(
             chain.last(),
+            via_command.take(),
             client_config(false, opts.keepalive),
             gw,
             handler(gw),
-            opts.proxy,
+            proxy,
             replies,
             events,
         )
@@ -726,10 +770,11 @@ pub(crate) async fn establish(
     }));
     let mut handle = open_hop(
         chain.last(),
+        via_command.take(),
         config,
         target,
         target_handler(target),
-        opts.proxy,
+        proxy,
         replies,
         events,
     )
@@ -749,10 +794,22 @@ pub(crate) async fn establish(
     })
 }
 
+/// A host / port that is safe in a command run on an SSH proxy.
+fn command_safe(host: &str) -> bool {
+    !host.is_empty()
+        && !host.starts_with('-')
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || ".-_:[]".contains(c))
+}
+
 /// One SSH connection: the first one directly (or through the proxy),
-/// the next ones through a direct-tcpip channel of the previous gateway.
+/// the next ones through a direct-tcpip channel of the previous gateway
+/// (or, after an "SSH command" proxy, through that command's channel).
+#[allow(clippy::too_many_arguments)]
 async fn open_hop(
     via: Option<&client::Handle<Handler>>,
+    command: Option<&str>,
     config: Arc<client::Config>,
     to: &Endpoint,
     handler: Handler,
@@ -763,6 +820,26 @@ async fn open_hop(
     let Some(gateway) = via else {
         return first_hop(config, to, handler, proxy, replies, events).await;
     };
+    if let Some(template) = command {
+        if !command_safe(&to.host) {
+            return Err(format!(
+                "{:?} cannot be passed to the proxy command",
+                to.host
+            ));
+        }
+        let line = proxy::substitute(template, &to.host, to.port, Some(&to.user));
+        let channel = gateway
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("SSH proxy: {e}"))?;
+        channel
+            .exec(true, line.as_bytes())
+            .await
+            .map_err(|e| format!("SSH proxy command {line:?}: {e}"))?;
+        return client::connect_stream(config, channel.into_stream(), handler)
+            .await
+            .map_err(|e| e.to_string());
+    }
     let channel = gateway
         .channel_open_direct_tcpip(to.host.clone(), u32::from(to.port), "127.0.0.1", 0)
         .await

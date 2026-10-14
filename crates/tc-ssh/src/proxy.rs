@@ -1,7 +1,10 @@
 //! Session "Network settings" proxy for the first SSH hop: SOCKS4(a),
 //! SOCKS5 (no auth or user / password, RFC 1928 / 1929), HTTP CONNECT
-//! (Basic auth on 407) and a local proxy command whose stdin / stdout carry
-//! the connection (like OpenSSH `ProxyCommand`).
+//! (Basic auth on 407), Telnet (a command line sent to the proxy, then the
+//! connection), a local proxy command whose stdin / stdout carry the
+//! connection (like OpenSSH `ProxyCommand`), and an SSH server as proxy:
+//! "SSH forwarding" (a direct-tcpip channel) or "SSH command" (`nc`-like
+//! command on it). The two SSH kinds are run by the SSH layer.
 
 use base64::Engine as _;
 use std::pin::Pin;
@@ -12,9 +15,22 @@ pub enum ProxyKind {
     Socks4,
     Socks5,
     Http,
+    /// Telnet proxy: this line is sent first (see [`telnet_command`]).
+    Telnet(String),
     /// Local command; `%h` / `%p` are replaced by the target host / port.
     Command(String),
+    /// The proxy is an SSH server; the target is reached through a
+    /// forwarding channel (like a gateway).
+    SshForward,
+    /// The proxy is an SSH server; this command (`%host` / `%port`, `%h` /
+    /// `%p`) is run on it and its input / output carry the connection.
+    SshCommand(String),
 }
+
+/// What a Telnet proxy is sent when no command is set (PuTTY's default).
+pub const DEFAULT_TELNET_COMMAND: &str = "connect %host %port\\n";
+/// What an "SSH command" proxy runs when no command is set.
+pub const DEFAULT_SSH_COMMAND: &str = "nc %host %port";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Proxy {
@@ -45,14 +61,18 @@ pub async fn connect(
     port: u16,
     ask_password: AskPassword<'_>,
 ) -> std::io::Result<BoxStream> {
-    if let ProxyKind::Command(cmd) = &proxy.kind {
-        return command(cmd, host, port);
+    match &proxy.kind {
+        ProxyKind::Command(cmd) => return command(cmd, host, port),
+        ProxyKind::SshForward | ProxyKind::SshCommand(_) => {
+            return Err(err("an SSH proxy is opened by the SSH connection"));
+        }
+        _ => {}
     }
     let mut tcp = tokio::net::TcpStream::connect((proxy.host.as_str(), proxy.port))
         .await
         .map_err(|e| err(format!("proxy {}:{}: {e}", proxy.host, proxy.port)))?;
     tcp.set_nodelay(true)?;
-    match proxy.kind {
+    match &proxy.kind {
         ProxyKind::Socks4 => socks4(&mut tcp, host, port, proxy.user.as_deref()).await?,
         ProxyKind::Socks5 => {
             socks5(&mut tcp, host, port, proxy.user.as_deref(), ask_password).await?
@@ -61,7 +81,13 @@ pub async fn connect(
             let stream = http_connect(tcp, host, port, proxy.user.as_deref(), ask_password).await?;
             return Ok(Box::pin(stream));
         }
-        ProxyKind::Command(_) => unreachable!(),
+        ProxyKind::Telnet(template) => {
+            let line = telnet_command(template, host, port, proxy.user.as_deref());
+            tcp.write_all(&line).await?;
+        }
+        ProxyKind::Command(_) | ProxyKind::SshForward | ProxyKind::SshCommand(_) => {
+            unreachable!("handled above")
+        }
     }
     Ok(Box::pin(tcp))
 }
@@ -308,14 +334,81 @@ impl AsyncWrite for ChildStream {
     }
 }
 
+/// `%host`, `%port`, `%user` (and `%h`, `%p`, `%%`) in a proxy command.
+pub fn substitute(template: &str, host: &str, port: u16, user: Option<&str>) -> String {
+    let mut out = String::with_capacity(template.len() + host.len());
+    let mut rest = template;
+    while let Some(i) = rest.find('%') {
+        out.push_str(&rest[..i]);
+        rest = &rest[i + 1..];
+        let (value, len) = if rest.starts_with("host") {
+            (host.to_string(), 4)
+        } else if rest.starts_with("port") {
+            (port.to_string(), 4)
+        } else if rest.starts_with("user") {
+            (user.unwrap_or_default().to_string(), 4)
+        } else if rest.starts_with('h') {
+            (host.to_string(), 1)
+        } else if rest.starts_with('p') {
+            (port.to_string(), 1)
+        } else if rest.starts_with('%') {
+            ("%".to_string(), 1)
+        } else {
+            ("%".to_string(), 0)
+        };
+        out.push_str(&value);
+        rest = &rest[len..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The line sent to a Telnet proxy: [`substitute`]d, with `\n`, `\r`,
+/// `\t` and `\\` escapes (as typed in the settings).
+pub fn telnet_command(template: &str, host: &str, port: u16, user: Option<&str>) -> Vec<u8> {
+    let template = if template.trim().is_empty() {
+        DEFAULT_TELNET_COMMAND
+    } else {
+        template
+    };
+    let text = substitute(template, host, port, user);
+    let mut out = Vec::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            let mut buf = [0; 4];
+            out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push(b'\n'),
+            Some('r') => out.push(b'\r'),
+            Some('t') => out.push(b'\t'),
+            Some('\\') => out.push(b'\\'),
+            Some(other) => {
+                out.push(b'\\');
+                let mut buf = [0; 4];
+                out.extend_from_slice(other.encode_utf8(&mut buf).as_bytes());
+            }
+            None => out.push(b'\\'),
+        }
+    }
+    out
+}
+
 /// From session options 3_20 (type), 3_21 host, 3_22 port, 3_23 login,
-/// 3_27 local command. `None` = direct connection.
+/// 3_27 command (local proxy command, Telnet command or command run on an
+/// SSH proxy). `None` = direct connection.
 pub fn from_options(get: &dyn Fn(&str) -> Option<String>) -> Option<Proxy> {
+    let command = get("3_27").filter(|c| !c.trim().is_empty());
     let kind = match get("3_20")?.trim() {
         "1" => ProxyKind::Socks4,
         "2" => ProxyKind::Socks5,
         "3" => ProxyKind::Http,
-        "5" => ProxyKind::Command(get("3_27").filter(|c| !c.trim().is_empty())?),
+        "4" => ProxyKind::Telnet(command.unwrap_or_else(|| DEFAULT_TELNET_COMMAND.into())),
+        "5" => ProxyKind::Command(command?),
+        "6" => ProxyKind::SshForward,
+        "7" => ProxyKind::SshCommand(command.unwrap_or_else(|| DEFAULT_SSH_COMMAND.into())),
         _ => return None,
     };
     let host = get("3_21").unwrap_or_default().trim().to_string();
@@ -456,5 +549,70 @@ mod tests {
             from_options(&opts(&[("3_20", "5"), ("3_27", "nc %h %p")])).map(|p| p.kind),
             Some(ProxyKind::Command(c)) if c == "nc %h %p"
         ));
+        let kind =
+            |o: &'static [(&'static str, &'static str)]| from_options(&opts(o)).map(|p| p.kind);
+        assert_eq!(
+            kind(&[("3_20", "4"), ("3_21", "p")]),
+            Some(ProxyKind::Telnet(DEFAULT_TELNET_COMMAND.into()))
+        );
+        assert_eq!(
+            kind(&[("3_20", "6"), ("3_21", "p")]),
+            Some(ProxyKind::SshForward)
+        );
+        assert_eq!(
+            kind(&[("3_20", "7"), ("3_21", "p")]),
+            Some(ProxyKind::SshCommand(DEFAULT_SSH_COMMAND.into()))
+        );
+        assert_eq!(
+            kind(&[("3_20", "7"), ("3_21", "p"), ("3_27", "ncat %h %p")]),
+            Some(ProxyKind::SshCommand("ncat %h %p".into()))
+        );
+        // The SSH kinds need a proxy host too.
+        assert_eq!(kind(&[("3_20", "6")]), None);
+    }
+
+    #[test]
+    fn proxy_command_substitutions() {
+        assert_eq!(
+            substitute("nc %host %port %h:%p %user 100%% %x", "srv", 22, Some("me")),
+            "nc srv 22 srv:22 me 100% %x"
+        );
+        assert_eq!(
+            telnet_command(DEFAULT_TELNET_COMMAND, "srv", 22, None),
+            b"connect srv 22\n"
+        );
+        assert_eq!(
+            telnet_command(r"open %host %port\r\n\\ \q", "h", 1, None),
+            b"open h 1\r\n\\ \\q"
+        );
+        assert_eq!(telnet_command("  ", "h", 1, None), b"connect h 1\n");
+    }
+
+    #[tokio::test]
+    async fn telnet_proxy_sends_its_line_first() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 64];
+            let n = s.read(&mut buf).await.unwrap();
+            s.write_all(b"pong").await.unwrap();
+            buf.truncate(n);
+            buf
+        });
+        let proxy = Proxy {
+            kind: ProxyKind::Telnet(DEFAULT_TELNET_COMMAND.into()),
+            host: "127.0.0.1".into(),
+            port,
+            user: None,
+        };
+        let mut ask = no_password();
+        let mut stream = connect(&proxy, "target.example", 2222, &mut ask)
+            .await
+            .unwrap();
+        let mut reply = [0u8; 4];
+        stream.read_exact(&mut reply).await.unwrap();
+        assert_eq!(&reply, b"pong");
+        assert_eq!(server.await.unwrap(), b"connect target.example 2222\n");
     }
 }
