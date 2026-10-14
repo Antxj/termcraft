@@ -13,6 +13,7 @@
 pub mod agent;
 pub mod keygen;
 pub mod proxy;
+pub mod scp;
 pub mod sftp;
 pub mod tunnel;
 pub mod x11;
@@ -58,8 +59,11 @@ pub struct ConnectParams {
     pub term: String,
     pub cols: u16,
     pub rows: u16,
-    /// Open the SFTP "SSH-browser" channel after login.
+    /// Open the "SSH-browser" after login.
     pub sftp: bool,
+    /// 3_26 "SSH-browser type": SFTP (falls back to SCP when the server
+    /// has no SFTP subsystem) or SCP.
+    pub browser_protocol: BrowserProtocol,
     /// Send SSH keepalives at this interval.
     pub keepalive: Option<std::time::Duration>,
     /// Ask for the login shell on a separate exec channel and report it as
@@ -565,6 +569,24 @@ impl Handler {
     }
 }
 
+/// 3_26 "SSH-browser type" (besides "None").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BrowserProtocol {
+    #[default]
+    Sftp,
+    /// "SCP (enhanced speed)" (bigger blocks) / "SCP (normal speed)".
+    Scp { enhanced: bool },
+}
+
+/// The open SSH-browser.
+enum Browser {
+    Sftp(Arc<russh_sftp::client::SftpSession>),
+    Scp { chunk: usize },
+}
+
+const SCP_CHUNK_ENHANCED: usize = 256 * 1024;
+const SCP_CHUNK_NORMAL: usize = 32 * 1024;
+
 /// An authenticated connection; the gateway sessions (if any) are kept
 /// alive for as long as the target session is used.
 pub(crate) struct Connection {
@@ -823,10 +845,34 @@ async fn run_shell(
         if !params.sftp {
             return None;
         }
-        match sftp::open(session).await {
-            Ok((sftp, home)) => {
+        let scp = |enhanced: bool| async move {
+            let chunk = if enhanced {
+                SCP_CHUNK_ENHANCED
+            } else {
+                SCP_CHUNK_NORMAL
+            };
+            scp::open(session)
+                .await
+                .map(|home| (Browser::Scp { chunk }, home))
+        };
+        let opened = match params.browser_protocol {
+            BrowserProtocol::Scp { enhanced } => scp(enhanced).await,
+            BrowserProtocol::Sftp => match sftp::open(session).await {
+                Ok((s, home)) => Ok((Browser::Sftp(s), home)),
+                // No SFTP subsystem: browse with SCP instead.
+                Err(e) => match scp(true).await {
+                    Ok(found) => {
+                        events.send(SshEvent::Info(format!("{e}; the browser uses SCP")));
+                        Ok(found)
+                    }
+                    Err(_) => Err(e),
+                },
+            },
+        };
+        match opened {
+            Ok((browser, home)) => {
                 events.send(SshEvent::Sftp(SftpEvent::Ready { home }));
-                Some(sftp)
+                Some(browser)
             }
             Err(e) => {
                 events.send(SshEvent::Sftp(SftpEvent::Unavailable(e)));
@@ -884,12 +930,22 @@ async fn run_shell(
                     }
                 }
                 Some(Input::Sftp(id, request)) => match &sftp {
-                    Some(s) => {
+                    Some(Browser::Sftp(s)) => {
                         tokio::spawn(sftp::execute(s.clone(), id, request, events.clone()));
                     }
+                    Some(Browser::Scp { chunk }) => match session.channel_open_session().await {
+                        Ok(channel) => {
+                            let transfer = scp::Transfer { chunk: *chunk };
+                            tokio::spawn(scp::execute(channel, id, request, transfer, events.clone()));
+                        }
+                        Err(e) => events.send(SshEvent::Sftp(SftpEvent::Failed {
+                            id,
+                            error: format!("cannot open a channel: {e}"),
+                        })),
+                    },
                     None => events.send(SshEvent::Sftp(SftpEvent::Failed {
                         id,
-                        error: "SFTP is not available on this connection".into(),
+                        error: "the file browser is not available on this connection".into(),
                     })),
                 },
                 Some(Input::Monitoring(on)) => {
@@ -928,7 +984,7 @@ async fn run_shell(
                 reopening = None;
                 match opened {
                     Ok((s, home)) => {
-                        sftp = Some(s);
+                        sftp = Some(Browser::Sftp(s));
                         events.send(SshEvent::Sftp(SftpEvent::Ready { home }));
                     }
                     Err(sftp::SudoError::PasswordNeeded) => {

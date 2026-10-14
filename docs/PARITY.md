@@ -102,7 +102,7 @@ refined against it.
 | P1 | [x] | "Follow terminal folder": follows OSC 7 reports. On login, `$SHELL` is read on a separate exec channel; for bash / zsh the prompt hook is typed once the prompt settles and its echo is hidden. Other shells: one-click button | `tc-ssh` + `tc-term` + `tc-ui` |
 | P1 | [x] | Transfers run in parallel with progress bars | `tc-ssh` |
 | P1 | [x] | Open remote file in a local text editor (double click or "Open with default text editor") or its default program; a change asks "upload it to the server?"; private temporary copies removed with the tab | `tc-ui` |
-| P2 | [ ] | SCP mode (fast / legacy) when SFTP is unavailable | `tc-sftp` |
+| P2 | [x] | SCP browser: 3_26 "SCP (enhanced speed)" / "SCP (normal speed)" (block size), and automatic SCP when the server has no SFTP subsystem. Listing with `ls -la` (epoch times with GNU ls), transfers with the SCP protocol (progress, ASCII mode), mkdir / rename / delete / chmod / new file through quoted commands; end-to-end tested | `tc-ssh` |
 | P2 | [x] | Rename / new folder / new file / delete (with confirmation), copy path (to clipboard or terminal), hidden files toggle, Properties, Permissions (rwx grid + octal; SFTP setstat, FTP SITE CHMOD) | `tc-ui` |
 | P1 | [x] | "Remote monitoring" bar below SSH terminals (CPU, RAM, network, disk, uptime, users; one exec channel reading /proc every 2 s; Linux servers), SSH-browser button and Configuration › SSH › Remote-monitoring | `tc-core` + `tc-ssh` + `tc-ui` |
 | P1 | [x] | SSH-browser "ASCII mode" (line endings converted while streaming; FTP uses TYPE A) | `tc-core` + `tc-ssh` + `tc-net` |

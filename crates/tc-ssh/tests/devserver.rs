@@ -38,6 +38,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         cols: 80,
         rows: 24,
         sftp: false,
+        browser_protocol: Default::default(),
         keepalive: None,
         detect_login_shell: false,
         remote_monitoring: false,
@@ -623,6 +624,148 @@ fn sftp_browser_operations() {
         |e| matches!(e, SshEvent::Sftp(SftpEvent::Failed { id: i, .. }) if *i == id),
     );
     assert!(matches!(e, SshEvent::Sftp(SftpEvent::Failed { .. })));
+    s.close();
+}
+
+/// A POSIX shell for the dev server's exec requests (Git Bash on Windows).
+fn posix_shell() -> Option<String> {
+    if cfg!(windows) {
+        let pf = std::env::var_os("ProgramFiles")?;
+        let bash = Path::new(&pf).join("Git").join("bin").join("bash.exe");
+        bash.is_file().then(|| bash.display().to_string())
+    } else {
+        Some("sh".into())
+    }
+}
+
+/// No SFTP subsystem on the server: the browser falls back to SCP, and
+/// every operation works through scp / ls / mkdir / mv / rm / chmod.
+#[test]
+fn scp_browser_when_sftp_is_missing() {
+    use tc_ssh::{SftpEvent, SftpRequest};
+    let Some(shell) = posix_shell() else {
+        eprintln!("no POSIX shell; skipping");
+        return;
+    };
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("hello.txt"), b"hello over scp").unwrap();
+    let dir = root.path().display().to_string().replace('\\', "/");
+    let server = start(DevConfig {
+        exec_shell: Some(shell),
+        sftp_subsystem: false,
+        ..DevConfig::default()
+    });
+    let local = tempfile::tempdir().unwrap();
+    let mut p = params(server.port, &local.path().join("known_hosts"), "");
+    p.command = None;
+    p.sftp = true;
+    p.shell = false;
+    let s = SshSession::connect(p, noop());
+    let ready = wait_for(&s, |e| {
+        matches!(
+            e,
+            SshEvent::Sftp(SftpEvent::Ready { .. } | SftpEvent::Unavailable(_))
+        )
+    });
+    if let SshEvent::Sftp(SftpEvent::Unavailable(e)) = &ready {
+        eprintln!("scp is not available here ({e}); skipping");
+        return;
+    }
+    let done = |s: &SshSession, id: u64| {
+        let e = wait_for(
+            s,
+            |e| matches!(e, SshEvent::Sftp(SftpEvent::Done { id: i } | SftpEvent::Failed { id: i, .. }) if *i == id),
+        );
+        assert_eq!(e, SshEvent::Sftp(SftpEvent::Done { id }), "request {id}");
+    };
+    let list = |s: &SshSession| {
+        let id = s.sftp(SftpRequest::List(dir.clone()));
+        match wait_for(
+            s,
+            |e| matches!(e, SshEvent::Sftp(SftpEvent::Listing { id: i, .. } | SftpEvent::Failed { id: i, .. }) if *i == id),
+        ) {
+            SshEvent::Sftp(SftpEvent::Listing { entries, .. }) => entries,
+            other => panic!("{other:?}"),
+        }
+    };
+    let entries = list(&s);
+    assert_eq!(entries.len(), 1, "{entries:?}");
+    assert_eq!(
+        (entries[0].name.as_str(), entries[0].size),
+        ("hello.txt", 14)
+    );
+
+    // Download, and an upload bigger than one block.
+    let dl = local.path().join("dl.txt");
+    done(
+        &s,
+        s.sftp(SftpRequest::Download {
+            remote: format!("{dir}/hello.txt"),
+            local: dl.clone(),
+            ascii: false,
+        }),
+    );
+    assert_eq!(std::fs::read(&dl).unwrap(), b"hello over scp");
+    let big: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+    let up = local.path().join("up.bin");
+    std::fs::write(&up, &big).unwrap();
+    done(
+        &s,
+        s.sftp(SftpRequest::Upload {
+            local: up,
+            remote: format!("{dir}/it's up.bin"),
+            ascii: false,
+        }),
+    );
+    assert_eq!(std::fs::read(root.path().join("it's up.bin")).unwrap(), big);
+
+    // mkdir, rename into it, remove both; an empty file.
+    done(&s, s.sftp(SftpRequest::Mkdir(format!("{dir}/d"))));
+    done(
+        &s,
+        s.sftp(SftpRequest::Rename {
+            from: format!("{dir}/it's up.bin"),
+            to: format!("{dir}/d/up2.bin"),
+        }),
+    );
+    assert!(root.path().join("d/up2.bin").exists());
+    done(
+        &s,
+        s.sftp(SftpRequest::CreateFile(format!("{dir}/new.txt"))),
+    );
+    assert!(root.path().join("new.txt").is_file());
+    let names: Vec<String> = list(&s).into_iter().map(|e| e.name).collect();
+    assert_eq!(names, ["d", "hello.txt", "new.txt"]);
+    done(
+        &s,
+        s.sftp(SftpRequest::Remove {
+            path: format!("{dir}/d/up2.bin"),
+            is_dir: false,
+        }),
+    );
+    done(
+        &s,
+        s.sftp(SftpRequest::Remove {
+            path: format!("{dir}/d"),
+            is_dir: true,
+        }),
+    );
+    assert!(!root.path().join("d").exists());
+
+    // Errors are reported.
+    let id = s.sftp(SftpRequest::Download {
+        remote: format!("{dir}/missing"),
+        local: local.path().join("x"),
+        ascii: false,
+    });
+    let e = wait_for(
+        &s,
+        |e| matches!(e, SshEvent::Sftp(SftpEvent::Done { id: i } | SftpEvent::Failed { id: i, .. }) if *i == id),
+    );
+    assert!(
+        matches!(e, SshEvent::Sftp(SftpEvent::Failed { .. })),
+        "{e:?}"
+    );
     s.close();
 }
 

@@ -35,6 +35,11 @@ pub struct DevConfig {
     /// `$SHELL` reported to exec requests that print it (`echo "$SHELL"`),
     /// so clients can detect the login shell on any platform.
     pub login_shell: Option<String>,
+    /// Program that runs exec requests as `PROGRAM -c COMMAND` (`None` =
+    /// `cmd /C` on Windows, `sh -c` elsewhere).
+    pub exec_shell: Option<String>,
+    /// Offer the SFTP subsystem (off = test clients' SCP fallback).
+    pub sftp_subsystem: bool,
 }
 
 impl Default for DevConfig {
@@ -46,6 +51,8 @@ impl Default for DevConfig {
             sftp_root: std::env::temp_dir().join("termcraft-devserver"),
             shell: None,
             login_shell: None,
+            exec_shell: None,
+            sftp_subsystem: true,
         }
     }
 }
@@ -208,6 +215,16 @@ impl russh::server::Handler for Conn {
         let handle = session.handle();
         session.channel_success(channel)?;
         let login_shell = self.config.login_shell.clone();
+        // With an exec shell configured, stream stdin / stdout / stderr
+        // (needed by interactive protocols such as scp -t / -f).
+        if let (Some(program), Some(ch)) = (
+            self.config.exec_shell.clone(),
+            self.channels.remove(&channel),
+        ) && login_shell.is_none()
+        {
+            tokio::spawn(stream_exec(program, command, ch, handle, channel));
+            return Ok(());
+        }
         tokio::spawn(async move {
             if let Some(shell) = login_shell.filter(|_| command.contains("$SHELL")) {
                 let _ = handle
@@ -350,7 +367,7 @@ impl russh::server::Handler for Conn {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         match (name, self.channels.remove(&channel_id)) {
-            ("sftp", Some(channel)) => {
+            ("sftp", Some(channel)) if self.config.sftp_subsystem => {
                 std::fs::create_dir_all(&self.config.sftp_root)?;
                 session.channel_success(channel_id)?;
                 let fs = sftp::SftpFs::new(self.config.sftp_root.clone());
@@ -360,6 +377,69 @@ impl russh::server::Handler for Conn {
         }
         Ok(())
     }
+}
+
+/// Run `program -c command` with the channel as its stdin / stdout and
+/// stderr as extended data, then report the exit status.
+async fn stream_exec(
+    program: String,
+    command: String,
+    channel: Channel<Msg>,
+    handle: russh::server::Handle,
+    id: ChannelId,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let child = tokio::process::Command::new(&program)
+        .arg("-c")
+        .arg(&command)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = handle
+                .extended_data(id, 1, format!("exec failed: {e}\n").into_bytes())
+                .await;
+            let _ = handle.exit_status_request(id, 127).await;
+            let _ = handle.close(id).await;
+            return;
+        }
+    };
+    let (mut from_client, mut to_client) = tokio::io::split(channel.into_stream());
+    let mut stdin = child.stdin.take().expect("piped");
+    let mut stdout = child.stdout.take().expect("piped");
+    let mut stderr = child.stderr.take().expect("piped");
+    let input = async move {
+        let _ = tokio::io::copy(&mut from_client, &mut stdin).await;
+        let _ = stdin.shutdown().await;
+    };
+    let output = async move {
+        let _ = tokio::io::copy(&mut stdout, &mut to_client).await;
+        let _ = to_client.flush().await;
+    };
+    let errors = {
+        let handle = handle.clone();
+        async move {
+            let mut buf = vec![0u8; 8192];
+            while let Ok(n) = stderr.read(&mut buf).await {
+                if n == 0 {
+                    break;
+                }
+                let _ = handle.extended_data(id, 1, buf[..n].to_vec()).await;
+            }
+        }
+    };
+    let input = tokio::spawn(input);
+    tokio::join!(output, errors);
+    let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(1);
+    input.abort();
+    let _ = handle
+        .exit_status_request(id, u32::try_from(code).unwrap_or(1))
+        .await;
+    let _ = handle.eof(id).await;
+    let _ = handle.close(id).await;
 }
 
 fn to_u16(v: u32) -> u16 {

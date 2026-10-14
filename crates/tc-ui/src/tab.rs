@@ -673,6 +673,7 @@ impl Tab {
             cols,
             rows,
             sftp: false,
+            browser_protocol: Default::default(),
             keepalive: None,
             detect_login_shell: false,
             remote_monitoring: false,
@@ -747,6 +748,7 @@ impl Tab {
             cols,
             rows,
             sftp: true,
+            browser_protocol: Default::default(),
             keepalive: (self.ssh_settings.keepalive_secs > 0)
                 .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
             detect_login_shell: false,
@@ -973,6 +975,12 @@ impl Tab {
             rows,
             // 3_26 SSH-browser type: 0 = none.
             sftp: self.ssh_settings.browser && opt("3_26") != Some("0"),
+            // 3_26: 2 "SCP (enhanced speed)", 3 "SCP (normal speed)".
+            browser_protocol: match opt("3_26") {
+                Some("2") => tc_ssh::BrowserProtocol::Scp { enhanced: true },
+                Some("3") => tc_ssh::BrowserProtocol::Scp { enhanced: false },
+                _ => tc_ssh::BrowserProtocol::Sftp,
+            },
             keepalive: (self.ssh_settings.keepalive_secs > 0)
                 .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
             detect_login_shell: false,
