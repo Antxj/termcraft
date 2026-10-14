@@ -280,6 +280,78 @@ fn export_icon(type_index: usize) -> u32 {
     }
 }
 
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+/// "Generate HTML web page": the sessions by folder, as a static page
+/// (every value escaped; no scripts, no links).
+pub fn html_page(sessions: &[Session]) -> String {
+    let mut sorted: Vec<&Session> = sessions.iter().collect();
+    sorted.sort_by(|a, b| {
+        (a.folder.to_lowercase(), a.name.to_lowercase())
+            .cmp(&(b.folder.to_lowercase(), b.name.to_lowercase()))
+    });
+    let mut html = String::from(
+        "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>Sessions</title>\n\
+         <style>body{font-family:sans-serif;margin:2em}table{border-collapse:collapse}\
+         td,th{border:1px solid #ccc;padding:4px 10px;text-align:left}th{background:#eee}\
+         h2{margin-top:1.5em}</style></head><body>\n<h1>Sessions</h1>\n",
+    );
+    let mut folder: Option<&str> = None;
+    for s in sorted {
+        if folder != Some(s.folder.as_str()) {
+            if folder.is_some() {
+                html.push_str("</table>\n");
+            }
+            let title = if s.folder.is_empty() {
+                "User sessions"
+            } else {
+                s.folder.as_str()
+            };
+            html.push_str(&format!(
+                "<h2>{}</h2>\n<table><tr><th>Name</th><th>Type</th><th>Host</th><th>Port</th><th>User</th></tr>\n",
+                html_escape(title)
+            ));
+            folder = Some(s.folder.as_str());
+        }
+        let get = |id: &str| s.kind.typed_get(id).unwrap_or_default();
+        let (host, port, user) = match &s.kind {
+            SessionKind::Ssh { .. }
+            | SessionKind::Rdp { .. }
+            | SessionKind::Ftp { .. }
+            | SessionKind::Sftp { .. } => (get("3_2"), get("3_3"), get("3_4")),
+            SessionKind::Telnet { .. } | SessionKind::Vnc { .. } => {
+                (get("3_2"), get("3_3"), String::new())
+            }
+            SessionKind::Rsh { .. } => (get("3_2"), String::new(), get("3_3")),
+            SessionKind::Mosh { .. } => (get("3_2"), get("3_4"), get("3_3")),
+            other => (
+                other.target().unwrap_or_default().to_string(),
+                String::new(),
+                String::new(),
+            ),
+        };
+        html.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
+            html_escape(&s.name),
+            html_escape(s.kind.label()),
+            html_escape(&host),
+            html_escape(&port),
+            html_escape(&user)
+        ));
+    }
+    if folder.is_some() {
+        html.push_str("</table>\n");
+    }
+    html.push_str("</body></html>\n");
+    html
+}
+
 /// One bookmark value (`#icon#3_1%3_2%…#4_1%…#…`) for a session.
 pub fn bookmark_value(session: &Session) -> String {
     use tc_core::schema;
@@ -362,6 +434,25 @@ pub fn export(sessions: &[Session]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_page_escapes_everything() {
+        let mut s = Session::new(
+            "<b>x</b>",
+            SessionKind::Ssh {
+                host: "h\"onload=1".into(),
+                port: 22,
+                user: Some("u&me".into()),
+                private_key: None,
+                x11_forwarding: false,
+            },
+        );
+        s.folder = "A/<B>".into();
+        let html = html_page(&[s]);
+        assert!(html.contains("&lt;b&gt;x&lt;/b&gt;") && html.contains("h&quot;onload=1"));
+        assert!(html.contains("<h2>A/&lt;B&gt;</h2>") && html.contains("u&amp;me"));
+        assert!(!html.contains("<b>") && !html.contains("<script"));
+    }
 
     #[test]
     fn export_then_import_gives_the_same_sessions() {

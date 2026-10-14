@@ -470,6 +470,43 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::ExportHtml => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("sessions.html")
+                    .add_filter("Web page", &["html"])
+                    .save_file()
+                {
+                    let cmd = Command::SessionExportHtml {
+                        path: path.display().to_string(),
+                        overwrite: true,
+                    };
+                    self.status = match tc_commands::execute(&mut self.core, cmd) {
+                        Ok(_) => format!("Web page written to {}", path.display()),
+                        Err(e) => e.to_string(),
+                    };
+                }
+                return;
+            }
+            Action::OpenFolder(folder) => {
+                let inside = |f: &str| f == folder || f.starts_with(&format!("{folder}/"));
+                let ids: Vec<String> = self
+                    .core
+                    .store
+                    .sessions
+                    .iter()
+                    .filter(|s| inside(&s.folder))
+                    .map(|s| s.id.to_string())
+                    .collect();
+                for id in ids {
+                    self.run(Command::TabOpen { session: Some(id) });
+                }
+                return;
+            }
+            Action::CollapseFolders => {
+                let id = egui::Id::new(crate::ui::sidebar::COLLAPSE_FOLDERS);
+                ctx.data_mut(|d| d.insert_temp(id, true));
+                return;
+            }
             Action::ConnectAs(session) => {
                 self.connect_as = Some((session, String::new()));
                 return;

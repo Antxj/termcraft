@@ -56,6 +56,12 @@ pub enum Action {
     Servers,
     /// Tools › "Text editor".
     TextEditor,
+    /// "Generate HTML web page" (asks where to save).
+    ExportHtml,
+    /// "Execute all sessions from this folder".
+    OpenFolder(String),
+    /// "Close all folders" in the sessions tree.
+    CollapseFolders,
     /// "Connect as...": ask for a user, then open a copy as that user.
     ConnectAs(Box<tc_core::Session>),
     /// Open a shared session (a read-only copy) in a tab.

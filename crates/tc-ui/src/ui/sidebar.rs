@@ -175,7 +175,14 @@ fn session_tree(ui: &mut egui::Ui, sessions: &Sessions<'_>, filter: &str, out: &
     let header = egui::CollapsingHeader::new(format!("{}  User sessions", icon::STAR))
         .id_salt("user-sessions")
         .default_open(true)
-        .show(ui, |ui| draw_folder(ui, &root, "", sessions, out));
+        .show(ui, |ui| {
+            // "Close all folders": taken once, so folders close one time.
+            let collapse = ui
+                .ctx()
+                .data_mut(|d| d.remove_temp::<bool>(egui::Id::new(COLLAPSE_FOLDERS)))
+                == Some(true);
+            draw_folder(ui, &root, "", sessions, collapse, out)
+        });
     drop_target(ui, &header.header_response, "", out);
     header.header_response.context_menu(|ui| root_menu(ui, out));
     shared_tree(ui, sessions, filter, out);
@@ -275,6 +282,7 @@ fn draw_folder(
     folder: &Folder<'_>,
     path: &str,
     sessions: &Sessions<'_>,
+    collapse: bool,
     out: &mut Vec<Action>,
 ) {
     for (name, sub) in &folder.folders {
@@ -282,7 +290,10 @@ fn draw_folder(
         let header = egui::CollapsingHeader::new(format!("{}  {name}", icon::FOLDER))
             .id_salt(&sub_path)
             .default_open(true)
-            .show(ui, |ui| draw_folder(ui, sub, &sub_path, sessions, out));
+            .open(collapse.then_some(false))
+            .show(ui, |ui| {
+                draw_folder(ui, sub, &sub_path, sessions, collapse, out)
+            });
         drop_target(ui, &header.header_response, &sub_path, out);
         let folder = sub_path.trim_matches('/').to_string();
         header
@@ -329,6 +340,9 @@ fn draw_folder(
         row.context_menu(|ui| session_menu(ui, s, out));
     }
 }
+
+/// egui data key: collapse every folder of the tree on the next frame.
+pub const COLLAPSE_FOLDERS: &str = "termcraft-collapse-folders";
 
 fn open(s: &Session) -> Action {
     Action::Run(Command::TabOpen {
@@ -411,6 +425,13 @@ fn folder_menu(ui: &mut egui::Ui, folder: &str, out: &mut Vec<Action>) {
         out,
     );
     ui.separator();
+    item(
+        ui,
+        "Execute all sessions from this folder",
+        Some(Action::OpenFolder(folder.to_string())),
+        out,
+    );
+    ui.separator();
     root_menu(ui, out);
 }
 
@@ -433,6 +454,8 @@ fn root_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
         Some(Action::ExportSessions(None)),
         out,
     );
+    item(ui, "Generate HTML web page", Some(Action::ExportHtml), out);
+    item(ui, "Close all folders", Some(Action::CollapseFolders), out);
     ui.separator();
     item(
         ui,

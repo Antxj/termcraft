@@ -60,6 +60,12 @@ pub enum Command {
         #[serde(default)]
         folder: Option<String>,
     },
+    /// "Generate HTML web page": a static page listing the sessions.
+    SessionExportHtml {
+        path: String,
+        #[serde(default)]
+        overwrite: bool,
+    },
     SessionRename {
         id: SessionId,
         name: String,
@@ -204,6 +210,7 @@ impl Command {
             Self::SessionImportSshConfig { .. } => "session_import_ssh_config",
             Self::SessionExportMobaxterm { .. } => "session_export_mobaxterm",
             Self::SessionDesktopShortcut { .. } => "session_desktop_shortcut",
+            Self::SessionExportHtml { .. } => "session_export_html",
             Self::SessionRename { .. } => "session_rename",
             Self::SessionDuplicate { .. } => "session_duplicate",
             Self::SessionFolderAdd { .. } => "session_folder_add",
@@ -488,6 +495,19 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             let path = tc_core::shortcut::create(&dir, &exe, &session.name, opts)
                 .map_err(|e| CommandError::Failed(format!("{}: {e}", dir.display())))?;
             Ok(json!({ "path": path.display().to_string() }))
+        }
+        Command::SessionExportHtml { path, overwrite } => {
+            let path = std::path::Path::new(&path);
+            if path.exists() && !overwrite {
+                return Err(CommandError::InvalidArgs(format!(
+                    "{} exists (pass overwrite to replace it)",
+                    path.display()
+                )));
+            }
+            let sessions = host.store().sessions.clone();
+            std::fs::write(path, tc_import::mobaxterm::html_page(&sessions))
+                .map_err(|e| CommandError::Failed(format!("{}: {e}", path.display())))?;
+            Ok(json!({ "exported": sessions.len() }))
         }
         Command::SessionRename { id, name } => {
             let name = name.trim().to_string();

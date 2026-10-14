@@ -123,6 +123,14 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "session_export_html",
+        title: "Generate HTML web page",
+        description: "Write a static HTML page listing the sessions by folder (name, type, host, port, user; no passwords). An existing file is only replaced with overwrite.",
+        input_schema: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"overwrite":{"type":"boolean"}}}"#,
+        example_args: r#"{"path":"sessions.html"}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "session_rename",
         title: "Rename session",
         description: "Rename a saved session (names are unique).",
