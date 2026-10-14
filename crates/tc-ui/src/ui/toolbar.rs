@@ -99,7 +99,7 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             icon::HARD_DRIVES,
             "Servers",
             "Network services",
-            Kind::Action(None),
+            Kind::Action(Some(Action::Servers)),
         ),
         (
             icon::WRENCH,

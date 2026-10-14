@@ -19,6 +19,7 @@ tc-update.workspace = true
 tc-ssh.workspace = true
 tc-vault.workspace = true
 tc-net.workspace = true
+tc-servers.workspace = true
 tc-import.workspace = true
 eframe.workspace = true
 egui.workspace = true

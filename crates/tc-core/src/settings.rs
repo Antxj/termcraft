@@ -9,9 +9,93 @@ pub struct Settings {
     pub passwords: PasswordSettings,
     pub ssh: SshSettings,
     pub general: GeneralSettings,
+    /// "Servers" (network services) settings.
+    pub servers: ServersSettings,
     /// Keyboard shortcuts changed from their defaults: action id →
     /// hotkey (`<none>` removes one). See `crate::hotkeys`.
     pub hotkeys: std::collections::BTreeMap<String, String>,
+}
+
+/// "Servers management" (reference `TFORMSERVICES`): one entry per
+/// network service TermCraft can run.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ServersSettings {
+    pub http: HttpServerSettings,
+    pub tftp: TftpServerSettings,
+}
+
+/// "Stop server after N seconds".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StopAfter {
+    pub enabled: bool,
+    pub seconds: u32,
+}
+
+impl Default for StopAfter {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            seconds: 3600,
+        }
+    }
+}
+
+impl StopAfter {
+    pub fn duration(self) -> Option<std::time::Duration> {
+        self.enabled
+            .then(|| std::time::Duration::from_secs(u64::from(self.seconds.max(1))))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct HttpServerSettings {
+    /// "Root directory" (empty = the user's home folder).
+    pub root: String,
+    /// "Listening port".
+    pub port: u16,
+    /// "Allow users to list directory content".
+    pub list_directories: bool,
+    pub stop_after: StopAfter,
+}
+
+impl Default for HttpServerSettings {
+    fn default() -> Self {
+        Self {
+            root: String::new(),
+            port: 80,
+            list_directories: true,
+            stop_after: StopAfter::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TftpServerSettings {
+    pub root: String,
+    pub port: u16,
+    /// "TFTP buffer size" (bytes): the largest block size offered.
+    pub buffer_size: u32,
+    /// "Show message after successful download / upload".
+    pub notify_download: bool,
+    pub notify_upload: bool,
+    pub stop_after: StopAfter,
+}
+
+impl Default for TftpServerSettings {
+    fn default() -> Self {
+        Self {
+            root: String::new(),
+            port: 69,
+            buffer_size: 8192,
+            notify_download: false,
+            notify_upload: false,
+            stop_after: StopAfter::default(),
+        }
+    }
 }
 
 /// Configuration › General.

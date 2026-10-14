@@ -5035,6 +5035,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tc-servers"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "tempfile",
+]
+
+[[package]]
 name = "tc-ssh"
 version = "0.1.0"
 dependencies = [
@@ -5090,6 +5098,7 @@ dependencies = [
  "tc-import",
  "tc-net",
  "tc-pty",
+ "tc-servers",
  "tc-ssh",
  "tc-term",
  "tc-update",

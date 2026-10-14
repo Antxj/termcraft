@@ -16,6 +16,7 @@ pub mod local_pane;
 pub mod menus;
 pub mod monitor_bar;
 pub mod passwords_window;
+pub mod servers_window;
 pub mod session_editor;
 pub mod session_icons;
 pub mod sftp_browser;
@@ -48,6 +49,8 @@ pub enum Action {
     CustomizeSyntax,
     /// Configuration › Terminal › "Expert settings".
     ExpertTerminal,
+    /// "Servers": the network services window.
+    Servers,
     Configuration,
     Tunnels,
     CheckUpdates,

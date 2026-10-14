@@ -142,6 +142,15 @@ pub enum Command {
     TunnelRemove {
         id: TunnelId,
     },
+    /// Network services of the "Servers" window (`http`, `tftp`).
+    ServerList {},
+    /// Start a server with its saved settings (GUI only).
+    ServerStart {
+        server: String,
+    },
+    ServerStop {
+        server: String,
+    },
     TunnelStart {
         id: TunnelId,
     },
@@ -217,6 +226,9 @@ impl Command {
             Self::TunnelAdd { .. } => "tunnel_add",
             Self::TunnelUpdate { .. } => "tunnel_update",
             Self::TunnelRemove { .. } => "tunnel_remove",
+            Self::ServerList {} => "server_list",
+            Self::ServerStart { .. } => "server_start",
+            Self::ServerStop { .. } => "server_stop",
             Self::TunnelStart { .. } => "tunnel_start",
             Self::TunnelStop { .. } => "tunnel_stop",
             Self::PasswordList {} => "password_list",
@@ -242,6 +254,29 @@ pub enum CommandError {
     Unsupported(&'static str),
     #[error("{0}")]
     Failed(String),
+}
+
+/// A network service of the "Servers" window.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerInfo {
+    pub server: String,
+    pub running: bool,
+    /// Listening address while running.
+    pub address: Option<String>,
+}
+
+/// Servers TermCraft can run.
+pub const SERVERS: [&str; 2] = ["tftp", "http"];
+
+fn check_server(name: &str) -> Result<(), CommandError> {
+    if SERVERS.contains(&name) {
+        Ok(())
+    } else {
+        Err(CommandError::InvalidArgs(format!(
+            "unknown server {name:?} (known: {})",
+            SERVERS.join(", ")
+        )))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -291,6 +326,16 @@ pub trait Host {
     /// Human-readable state of a running tunnel ("Listening on …").
     fn tunnel_status(&self, _id: TunnelId) -> Option<String> {
         None
+    }
+    /// Running state of the network services.
+    fn server_list(&self) -> Result<Vec<ServerInfo>, CommandError> {
+        Err(CommandError::Unsupported("servers run in the GUI"))
+    }
+    fn server_start(&mut self, _server: &str) -> Result<String, CommandError> {
+        Err(CommandError::Unsupported("servers run in the GUI"))
+    }
+    fn server_stop(&mut self, _server: &str) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("servers run in the GUI"))
     }
     fn tunnel_start(&mut self, _tunnel: Tunnel) -> Result<(), CommandError> {
         Err(CommandError::Unsupported("tunnels run in the GUI"))
@@ -630,6 +675,17 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             }
             host.persist_tunnels()?;
             Ok(json!({ "ok": true }))
+        }
+        Command::ServerList {} => to_json(&host.server_list()?),
+        Command::ServerStart { server } => {
+            check_server(&server)?;
+            let address = host.server_start(&server)?;
+            Ok(json!({ "server": server, "address": address }))
+        }
+        Command::ServerStop { server } => {
+            check_server(&server)?;
+            host.server_stop(&server)?;
+            Ok(json!({ "stopped": server }))
         }
         Command::TunnelStart { id } => {
             let tunnel = host

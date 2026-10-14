@@ -24,6 +24,7 @@
 | `tc-pty` | Local shell over ConPTY / PTY |
 | `tc-ssh` | Native SSH client (russh): auth, host keys, shell / exec channels |
 | `tc-net` | Telnet and serial terminal backends |
+| `tc-servers` | Network services of the "Servers" window (TFTP, HTTP) |
 | `tc-devserver` | Loopback SSH server for tests and manual runs (docs/DEV.md) |
 | `tc-vault` | Saved passwords and credentials: OS keychain or Master-Password-encrypted file (index of names only) |
 | `tc-import` | MobaXterm (and later PuTTY, ssh_config) importers |

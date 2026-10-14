@@ -1,0 +1,16 @@
+[package]
+name = "tc-servers"
+description = "TermCraft network services (\"Servers\"): HTTP and TFTP file servers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+crossbeam-channel.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

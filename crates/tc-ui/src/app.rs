@@ -24,6 +24,8 @@ struct Core {
     macros: tc_core::MacroStore,
     tunnels: TunnelStore,
     running: BTreeMap<TunnelId, RunningTunnel>,
+    /// Network services of the "Servers" window.
+    servers: crate::servers::Servers,
 }
 
 impl Core {
@@ -159,6 +161,18 @@ impl Host for Core {
         self.running.get(&id).map(|t| t.status.clone())
     }
 
+    fn server_list(&self) -> Result<Vec<tc_commands::ServerInfo>, CommandError> {
+        Ok(self.servers.list())
+    }
+
+    fn server_start(&mut self, server: &str) -> Result<String, CommandError> {
+        self.servers.start(server, &self.settings.servers)
+    }
+
+    fn server_stop(&mut self, server: &str) -> Result<(), CommandError> {
+        self.servers.stop(server)
+    }
+
     fn tunnel_start(&mut self, tunnel: Tunnel) -> Result<(), CommandError> {
         let running = RunningTunnel::start(
             &tunnel,
@@ -217,6 +231,9 @@ pub struct TermCraftApp {
     syntax_window: Option<crate::ui::syntax_window::SyntaxWindow>,
     /// Configuration › Terminal › "Expert settings".
     show_expert: bool,
+    /// "Servers management" window and its page.
+    show_servers: bool,
+    servers_page: crate::ui::servers_window::Page,
     /// "Shortcut options" for this session (hide terminal, close on exit).
     shortcut_dialog: Option<(String, tc_core::shortcut::ShortcutOptions)>,
     known_hosts: crate::ui::known_hosts_window::KnownHostsWindow,
@@ -305,6 +322,7 @@ impl TermCraftApp {
                 macros,
                 tunnels,
                 running: BTreeMap::new(),
+                servers: Default::default(),
             },
             updates,
             quick_connect: String::new(),
@@ -317,6 +335,8 @@ impl TermCraftApp {
             keygen: Default::default(),
             syntax_window: None,
             show_expert: false,
+            show_servers: false,
+            servers_page: Default::default(),
             shortcut_dialog: None,
             known_hosts: Default::default(),
             control: None,
@@ -431,6 +451,10 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::Servers => {
+                self.show_servers = true;
+                return;
+            }
             Action::ExpertTerminal => {
                 self.show_expert = true;
                 return;
@@ -929,6 +953,25 @@ impl TermCraftApp {
         self.upload_edited_dialog(ctx);
         self.keygen.show(ctx);
         self.shortcut_options_dialog(ctx);
+        for note in self.core.servers.pump(&self.core.settings.servers) {
+            self.status = note;
+        }
+        if self.show_servers
+            && crate::ui::servers_window::show(
+                ctx,
+                &mut self.show_servers,
+                &mut self.servers_page,
+                &mut self.core.settings.servers,
+                &self.core.servers,
+                out,
+            )
+            && let Err(e) = self.core.save_settings()
+        {
+            self.status = format!("could not save settings: {e}");
+        }
+        if self.core.servers.running_count() > 0 {
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
+        }
         if self.show_expert
             && crate::ui::expert_window::show(
                 ctx,
@@ -1859,6 +1902,10 @@ impl eframe::App for TermCraftApp {
                 Some("known_hosts") => self.known_hosts.open(),
                 Some("jump_hosts") => self.editor = Some(SessionEditor::jump_hosts_preview()),
                 Some("expert") => self.show_expert = true,
+                Some("servers") => {
+                    self.show_servers = true;
+                    self.servers_page = crate::ui::servers_window::Page::Http;
+                }
                 Some("syntax") => {
                     self.syntax_window = Some(crate::ui::syntax_window::SyntaxWindow::preview());
                 }

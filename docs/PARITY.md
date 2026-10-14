@@ -146,7 +146,7 @@ refined against it.
 | P1 | [x] | Remote port forwarding | `tc-ssh` |
 | P1 | [x] | Dynamic (SOCKS5) forwarding | `tc-ssh` |
 | P1 | [x] | Graphical tunnel manager (start / stop / start all / stop all / autostart, editor with the 3 types); tunnel_* commands | `tc-ui` + `tc-commands` |
-| P2 | [ ] | Built-in light servers: SFTP, FTP, TFTP, HTTP, Telnet | `tc-servers` |
+| P2 | [~] | "Servers" window (TFORMSERVICES, `server_list` / `server_start` / `server_stop` commands): TFTP (RFC 1350 + block size option, uploads, "Show message after successful download / upload") and HTTP (GET / HEAD, optional directory listing) with root folder, port, "Stop server after"; requests confined to the root, bounded concurrency, "Server output". FTP, SSH/SFTP, Telnet, NFS, VNC, Cron and Iperf servers pending | `tc-servers` + `tc-ui` |
 | P3 | [ ] | Open ports list | `tc-tools` |
 | P3 | [ ] | Port scanner / network scanner | `tc-tools` |
 | P3 | [ ] | Packet capture (via external TShark) | `tc-tools` |
