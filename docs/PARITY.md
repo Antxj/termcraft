@@ -197,7 +197,7 @@ refined against it.
 | P0 | [~] | CI on Windows / macOS / Linux | `.github` |
 | P0 | [x] | Dependabot (cargo + GitHub Actions) and cargo-deny | `.github` |
 | P1 | [x] | Portable Windows `.zip` (termcraft + termcraft-cli + portable marker) | `release.yml` |
-| P1 | [ ] | Windows installer (MSI / MSIX), signed | `xtask` |
-| P1 | [ ] | macOS universal `.dmg`, signed and notarized | `xtask` |
-| P1 | [ ] | Linux AppImage, `.deb`, `.rpm`, Flatpak | `xtask` |
+| P1 | [~] | Windows portable zip from `cargo xtask package` (used by the release workflow); MSI / MSIX installer and signing pending | `xtask` |
+| P1 | [~] | macOS `TermCraft.app` bundle (Info.plist, zipped) from `cargo xtask package`; universal binary, `.dmg`, signing and notarization pending | `xtask` |
+| P1 | [~] | Linux `.deb` (`cargo xtask package`: /usr/bin, desktop entry; written without dpkg) and portable zip; AppImage, `.rpm`, Flatpak pending | `xtask` |
 | P1 | [x] | Release pipeline publishing signed update manifest (4 platforms) — not run yet (no remote) | `.github` |

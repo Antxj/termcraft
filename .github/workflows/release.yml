@@ -65,16 +65,10 @@ jobs:
           bin=target/${{ matrix.target }}/release
           cp "$bin/termcraft${{ matrix.ext }}" "dist/termcraft-${{ matrix.platform }}${{ matrix.ext }}"
           cp "$bin/termcraft-cli${{ matrix.ext }}" "dist/termcraft-cli-${{ matrix.platform }}${{ matrix.ext }}"
-      - name: Portable zip (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Packages (portable zip, .deb, macOS .app)
+        shell: bash
         run: |
-          $stage = "portable/TermCraft"
-          New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/termcraft.exe" $stage
-          Copy-Item "target/${{ matrix.target }}/release/termcraft-cli.exe" $stage
-          New-Item -ItemType File "$stage/termcraft.portable" | Out-Null
-          Compress-Archive -Path "$stage/*" -DestinationPath "dist/TermCraft-portable-${{ matrix.platform }}.zip"
+          cargo run --locked -p xtask -- package --bin-dir "target/${{ matrix.target }}/release" --platform "${{ matrix.platform }}" --version "${GITHUB_REF_NAME#v}" --out dist
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.platform }}

@@ -3,9 +3,12 @@
 //! `extract`   — static extraction of the reference app into `reference/extracted/`
 //!               (nothing is executed; see docs/CLEAN_ROOM.md).
 //! `inventory` — generate parity inventories into `docs/inventory/`.
+//! `package`   — release packages (portable zip, .deb, macOS .app) from
+//!               built binaries.
 
 mod dfm;
 mod inventory;
+mod package;
 mod pe;
 mod schema;
 
@@ -32,6 +35,31 @@ enum Cmd {
     Inventory { input: Option<PathBuf> },
     /// Generate crates/tc-core/src/schema_gen.rs (session parameter schema).
     Schema { input: Option<PathBuf> },
+    /// Build release packages from binaries (`cargo build --release`).
+    Package {
+        /// Folder with termcraft and termcraft-cli (default: target/release).
+        #[arg(long)]
+        bin_dir: Option<PathBuf>,
+        /// windows-x86_64, linux-x86_64, macos-aarch64 … (default: this one).
+        #[arg(long)]
+        platform: Option<String>,
+        /// Package version (default: the workspace version).
+        #[arg(long)]
+        version: Option<String>,
+        /// Output folder (default: dist/packages).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+}
+
+/// `<os>-<arch>` of this machine, as release assets name it.
+fn host_platform() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "macos",
+        "windows" => "windows",
+        _ => "linux",
+    };
+    format!("{os}-{}", std::env::consts::ARCH)
 }
 
 pub struct Reference {
@@ -41,6 +69,26 @@ pub struct Reference {
     pub files: BTreeMap<String, Vec<u8>>,
     pub strings: Vec<(u32, String)>,
     pub manifest: Vec<(String, String, usize)>,
+}
+
+/// `[workspace.package] version` of the root Cargo.toml.
+fn workspace_version() -> Result<String> {
+    let text = std::fs::read_to_string(root().join("Cargo.toml"))?;
+    let section = text
+        .split("[workspace.package]")
+        .nth(1)
+        .context("no [workspace.package]")?;
+    section
+        .lines()
+        .find_map(|l| {
+            let v = l
+                .trim()
+                .strip_prefix("version")?
+                .trim_start()
+                .strip_prefix('=')?;
+            Some(v.trim().trim_matches('"').to_string())
+        })
+        .context("no workspace version")
 }
 
 fn root() -> PathBuf {
@@ -58,6 +106,31 @@ fn main() -> Result<()> {
             let out = root().join("docs/inventory");
             inventory::write_all(&reference, &out)?;
             println!("wrote {}", out.display());
+            Ok(())
+        }
+        Cmd::Package {
+            bin_dir,
+            platform,
+            version,
+            out,
+        } => {
+            let bin_dir = bin_dir.unwrap_or_else(|| root().join("target/release"));
+            let platform = platform.unwrap_or_else(host_platform);
+            let version = version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+            let version = if version == "0.0.0" {
+                workspace_version()?
+            } else {
+                version
+            };
+            let out = out.unwrap_or_else(|| root().join("dist/packages"));
+            for made in package::run(&package::Package {
+                bin_dir: &bin_dir,
+                platform: &platform,
+                version: &version,
+                out: &out,
+            })? {
+                println!("wrote {}", made.display());
+            }
             Ok(())
         }
         Cmd::Schema { input } => {
