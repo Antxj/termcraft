@@ -134,7 +134,25 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
             ui.end_row();
         });
     ui.add_space(6.0);
-    disabled_check(ui, "Log terminal output to the following directory");
+    ui.horizontal(|ui| {
+        let mut on = !t.log_dir.is_empty();
+        if ui
+            .checkbox(&mut on, "Log terminal output to the following directory")
+            .changed()
+        {
+            t.log_dir = if on {
+                rfd::FileDialog::new()
+                    .pick_folder()
+                    .map(|d| d.display().to_string())
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+        }
+        if on {
+            ui.add(egui::TextEdit::singleline(&mut t.log_dir).desired_width(260.0));
+        }
+    });
     disabled_check(ui, "Use Windows PATH");
     ui.weak(
         "Per-session font, colors and terminal type are in each session's \"Terminal settings\".",

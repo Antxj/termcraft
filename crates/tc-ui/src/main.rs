@@ -8,6 +8,7 @@ mod mosh;
 mod skin;
 mod snapshot;
 mod tab;
+mod term_log;
 mod term_settings;
 mod term_view;
 mod tunnels;

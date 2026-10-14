@@ -276,8 +276,18 @@ fn tab_menu(
     item(ui, "Fullscreen", Some(Action::ToggleFullscreen), out);
     item(ui, "Pin/unpin this tab", None, out);
     ui.separator();
-    item(ui, "Save terminal output", None, out);
-    item(ui, "Print terminal output", None, out);
+    item(
+        ui,
+        "Save terminal output",
+        Some(Action::SaveTerminalText),
+        out,
+    );
+    item(
+        ui,
+        "Print terminal output",
+        Some(Action::PrintTerminalText),
+        out,
+    );
     item(ui, "Increase font size", Some(Action::ZoomIn), out);
     item(ui, "Decrease font size", Some(Action::ZoomOut), out);
 }

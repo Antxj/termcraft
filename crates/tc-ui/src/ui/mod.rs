@@ -39,6 +39,11 @@ pub enum Action {
     Tunnels,
     CheckUpdates,
     ImportDialog,
+    SaveTerminalText,
+    PrintTerminalText,
+    FindInTerminal,
+    /// `F3`.
+    FindNext,
     /// "Export MobaXterm sessions" (all) / "Save session to file" (one).
     ExportSessions(Option<SessionId>),
     NewSession,

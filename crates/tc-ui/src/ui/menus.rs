@@ -87,10 +87,20 @@ fn terminal_menu(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
         out,
     );
     item(ui, "Detach tab", None, out);
-    item(ui, "Save terminal text", None, out);
-    item(ui, "Print terminal text", None, out);
-    item(ui, "Find in terminal", None, out);
-    item(ui, "Find next", None, out);
+    item(
+        ui,
+        "Save terminal text",
+        on_tab(Action::SaveTerminalText),
+        out,
+    );
+    item(
+        ui,
+        "Print terminal text",
+        on_tab(Action::PrintTerminalText),
+        out,
+    );
+    item(ui, "Find in terminal", on_tab(Action::FindInTerminal), out);
+    item(ui, "Find next", on_tab(Action::FindNext), out);
     ui.separator();
     item(
         ui,

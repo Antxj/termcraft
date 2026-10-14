@@ -9,11 +9,13 @@ mod mouse;
 mod osc7;
 mod palette;
 mod selection;
+mod strip;
 
 pub use input::{Key, Modifiers, encode_key};
 pub use mouse::{MouseAction, MouseButton, MouseEvent};
 pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};
 pub use selection::{DEFAULT_WORD_DELIMITERS, Point, Selection, SelectionMode};
+pub use strip::AnsiStripper;
 
 pub struct Terminal {
     parser: vt100::Parser,
@@ -291,6 +293,136 @@ impl Terminal {
         mouse::encode(ev, self.mouse_mode(), encoding)
     }
 
+    /// How many history lines exist above the live screen.
+    fn history_len(&mut self) -> usize {
+        let saved = self.scrollback();
+        self.parser.screen_mut().set_scrollback(usize::MAX);
+        let len = self.scrollback();
+        self.parser.screen_mut().set_scrollback(saved);
+        len
+    }
+
+    /// A line's text with the starting column of each character.
+    fn line_text(&mut self, line: i64) -> Option<(String, Vec<u16>)> {
+        let (cells, _) = self.line_cells(line)?;
+        let mut text = String::new();
+        let mut cols = Vec::new();
+        for (col, cell) in cells.iter().enumerate() {
+            let col = u16::try_from(col).unwrap_or(u16::MAX);
+            if cell.is_empty() {
+                text.push(' ');
+                cols.push(col);
+            } else {
+                for c in cell.chars() {
+                    text.push(c);
+                    cols.push(col);
+                }
+            }
+        }
+        Some((text, cols))
+    }
+
+    /// Everything: history and screen ("Save terminal text"), trailing
+    /// blanks trimmed, wrapped lines joined.
+    pub fn history_text(&mut self) -> String {
+        let (rows, _) = self.size();
+        let first = -(self.history_len() as i64);
+        let mut out = String::new();
+        for line in first..i64::from(rows) {
+            let Some((cells, wrapped)) = self.line_cells(line) else {
+                continue;
+            };
+            let text: String = cells
+                .iter()
+                .map(|c| if c.is_empty() { " " } else { c.as_str() })
+                .collect();
+            if wrapped {
+                out.push_str(&text);
+            } else {
+                out.push_str(text.trim_end());
+                out.push('\n');
+            }
+        }
+        let trimmed = out.trim_end_matches('\n').len();
+        out.truncate(trimmed);
+        out.push('\n');
+        out
+    }
+
+    /// "Find in terminal" / "Find next": search upwards from just before
+    /// `before` (or from the bottom), select the match and scroll to it.
+    pub fn find(
+        &mut self,
+        needle: &str,
+        before: Option<Point>,
+        match_case: bool,
+    ) -> Option<(Point, Point)> {
+        if needle.is_empty() {
+            return None;
+        }
+        let fold = |s: &str| {
+            if match_case {
+                s.to_string()
+            } else {
+                s.to_lowercase()
+            }
+        };
+        let needle = fold(needle);
+        let (rows, _) = self.size();
+        let first = -(self.history_len() as i64);
+        let start = before.map_or(i64::from(rows) - 1, |p| p.line);
+        for line in (first..=start).rev() {
+            let Some((text, cols)) = self.line_text(line) else {
+                continue;
+            };
+            let hay = fold(&text);
+            // Positions in characters; lowercasing may change byte lengths.
+            let hay_chars: Vec<char> = hay.chars().collect();
+            let n: Vec<char> = needle.chars().collect();
+            if hay_chars.len() != cols.len() || n.len() > hay_chars.len() {
+                continue;
+            }
+            let limit = match before {
+                Some(p) if p.line == line => {
+                    cols.iter().position(|&c| c >= p.col).unwrap_or(cols.len())
+                }
+                _ => hay_chars.len(),
+            };
+            let found = (0..=hay_chars.len() - n.len())
+                .rev()
+                .filter(|&i| i < limit)
+                .find(|&i| hay_chars[i..i + n.len()] == n[..]);
+            if let Some(i) = found {
+                let start = Point { line, col: cols[i] };
+                let end = Point {
+                    line,
+                    col: cols[i + n.len() - 1],
+                };
+                self.select_range(start, end);
+                // Bring the line into view.
+                let view_top = self.line_of(0);
+                if line < view_top || line >= view_top + i64::from(rows) {
+                    let offset = (-line).max(0) as usize;
+                    self.set_scrollback(offset);
+                }
+                return Some((start, end));
+            }
+        }
+        None
+    }
+
+    /// Select from `start` to `end` (absolute points).
+    pub fn select_range(&mut self, start: Point, end: Point) {
+        let mut s = Selection::new(SelectionMode::Char, (start, start));
+        s.extend((end, end));
+        self.selection = Some(s);
+    }
+
+    /// The current selection, if any.
+    pub fn selection(&self) -> Option<Selection> {
+        self.selection
+    }
+
     /// Plain-text dump of the visible screen (used by tests and `tab_read`).
     pub fn contents(&self) -> String {
         self.parser.screen().contents()
@@ -367,6 +499,21 @@ mod tests {
         t.feed(b"\x1b[?1000h\x1b[?1006h");
         assert!(t.mouse_reporting());
         assert_eq!(t.encode_mouse(click).unwrap(), b"\x1b[<0;1;1M");
+    }
+
+    #[test]
+    fn find_searches_upwards_through_history() {
+        let mut t = Terminal::new(3, 20, 100);
+        t.feed(b"error one\r\nok\r\nError two\r\nok\r\nlast");
+        let (s, e) = t.find("error", None, false).unwrap();
+        assert_eq!((s.line, s.col, e.col), (0, 0, 4), "nearest match first");
+        assert_eq!(t.selection_text().as_deref(), Some("Error"));
+        let (s2, _) = t.find("error", Some(s), false).unwrap();
+        assert_eq!(s2.line, -2, "then the older one");
+        assert_eq!(t.scrollback(), 2, "scrolled to it");
+        assert!(t.find("error", Some(s2), false).is_none());
+        assert!(t.find("ERROR", None, true).is_none(), "match case");
+        assert_eq!(t.history_text(), "error one\nok\nError two\nok\nlast\n");
     }
 
     #[test]

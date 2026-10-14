@@ -24,6 +24,8 @@ fn color(c: Rgb) -> Color32 {
 pub struct TermOutput {
     pub clicked: bool,
     pub input: Vec<Vec<u8>>,
+    /// Text to paste (the tab applies bracketing and its paste delay).
+    pub paste: Option<String>,
 }
 
 pub fn show(
@@ -104,8 +106,9 @@ fn show_inner(
     }
 
     if response.has_focus() {
-        out.input
-            .extend(handle_input(ui, tab, opts.warn_multiline_paste));
+        let (input, paste) = handle_input(ui, tab, opts.warn_multiline_paste);
+        out.input.extend(input);
+        out.paste = paste;
     }
     if response.hovered() && !reporting {
         let scroll = ui.input(|i| i.smooth_scroll_delta.y);
@@ -410,8 +413,13 @@ pub fn paste_bytes(tab: &Tab, text: &str) -> Vec<u8> {
     }
 }
 
-fn handle_input(ui: &egui::Ui, tab: &mut Tab, warn_multiline: bool) -> Vec<Vec<u8>> {
+fn handle_input(
+    ui: &egui::Ui,
+    tab: &mut Tab,
+    warn_multiline: bool,
+) -> (Vec<Vec<u8>>, Option<String>) {
     let mut sent = Vec::new();
+    let mut paste = None;
     let (events, mods, insert_down, delete_down) = ui.input(|i| {
         (
             i.events.clone(),
@@ -459,7 +467,7 @@ fn handle_input(ui: &egui::Ui, tab: &mut Tab, warn_multiline: bool) -> Vec<Vec<u
                         if warn_multiline && text.trim_end().contains('\n') {
                             tab.pending_paste = Some(text);
                         } else {
-                            sent.push(paste_bytes(tab, &text));
+                            paste = Some(text);
                         }
                     }
                     ClipAction::Nothing => {}
@@ -502,7 +510,7 @@ fn handle_input(ui: &egui::Ui, tab: &mut Tab, warn_multiline: bool) -> Vec<Vec<u
             _ => {}
         }
     }
-    sent
+    (sent, paste)
 }
 
 /// Map egui keys to terminal keys. Printable characters arrive as

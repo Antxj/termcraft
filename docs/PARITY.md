@@ -54,16 +54,16 @@ refined against it.
 | P1 | [x] | Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size | `tc-term` + `tc-ui` |
 | P1 | [ ] | Charset selection (UTF-8, ISO-8859-x…) | `tc-term` |
 | P1 | [x] | Backspace behavior (^H / ^?) and terminal type (TERM) per session | `tc-ui` |
-| P1 | [ ] | Find in terminal output | `tc-ui` |
-| P1 | [ ] | Output logging to file | `tc-term` |
+| P1 | [x] | Find in terminal / Find next (F3): upwards through the history, match case, the match is selected and scrolled into view | `tc-term` + `tc-ui` |
+| P1 | [x] | Output logging to file: global folder (Configuration › Terminal) or per session (4_12 / 4_13); plain text, escape sequences removed | `tc-term` + `tc-ui` |
 | P1 | [x] | Multi-line paste warning ("Do not show this message again") | `tc-ui` |
-| P1 | [ ] | Paste delay (per session) | `tc-ui` |
+| P1 | [x] | Paste delay per session (4_40), line by line | `tc-ui` |
 | P1 | [x] | Exit confirmation ("Close prompt") from menu, Exit button and window close | `tc-ui` |
 | P2 | [x] | Column (block) selection (Ctrl+Alt drag) | `tc-term` |
 | P2 | [~] | Word delimiters for double-click (setting; Configuration field pending) | `tc-term` + `tc-core` |
 | P2 | [ ] | Syntax highlighting of output (keywords, errors, IPs…) | `tc-term` |
 | P2 | [ ] | Activity / silence tracking on tabs | `tc-ui` |
-| P2 | [ ] | Save / print terminal content | `tc-ui` |
+| P2 | [x] | Save / print terminal text (history included; printing through Notepad on Windows, `lp` elsewhere) | `tc-ui` |
 | P2 | [ ] | Separator line on Enter | `tc-term` |
 | P2 | [ ] | GPU renderer (wgpu glyph atlas) | `tc-ui` |
 | P2 | [ ] | Migrate emulator core to `alacritty_terminal` | `tc-term` |

@@ -27,6 +27,11 @@ struct Core {
 }
 
 impl Core {
+    fn active_tab_mut(&mut self) -> Option<&mut Tab> {
+        let active = self.active?;
+        self.tabs.iter_mut().find(|t| t.id == active)
+    }
+
     fn tab_index(&self, tab: Option<u64>) -> Result<usize, CommandError> {
         let id = tab
             .or(self.active)
@@ -81,6 +86,9 @@ impl Host for Core {
             paste_right_click: self.settings.terminal.paste_right_click,
             local_shell: self.settings.terminal.local_shell,
             save_key_passphrases: self.settings.passwords.save_key_passphrases,
+            log_dir: Some(self.settings.terminal.log_dir.trim())
+                .filter(|d| !d.is_empty())
+                .map(std::path::PathBuf::from),
         };
         self.tabs.push(Tab::open(id, session, &env));
         self.active = Some(id);
@@ -353,6 +361,21 @@ impl TermCraftApp {
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
             Action::ExportSessions(one) => return self.export_sessions(one),
+            Action::SaveTerminalText => return self.save_terminal_text(),
+            Action::PrintTerminalText => return self.print_terminal_text(),
+            Action::FindInTerminal => {
+                if let Some(tab) = self.core.active_tab_mut() {
+                    let bar = tab.find.get_or_insert_with(Default::default);
+                    bar.focus = true;
+                }
+                return;
+            }
+            Action::FindNext => {
+                if let Some(tab) = self.core.active_tab_mut() {
+                    find_next(tab);
+                }
+                return;
+            }
             Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
             Action::EditSession(id) => {
                 self.editor = self.core.store.get(id).map(SessionEditor::edit);
@@ -470,6 +493,58 @@ impl TermCraftApp {
                 path.display()
             ),
             Err(e) => format!("export failed: {e}"),
+        };
+    }
+
+    /// "Save terminal text": history and screen of the active tab.
+    fn save_terminal_text(&mut self) {
+        let Some(tab) = self.core.active_tab_mut() else {
+            return;
+        };
+        let name = tab
+            .title
+            .replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(format!("{name}.txt"))
+            .add_filter("Text", &["txt", "log"])
+            .save_file()
+        else {
+            return;
+        };
+        let text = tab.term.history_text();
+        self.status = match std::fs::write(&path, text) {
+            Ok(()) => format!("Terminal text saved to {}", path.display()),
+            Err(e) => format!("could not save {}: {e}", path.display()),
+        };
+    }
+
+    /// "Print terminal text": the system's plain-text printing (Notepad on
+    /// Windows, `lp` elsewhere).
+    fn print_terminal_text(&mut self) {
+        let Some(tab) = self.core.active_tab_mut() else {
+            return;
+        };
+        let text = tab.term.history_text();
+        let dir = std::env::temp_dir().join("termcraft-print");
+        let file = dir.join(format!("terminal-{}.txt", tab.id));
+        let result = std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&file, text))
+            .map_err(|e| e.to_string())
+            .and_then(|()| {
+                let (program, args): (&str, Vec<std::ffi::OsString>) = if cfg!(windows) {
+                    ("notepad.exe", vec!["/p".into(), file.clone().into()])
+                } else {
+                    ("lp", vec![file.clone().into()])
+                };
+                std::process::Command::new(program)
+                    .args(args)
+                    .spawn()
+                    .map(drop)
+                    .map_err(|e| format!("{program}: {e}"))
+            });
+        self.status = match result {
+            Ok(()) => "Terminal text sent to the printer".into(),
+            Err(e) => format!("printing failed: {e}"),
         };
     }
 
@@ -786,8 +861,7 @@ impl TermCraftApp {
         if let Some(text) = tab.pending_paste.take()
             && paste
         {
-            let bytes = term_view::paste_bytes(tab, &text);
-            tab.send(&bytes);
+            tab.paste(&text);
         }
         if dont_ask == self.core.settings.terminal.warn_multiline_paste {
             self.core.settings.terminal.warn_multiline_paste = !dont_ask;
@@ -913,6 +987,80 @@ fn multiexec_banner(ui: &mut egui::Ui, multiexec: &mut bool) {
         });
 }
 
+/// "Find next": the next match above the last one (or from the bottom).
+fn find_next(tab: &mut Tab) {
+    let Some(bar) = &mut tab.find else {
+        return;
+    };
+    match tab.term.find(&bar.text, bar.last, bar.match_case) {
+        Some((start, _)) => {
+            bar.last = Some(start);
+            bar.not_found = false;
+        }
+        None => {
+            // Wrap around once from the bottom.
+            bar.not_found = bar.last.is_none();
+            bar.last = None;
+            if let Some((start, _)) = tab.term.find(&bar.text, None, bar.match_case) {
+                bar.last = Some(start);
+            }
+        }
+    }
+}
+
+/// The "Find in terminal" strip above a terminal. Enter / F3 find the next
+/// match upwards; Esc closes it.
+fn find_bar(ui: &mut egui::Ui, tab: &mut Tab) {
+    let Some(bar) = &mut tab.find else {
+        return;
+    };
+    let mut close = false;
+    let mut search = false;
+    ui.horizontal(|ui| {
+        ui.label(ui::icon::MAGNIFYING_GLASS);
+        let edit = ui.add(
+            egui::TextEdit::singleline(&mut bar.text)
+                .hint_text("Find in terminal")
+                .desired_width(220.0),
+        );
+        if std::mem::take(&mut bar.focus) {
+            edit.request_focus();
+        }
+        if edit.changed() {
+            bar.last = None;
+            bar.not_found = false;
+        }
+        if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            search = true;
+            edit.request_focus();
+        }
+        if ui.button("Find next").on_hover_text("F3").clicked() {
+            search = true;
+        }
+        if ui.checkbox(&mut bar.match_case, "Match case").changed() {
+            bar.last = None;
+        }
+        if bar.not_found {
+            ui.colored_label(ui.visuals().warn_fg_color, "Not found");
+        }
+        if ui
+            .small_button(ui::icon::X)
+            .on_hover_text("Close")
+            .clicked()
+            || ui.input(|i| i.key_pressed(egui::Key::Escape)) && edit.has_focus()
+        {
+            close = true;
+        }
+    });
+    if search {
+        find_next(tab);
+    }
+    if close {
+        tab.find = None;
+        tab.term.clear_selection();
+    }
+}
+
 /// Draw the terminals for the current split mode: the active tab alone, or
 /// the first 2 / 4 tabs in panes. Returns each pane's output.
 fn terminals(
@@ -964,6 +1112,11 @@ fn terminals(
             Some(tab) => {
                 let is_active = Some(tab.id) == active;
                 let id = tab.id;
+                if tab.find.is_some() {
+                    find_bar(&mut pane, tab);
+                    let rest = pane.available_rect_before_wrap();
+                    pane = ui.new_child(egui::UiBuilder::new().max_rect(rest));
+                }
                 if tab.monitor.is_some() {
                     // "Remote monitoring" bar under the terminal.
                     let (term_rect, bar) =
@@ -1009,6 +1162,12 @@ impl eframe::App for TermCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         apply_view(&ctx, &self.core.settings.view);
+        if ctx.input(|i| i.key_pressed(egui::Key::F3))
+            && let Some(tab) = self.core.active_tab_mut()
+            && tab.find.is_some()
+        {
+            find_next(tab);
+        }
         // The window close button goes through the same "Close prompt".
         if ctx.input(|i| i.viewport().close_requested()) && !self.exit_confirmed {
             // Snapshot runs close themselves without asking.
@@ -1199,6 +1358,15 @@ impl eframe::App for TermCraftApp {
                 for (id, output) in outputs {
                     if output.clicked {
                         out.push(Action::SelectTab(id));
+                    }
+                    if let Some(text) = output.paste {
+                        if *multiexec {
+                            for tab in core.tabs.iter_mut().filter(|t| t.is_alive()) {
+                                tab.paste(&text);
+                            }
+                        } else if let Some(tab) = core.tabs.iter_mut().find(|t| t.id == id) {
+                            tab.paste(&text);
+                        }
                     }
                     for bytes in output.input {
                         if let Some((rid, keys)) = recording.as_mut()

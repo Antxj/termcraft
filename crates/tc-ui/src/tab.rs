@@ -37,6 +37,21 @@ pub struct TabEnv {
     pub local_shell: tc_core::settings::LocalShell,
     /// "Save SSH keys passphrases as well".
     pub save_key_passphrases: bool,
+    /// Configuration › Terminal "Log terminal output to the following
+    /// directory" (sessions can log on their own: 4_12 / 4_13).
+    pub log_dir: Option<PathBuf>,
+}
+
+/// "Find in terminal" bar of a tab.
+#[derive(Default)]
+pub struct FindBar {
+    pub text: String,
+    pub match_case: bool,
+    /// Where the last match started (the next search goes above it).
+    pub last: Option<tc_term::Point>,
+    pub not_found: bool,
+    /// Give the text box focus on the next frame.
+    pub focus: bool,
 }
 
 /// 3_12 "Do not exit after command ends": run the command, then the
@@ -55,6 +70,36 @@ pub fn agent_config(ssh: &tc_core::settings::SshSettings) -> tc_ssh::AgentConfig
         pageant: ssh.use_pageant,
         socket: None,
     }
+}
+
+/// 4_40 "Paste delay": 0 Auto, 1 none, then 10…100 ms, 200 ms, 360 ms.
+fn paste_delay(session: Option<&Session>) -> std::time::Duration {
+    let index = session
+        .and_then(|s| s.options.get("4_40"))
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(0);
+    let ms = match index {
+        2..=11 => (index - 1) * 10,
+        12 => 200,
+        13 => 360,
+        _ => 0,
+    };
+    std::time::Duration::from_millis(ms)
+}
+
+/// Session 4_12 "Log terminal output" (4_13 folder, `<>` = the global
+/// one), else the global log folder.
+fn log_folder(session: Option<&Session>, global: Option<&std::path::Path>) -> Option<PathBuf> {
+    let opt = |id: &str| session.and_then(|s| s.options.get(id)).map(String::as_str);
+    if opt("4_12").is_some_and(schema::is_true) {
+        let folder = opt("4_13")
+            .map(str::trim)
+            .filter(|f| !f.is_empty() && *f != "<>");
+        return folder
+            .map(PathBuf::from)
+            .or_else(|| global.map(PathBuf::from));
+    }
+    global.map(PathBuf::from)
 }
 
 fn shell_kind(shell: LocalShell) -> tc_pty::ShellKind {
@@ -165,6 +210,14 @@ pub struct Tab {
     folder_hook: Option<FolderHook>,
     /// A multi-line paste waiting for the user's OK.
     pub pending_paste: Option<String>,
+    /// Lines of a paste still to send (4_40 "Paste delay").
+    paste_queue: std::collections::VecDeque<Vec<u8>>,
+    paste_delay: std::time::Duration,
+    next_paste: Instant,
+    /// "Log terminal output".
+    log: Option<crate::term_log::TermLog>,
+    /// "Find in terminal".
+    pub find: Option<FindBar>,
     /// Latest "Remote monitoring" reading (`Some` while monitoring is on).
     pub monitor: Option<Box<tc_core::monitor::Sample>>,
     /// The user toggled "Remote monitoring" here; the app applies it to
@@ -225,6 +278,11 @@ impl Tab {
             offers: Default::default(),
             folder_hook: None,
             pending_paste: None,
+            paste_queue: Default::default(),
+            paste_delay: std::time::Duration::ZERO,
+            next_paste: Instant::now(),
+            log: None,
+            find: None,
             monitor: None,
             monitoring_request: None,
             mosh: None,
@@ -240,6 +298,16 @@ impl Tab {
             env.backspace_ctrl_h
         };
         tab.term_type = settings.term_type;
+        tab.paste_delay = paste_delay(tab.session.as_ref());
+        if let Some(folder) = log_folder(tab.session.as_ref(), env.log_dir.as_deref()) {
+            match crate::term_log::TermLog::create(&folder, &tab.title) {
+                Ok(log) => tab.log = Some(log),
+                Err(e) => tab.message(&format!(
+                    "\x1b[33mcannot log to {}: {e}\x1b[0m",
+                    folder.display()
+                )),
+            }
+        }
         match tab.session.as_ref().map(|s| s.kind.clone()) {
             None => tab.spawn_local(None, env.local_shell),
             Some(SessionKind::LocalShell { program }) => {
@@ -488,6 +556,41 @@ impl Tab {
         }
     }
 
+    /// Output from the program: logged, then shown.
+    fn output(&mut self, bytes: &[u8]) -> Vec<u8> {
+        if let Some(log) = &mut self.log
+            && let Err(e) = log.write(bytes)
+        {
+            let path = log.path().display().to_string();
+            self.log = None;
+            self.message(&format!("\x1b[33mlogging to {path} stopped: {e}\x1b[0m"));
+        }
+        self.term.feed(bytes)
+    }
+
+    /// Paste text: line endings as Enter, bracketed when the program asks,
+    /// line by line when the session has a paste delay.
+    pub fn paste(&mut self, text: &str) {
+        let bytes = crate::term_view::paste_bytes(self, text);
+        if self.paste_delay.is_zero() {
+            self.send(&bytes);
+            return;
+        }
+        for line in bytes.split_inclusive(|&b| b == b'\r') {
+            self.paste_queue.push_back(line.to_vec());
+        }
+        self.next_paste = Instant::now();
+        self.pump_paste();
+    }
+
+    fn pump_paste(&mut self) {
+        while !self.paste_queue.is_empty() && Instant::now() >= self.next_paste {
+            let line = self.paste_queue.pop_front().expect("checked");
+            self.send(&line);
+            self.next_paste = Instant::now() + self.paste_delay;
+        }
+    }
+
     fn message(&mut self, text: &str) {
         self.term.feed(format!("{text}\r\n").as_bytes());
     }
@@ -619,6 +722,7 @@ impl Tab {
 
     /// Drain backend events into the emulator. Returns true if anything changed.
     pub fn pump(&mut self) -> bool {
+        self.pump_paste();
         match &mut self.backend {
             Backend::None => false,
             Backend::Pty(_) => self.pump_pty(),
@@ -790,7 +894,7 @@ impl Tab {
         for event in events {
             match event {
                 tc_net::StreamEvent::Output(bytes) => {
-                    let reply = self.term.feed(&bytes);
+                    let reply = self.output(&bytes);
                     if !reply.is_empty()
                         && let Backend::Stream(stream) = &mut self.backend
                     {
@@ -812,17 +916,19 @@ impl Tab {
     }
 
     fn pump_pty(&mut self) -> bool {
-        let Backend::Pty(pty) = &mut self.backend else {
+        let Backend::Pty(pty) = &self.backend else {
             return false;
         };
-        let mut changed = false;
+        let events: Vec<PtyEvent> = pty.events().try_iter().collect();
+        let changed = !events.is_empty();
         let mut exited = false;
-        while let Ok(event) = pty.events().try_recv() {
-            changed = true;
+        for event in events {
             match event {
                 PtyEvent::Output(bytes) => {
-                    let reply = self.term.feed(&bytes);
-                    if !reply.is_empty() {
+                    let reply = self.output(&bytes);
+                    if !reply.is_empty()
+                        && let Backend::Pty(pty) = &mut self.backend
+                    {
                         let _ = pty.write(&reply);
                     }
                 }
@@ -858,7 +964,7 @@ impl Tab {
                         Some(hook) => hook.filter(&bytes, Instant::now()),
                         None => bytes,
                     };
-                    let reply = self.term.feed(&bytes);
+                    let reply = self.output(&bytes);
                     if !reply.is_empty()
                         && let Backend::Ssh(ssh) = &self.backend
                     {
@@ -933,7 +1039,9 @@ impl Tab {
         let Some(hook) = &mut self.folder_hook else {
             return false;
         };
-        let changed = match hook.poll(Instant::now()) {
+        let action = hook.poll(Instant::now());
+        let pending = !hook.is_done();
+        let changed = match action {
             folder_hook::Action::None => false,
             folder_hook::Action::Type => {
                 if let Backend::Ssh(ssh) = &self.backend {
@@ -942,11 +1050,10 @@ impl Tab {
                 false
             }
             folder_hook::Action::Feed(bytes) => {
-                self.term.feed(&bytes);
+                self.output(&bytes);
                 true
             }
         };
-        let pending = !hook.is_done();
         if !pending {
             self.folder_hook = None;
         }
@@ -956,9 +1063,17 @@ impl Tab {
         changed
     }
 
-    /// When the tab needs a frame even without new events (hook timers).
+    /// When the tab needs a frame even without new events (hook and paste
+    /// timers).
     pub fn wakeup(&self) -> Option<std::time::Duration> {
-        self.folder_hook.as_ref()?.wakeup(Instant::now())
+        let now = Instant::now();
+        let paste =
+            (!self.paste_queue.is_empty()).then(|| self.next_paste.saturating_duration_since(now));
+        let hook = self.folder_hook.as_ref().and_then(|h| h.wakeup(now));
+        match (paste, hook) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
     /// Auto-fill a saved password once per target; otherwise prompt in the
@@ -1331,6 +1446,36 @@ mod tests {
     }
 
     #[test]
+    fn paste_delay_and_log_folder_from_session_options() {
+        let mut s = Session::new(
+            "x",
+            SessionKind::Telnet {
+                host: "h".into(),
+                port: 23,
+            },
+        );
+        assert_eq!(paste_delay(Some(&s)), Duration::ZERO);
+        s.options.insert("4_40".into(), "4".into());
+        assert_eq!(paste_delay(Some(&s)), Duration::from_millis(30));
+        s.options.insert("4_40".into(), "13".into());
+        assert_eq!(paste_delay(Some(&s)), Duration::from_millis(360));
+
+        let global = std::path::Path::new("/logs");
+        assert_eq!(log_folder(Some(&s), None), None);
+        assert_eq!(log_folder(None, Some(global)), Some(PathBuf::from("/logs")));
+        s.options.insert("4_12".into(), "-1".into());
+        assert_eq!(
+            log_folder(Some(&s), Some(global)),
+            Some(PathBuf::from("/logs"))
+        );
+        s.options.insert("4_13".into(), "/session-logs".into());
+        assert_eq!(
+            log_folder(Some(&s), Some(global)),
+            Some(PathBuf::from("/session-logs"))
+        );
+    }
+
+    #[test]
     fn keep_open_runs_the_login_shell_after_the_command() {
         assert_eq!(keep_open("top", false), "top");
         assert_eq!(keep_open("top", true), "top; exec \"${SHELL:-/bin/sh}\" -l");
@@ -1363,6 +1508,7 @@ mod tests {
             paste_right_click: true,
             local_shell: Default::default(),
             save_key_passphrases: false,
+            log_dir: None,
         };
         let session = Session::new(
             "t",
@@ -1416,6 +1562,7 @@ mod tests {
             paste_right_click: true,
             local_shell: Default::default(),
             save_key_passphrases: false,
+            log_dir: None,
         };
         let mut session = dev_session(addr.port());
         session.options.remove("3_8");
@@ -1455,6 +1602,7 @@ mod tests {
             paste_right_click: true,
             local_shell: Default::default(),
             save_key_passphrases: false,
+            log_dir: None,
         };
 
         // 1st connection: no saved password -> prompt in the terminal.

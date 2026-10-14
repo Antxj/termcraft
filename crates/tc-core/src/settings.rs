@@ -252,6 +252,8 @@ pub struct TerminalSettings {
     pub warn_multiline_paste: bool,
     /// Characters that end a word on double click (empty = default set).
     pub word_delimiters: String,
+    /// "Log terminal output to the following directory" (empty = off).
+    pub log_dir: String,
 }
 
 /// "Local terminal environment" (Configuration › Terminal) and the Shell
@@ -323,6 +325,7 @@ impl Default for TerminalSettings {
             copy_on_select: true,
             warn_multiline_paste: true,
             word_delimiters: String::new(),
+            log_dir: String::new(),
         }
     }
 }
