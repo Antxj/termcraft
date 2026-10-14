@@ -491,7 +491,9 @@ fn sftp_browser_operations() {
     let ready = wait_for(&s, |e| matches!(e, SshEvent::Sftp(SftpEvent::Ready { .. })));
     assert_eq!(ready, SshEvent::Sftp(SftpEvent::Ready { home: "/".into() }));
 
+    // Each step is printed, so a hang shows where it happened.
     let done = |s: &SshSession, id: u64| {
+        eprintln!("waiting for request {id}");
         let e = wait_for(
             s,
             |e| matches!(e, SshEvent::Sftp(SftpEvent::Done { id: i } | SftpEvent::Failed { id: i, .. }) if *i == id),
@@ -686,6 +688,7 @@ fn scp_browser_when_sftp_is_missing() {
     };
     let list = |s: &SshSession| {
         let id = s.sftp(SftpRequest::List(dir.clone()));
+        eprintln!("listing (request {id})");
         match wait_for(
             s,
             |e| matches!(e, SshEvent::Sftp(SftpEvent::Listing { id: i, .. } | SftpEvent::Failed { id: i, .. }) if *i == id),

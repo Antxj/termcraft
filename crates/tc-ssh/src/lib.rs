@@ -1013,16 +1013,31 @@ async fn run_shell(
     };
 
     let mut exit_status = None;
+    // Servers (OpenSSH among them) send EOF first, then the exit status:
+    // after EOF, wait a little for it.
+    let mut eof = false;
     loop {
         tokio::select! {
             msg = async { channel.as_mut().expect("guarded").wait().await }, if channel.is_some() => match msg {
                 Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
                     events.send(SshEvent::Output(data.to_vec()));
                 }
-                Some(ChannelMsg::ExitStatus { exit_status: code }) => exit_status = Some(code),
-                Some(ChannelMsg::Eof | ChannelMsg::Close) | None => break,
+                Some(ChannelMsg::ExitStatus { exit_status: code }) => {
+                    exit_status = Some(code);
+                    if eof {
+                        break;
+                    }
+                }
+                Some(ChannelMsg::Eof) => {
+                    eof = true;
+                    if exit_status.is_some() {
+                        break;
+                    }
+                }
+                Some(ChannelMsg::Close) | None => break,
                 Some(_) => {}
             },
+            () = tokio::time::sleep(std::time::Duration::from_secs(2)), if eof => break,
             cmd = input.recv() => match cmd {
                 Some(Input::Data(bytes)) => {
                     if let Some(channel) = &channel

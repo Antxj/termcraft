@@ -33,7 +33,9 @@ pub(crate) async fn run(mut channel: Channel, command: &str) -> Result<Vec<u8>, 
             ChannelMsg::Data { data } => out.extend_from_slice(&data),
             ChannelMsg::ExtendedData { data, .. } => err.extend_from_slice(&data),
             ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
-            ChannelMsg::Eof | ChannelMsg::Close => break,
+            // Servers usually send the exit status after EOF: read on
+            // until the channel closes.
+            ChannelMsg::Close => break,
             _ => {}
         }
         if out.len() > 16 * 1024 * 1024 {

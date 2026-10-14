@@ -216,8 +216,9 @@ impl russh::server::Handler for Conn {
                 }
             }
             runtime.block_on(async {
-                let _ = handle.exit_status_request(channel, 0).await;
+                // Like OpenSSH: EOF first, then the exit status.
                 let _ = handle.eof(channel).await;
+                let _ = handle.exit_status_request(channel, 0).await;
                 let _ = handle.close(channel).await;
             });
         });
@@ -250,8 +251,9 @@ impl russh::server::Handler for Conn {
                 let _ = handle
                     .data(channel, format!("{shell}\n").into_bytes())
                     .await;
-                let _ = handle.exit_status_request(channel, 0).await;
+                // Like OpenSSH: EOF first, then the exit status.
                 let _ = handle.eof(channel).await;
+                let _ = handle.exit_status_request(channel, 0).await;
                 let _ = handle.close(channel).await;
                 return;
             }
@@ -273,8 +275,9 @@ impl russh::server::Handler for Conn {
                 Err(e) => (format!("exec failed: {e}\r\n").into_bytes(), 127),
             };
             let _ = handle.data(channel, out).await;
-            let _ = handle.exit_status_request(channel, code).await;
+            // Like OpenSSH: EOF first, then the exit status.
             let _ = handle.eof(channel).await;
+            let _ = handle.exit_status_request(channel, code).await;
             let _ = handle.close(channel).await;
         });
         Ok(())
@@ -455,10 +458,11 @@ async fn stream_exec(
     tokio::join!(output, errors);
     let code = child.wait().await.ok().and_then(|s| s.code()).unwrap_or(1);
     input.abort();
+    // Like OpenSSH: EOF first, then the exit status.
+    let _ = handle.eof(id).await;
     let _ = handle
         .exit_status_request(id, u32::try_from(code).unwrap_or(1))
         .await;
-    let _ = handle.eof(id).await;
     let _ = handle.close(id).await;
 }
 
