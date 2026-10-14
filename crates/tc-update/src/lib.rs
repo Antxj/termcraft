@@ -27,7 +27,7 @@ pub const BUILD_PUBLIC_KEYS: Option<&str> = option_env!("TERMCRAFT_UPDATE_PUBKEY
 /// `TERMCRAFT_UPDATE_BASE_URL` to the repository's latest-release URL.
 pub const DEFAULT_BASE_URL: &str = match option_env!("TERMCRAFT_UPDATE_BASE_URL") {
     Some(url) => url,
-    None => "https://github.com/termcraft/termcraft/releases/latest/download",
+    None => "https://github.com/Antxj/termcraft/releases/latest/download",
 };
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 

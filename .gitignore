@@ -4,3 +4,5 @@
 termcraft.portable
 /reference
 /dist
+# Generated from the reference app (third-party text): local only.
+/docs/inventory
