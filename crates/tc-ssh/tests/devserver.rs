@@ -45,6 +45,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         agent: Default::default(),
         shell: true,
         proxy: None,
+        agent_forwarding: false,
     }
 }
 

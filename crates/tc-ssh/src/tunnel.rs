@@ -55,6 +55,7 @@ pub(crate) async fn run(
             keepalive: Some(std::time::Duration::from_secs(30)),
             agent: params.agent.clone(),
             proxy: None,
+            agent_forward: false,
         },
         &replies,
         &events,

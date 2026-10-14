@@ -72,6 +72,8 @@ pub struct ConnectParams {
     pub shell: bool,
     /// Proxy for the first hop (session "Network settings").
     pub proxy: Option<proxy::Proxy>,
+    /// 3_35 "Allow agent forwarding".
+    pub agent_forwarding: bool,
 }
 
 impl ConnectParams {
@@ -399,6 +401,9 @@ pub(crate) struct Handler {
     events: Events,
     replies: Replies,
     forwards: RemoteForwards,
+    /// "Allow agent forwarding": where forwarded agent channels go. `None`
+    /// = such channels are refused.
+    agent_forward: Option<AgentConfig>,
 }
 
 impl client::Handler for Handler {
@@ -422,6 +427,35 @@ impl client::Handler for Handler {
             // Not recorded yet (or no known_hosts file): ask the user.
             Ok(false) | Err(_) => Ok(self.ask_host_key(key, None).await),
         }
+    }
+
+    /// The server opens an agent channel (ssh / git there use our keys):
+    /// bridge it to the local agent, but only when the session asked for
+    /// agent forwarding.
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let Some(config) = self.agent_forward.clone() else {
+            drop(reply); // refuses
+            return Ok(());
+        };
+        reply.accept().await;
+        let events = self.events.clone();
+        tokio::spawn(async move {
+            match agent::connect_raw(&config).await {
+                Some(mut local) => {
+                    let mut remote = channel.into_stream();
+                    let _ = tokio::io::copy_bidirectional(&mut remote, &mut local).await;
+                }
+                None => events.send(SshEvent::Info(
+                    "agent forwarding: no local SSH agent is running".into(),
+                )),
+            }
+        });
+        Ok(())
     }
 
     /// A connection arrived on a remote forward: connect locally and bridge.
@@ -517,6 +551,8 @@ pub(crate) struct ConnectOptions<'a> {
     pub keepalive: Option<std::time::Duration>,
     pub agent: AgentConfig,
     pub proxy: Option<&'a proxy::Proxy>,
+    /// Bridge forwarded agent channels of the target server.
+    pub agent_forward: bool,
 }
 
 fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
@@ -588,6 +624,11 @@ pub(crate) async fn establish(
         events: events.clone(),
         replies: replies.clone(),
         forwards: forwards.clone(),
+        agent_forward: None,
+    };
+    let target_handler = |e: &Endpoint| Handler {
+        agent_forward: opts.agent_forward.then(|| opts.agent.clone()),
+        ..handler(e)
     };
     let target = opts.target;
     let config = client_config(opts.compression, opts.keepalive);
@@ -598,9 +639,16 @@ pub(crate) async fn establish(
                 "Connecting to {}:{} …",
                 target.host, target.port
             )));
-            let handle = first_hop(config, target, handler(target), opts.proxy, replies, events)
-                .await
-                .map_err(|e| format!("connection failed: {e}"))?;
+            let handle = first_hop(
+                config,
+                target,
+                target_handler(target),
+                opts.proxy,
+                replies,
+                events,
+            )
+            .await
+            .map_err(|e| format!("connection failed: {e}"))?;
             (handle, None)
         }
         Some(gw) => {
@@ -634,9 +682,10 @@ pub(crate) async fn establish(
                 .map_err(|e| {
                     format!("gateway cannot reach {}:{}: {e}", target.host, target.port)
                 })?;
-            let handle = client::connect_stream(config, channel.into_stream(), handler(target))
-                .await
-                .map_err(|e| format!("connection through gateway failed: {e}"))?;
+            let handle =
+                client::connect_stream(config, channel.into_stream(), target_handler(target))
+                    .await
+                    .map_err(|e| format!("connection through gateway failed: {e}"))?;
             (handle, Some(gw_handle))
         }
     };
@@ -666,6 +715,7 @@ async fn run_shell(
             keepalive: params.keepalive,
             agent: params.agent.clone(),
             proxy: params.proxy.as_ref(),
+            agent_forward: params.agent_forwarding,
         },
         &replies,
         &events,
@@ -691,6 +741,9 @@ async fn run_shell(
             )
             .await
             .map_err(|e| format!("pty request failed: {e}"))?;
+        if params.agent_forwarding {
+            let _ = channel.agent_forward(false).await;
+        }
         match &params.command {
             Some(cmd) => channel.exec(true, cmd.as_str()).await,
             None => channel.request_shell(true).await,

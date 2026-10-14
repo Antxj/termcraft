@@ -4977,6 +4977,7 @@ dependencies = [
  "hex",
  "hmac",
  "md5",
+ "pageant",
  "rand_core",
  "russh",
  "russh-sftp",

@@ -30,6 +30,47 @@ const MAX_AGENT_KEYS: usize = 5;
 #[cfg(windows)]
 const OPENSSH_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
+/// A raw connection to the local agent, for "Allow agent forwarding".
+pub(crate) type RawAgent = std::pin::Pin<Box<dyn AsyncReadWrite>>;
+
+pub(crate) trait AsyncReadWrite: AsyncRead + AsyncWrite + Send {}
+impl<T: AsyncRead + AsyncWrite + Send> AsyncReadWrite for T {}
+
+/// Open the local agent (the system one, else Pageant on Windows).
+pub(crate) async fn connect_raw(config: &AgentConfig) -> Option<RawAgent> {
+    if config.system {
+        #[cfg(unix)]
+        {
+            let path = config
+                .socket
+                .clone()
+                .or_else(|| std::env::var_os("SSH_AUTH_SOCK").map(Into::into));
+            if let Some(path) = path
+                && let Ok(s) = tokio::net::UnixStream::connect(path).await
+            {
+                return Some(Box::pin(s));
+            }
+        }
+        #[cfg(windows)]
+        {
+            let pipe = config
+                .socket
+                .as_ref()
+                .map_or_else(|| OPENSSH_PIPE.into(), |p| p.as_os_str().to_owned());
+            if let Ok(p) = tokio::net::windows::named_pipe::ClientOptions::new().open(pipe) {
+                return Some(Box::pin(p));
+            }
+        }
+    }
+    #[cfg(windows)]
+    if config.pageant
+        && let Ok(p) = pageant::PageantStream::new().await
+    {
+        return Some(Box::pin(p));
+    }
+    None
+}
+
 /// Try the agents' keys. `Ok(true)` once one is accepted.
 pub(crate) async fn authenticate(
     session: &mut client::Handle<Handler>,

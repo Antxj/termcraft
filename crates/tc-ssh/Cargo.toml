@@ -23,6 +23,9 @@ sha2 = "0.11"
 hex = "0.4"
 rand_core = "0.10"
 
+[target.'cfg(windows)'.dependencies]
+pageant = "0.2"
+
 [lints]
 workspace = true
 

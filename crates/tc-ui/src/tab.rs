@@ -567,6 +567,7 @@ impl Tab {
             agent: agent_config(&self.ssh_settings),
             shell: true,
             proxy: None,
+            agent_forwarding: false,
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -640,6 +641,7 @@ impl Tab {
             agent: agent_config(&self.ssh_settings),
             shell: false,
             proxy: None,
+            agent_forwarding: false,
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -853,6 +855,7 @@ impl Tab {
             },
             shell: true,
             proxy: tc_ssh::proxy::from_options(&|id| opt(id).map(String::from)),
+            agent_forwarding: opt("3_35").is_some_and(schema::is_true),
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());
