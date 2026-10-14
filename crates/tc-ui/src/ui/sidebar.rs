@@ -108,6 +108,22 @@ pub struct Macros<'a> {
     pub recording: bool,
 }
 
+/// The "Quick connect..." box: `[user@]host[:port]` or a session name,
+/// opened with Enter.
+pub fn quick_connect_box(ui: &mut egui::Ui, text: &mut String, width: f32, out: &mut Vec<Action>) {
+    let response = ui.add(
+        egui::TextEdit::singleline(text)
+            .hint_text("Quick connect...")
+            .desired_width(width),
+    );
+    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        let target = std::mem::take(text);
+        if !target.trim().is_empty() {
+            out.push(Action::QuickConnect(target));
+        }
+    }
+}
+
 pub fn content(
     ui: &mut egui::Ui,
     quick_connect: &mut String,
@@ -119,17 +135,7 @@ pub fn content(
 ) {
     let has_tab = active_tab.is_some();
     ui.add_space(4.0);
-    let response = ui.add(
-        egui::TextEdit::singleline(quick_connect)
-            .hint_text("Quick connect...")
-            .desired_width(f32::INFINITY),
-    );
-    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-        let target = std::mem::take(quick_connect);
-        if !target.trim().is_empty() {
-            out.push(Action::QuickConnect(target));
-        }
-    }
+    quick_connect_box(ui, quick_connect, f32::INFINITY, out);
     ui.separator();
     if view.sidebar_tab == SidebarTab::Sftp {
         // The browser manages its own scrolling.

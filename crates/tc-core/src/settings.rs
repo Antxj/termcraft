@@ -498,6 +498,9 @@ pub struct ViewSettings {
     pub ui_size: UiSize,
     /// "Show green/orange buttons next to each open session in the sessions tree".
     pub session_dots: bool,
+    /// "Disable "Quick connect" when sidebar is hidden" (otherwise it moves
+    /// next to the tabs).
+    pub no_quick_connect_without_sidebar: bool,
     /// "Compact mode": only the tabs and terminals.
     pub compact: bool,
     /// "Color saturation" of the skin, in percent (36 = as designed).
@@ -530,6 +533,7 @@ impl Default for ViewSettings {
             rounded_tabs: true,
             ui_size: UiSize::default(),
             session_dots: true,
+            no_quick_connect_without_sidebar: false,
             compact: false,
             saturation: DEFAULT_SATURATION,
             transparency: 0,

@@ -1165,10 +1165,14 @@ impl eframe::App for TermCraftApp {
         let home_search = &mut self.home_search;
         let multiexec = &mut self.multiexec;
         let recording = &mut self.recording;
+        // With the sidebar hidden, "Quick connect" moves next to the tabs.
+        let quick =
+            (!view.sidebar_visible && !view.compact && !view.no_quick_connect_without_sidebar)
+                .then_some(&mut self.quick_connect);
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| {
-                tabbar::show(ui, &tab_views, core.active, &view, &mut out);
+                tabbar::show(ui, &tab_views, core.active, &view, quick, &mut out);
                 if multiexec.on {
                     multiexec_banner(ui, multiexec, &mut core.tabs);
                 }

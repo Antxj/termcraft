@@ -37,11 +37,15 @@ const TAB_HEIGHT: f32 = 28.0;
 const TAB_MIN_WIDTH: f32 = 96.0;
 const TAB_MAX_WIDTH: f32 = 220.0;
 
+/// Width of the "Quick connect" box shown here while the sidebar is hidden.
+const QUICK_CONNECT_WIDTH: f32 = 180.0;
+
 pub fn show(
     ui: &mut egui::Ui,
     tabs: &[TabView],
     active: Option<u64>,
     view: &ViewSettings,
+    quick_connect: Option<&mut String>,
     out: &mut Vec<Action>,
 ) {
     let palette = skin::current(ui.ctx());
@@ -56,7 +60,12 @@ pub fn show(
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 1.0;
-                let right_width = 32.0;
+                let right_width = 32.0
+                    + if quick_connect.is_some() {
+                        QUICK_CONNECT_WIDTH + 8.0
+                    } else {
+                        0.0
+                    };
                 let width = (ui.available_width() - right_width).max(0.0);
                 ui.allocate_ui(egui::vec2(width, TAB_HEIGHT), |ui| {
                     egui::ScrollArea::horizontal()
@@ -79,6 +88,9 @@ pub fn show(
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     tab_list(ui, tabs, active, view.compact, out);
+                    if let Some(text) = quick_connect {
+                        super::sidebar::quick_connect_box(ui, text, QUICK_CONNECT_WIDTH, out);
+                    }
                 });
             });
         });

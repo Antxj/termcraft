@@ -443,7 +443,10 @@ fn display(ui: &mut egui::Ui, s: &mut Settings) {
         &mut v.session_dots,
         "Show green/orange buttons next to each open session in the sessions tree",
     );
-    disabled_check(ui, "Disable \"Quick connect\" when sidebar is hidden");
+    ui.checkbox(
+        &mut v.no_quick_connect_without_sidebar,
+        "Disable \"Quick connect\" when sidebar is hidden",
+    );
 }
 
 fn misc(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
