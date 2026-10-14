@@ -220,6 +220,7 @@ fn browse_download_upload_and_manage() {
     let id = s.request(FsRequest::Download {
         remote: "/hello.txt".into(),
         local: local.clone(),
+        ascii: false,
     });
     assert_eq!(next(&s), FsEvent::Done { id });
     assert_eq!(std::fs::read(&local).unwrap(), b"hi from ftp");
@@ -230,6 +231,7 @@ fn browse_download_upload_and_manage() {
     let id = s.request(FsRequest::Upload {
         local: up,
         remote: "/pub/up.bin".into(),
+        ascii: false,
     });
     assert_eq!(next(&s), FsEvent::Done { id });
     assert_eq!(fs.lock().unwrap().files["/pub/up.bin"], big);

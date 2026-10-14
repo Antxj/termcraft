@@ -73,13 +73,23 @@ pub struct SftpView {
     pub reports_seen: bool,
     /// The prompt hook is about to be typed automatically.
     pub auto_hook_pending: bool,
+    /// "ASCII mode": convert line endings in transfers.
+    pub ascii: bool,
+    /// "Use SUDO for SSH-browser" is on / offered (SSH only).
+    pub sudo: bool,
+    pub sudo_supported: bool,
     listing: Option<u64>,
 }
 
 pub enum BrowserPrompt {
+    /// "Use SUDO for SSH-browser" needs the sudo password (never saved).
+    SudoPassword(zeroize::Zeroizing<String>),
     NewFolder(String),
     NewFile(String),
-    Rename { from: String, to: String },
+    Rename {
+        from: String,
+        to: String,
+    },
     ConfirmDelete(Vec<(String, bool)>),
 }
 
@@ -126,6 +136,10 @@ pub struct Tab {
     pub offers: std::collections::VecDeque<(Target, String)>,
     /// Automatic "Follow terminal folder" for bash / zsh logins.
     folder_hook: Option<FolderHook>,
+    /// The SSH-browser runs through sudo.
+    sftp_sudo: bool,
+    /// Folder to return to once the browser has been reopened (sudo switch).
+    sftp_reopen_cwd: Option<String>,
 }
 
 /// Prompt hook for bash and zsh that reports `$PWD` with OSC 7. Typed into
@@ -174,6 +188,8 @@ impl Tab {
             ),
             offers: Default::default(),
             folder_hook: None,
+            sftp_sudo: false,
+            sftp_reopen_cwd: None,
         };
         let settings = crate::term_settings::for_session(tab.session.as_ref());
         tab.term.theme = settings.theme;
@@ -730,16 +746,45 @@ impl Tab {
                     .as_ref()
                     .and_then(|s| s.options.get("3_18"))
                     .is_none_or(|v| schema::is_true(v));
+                let session = self.session.as_ref();
+                let is_ftp = matches!(session.map(|s| &s.kind), Some(SessionKind::Ftp { .. }));
+                // FTP 3_9 "ASCII mode".
+                let ascii = is_ftp
+                    && session
+                        .and_then(|s| s.options.get("3_9"))
+                        .is_some_and(|v| schema::is_true(v));
                 self.sftp = SftpStatus::Ready(Box::new(SftpView {
                     cwd: home.clone(),
                     path_input: home.clone(),
                     follow,
+                    ascii,
+                    sudo: self.sftp_sudo,
+                    sudo_supported: matches!(self.backend, Backend::Ssh(_)),
                     ..SftpView::default()
                 }));
-                self.sftp_just_ready = true;
-                self.sftp_list(&home);
+                // A sudo switch keeps the folder; a new login starts at home.
+                match self.sftp_reopen_cwd.take() {
+                    Some(cwd) => self.sftp_list(&cwd),
+                    None => {
+                        self.sftp_just_ready = true;
+                        self.sftp_list(&home);
+                    }
+                }
             }
             SftpEvent::Unavailable(e) => self.sftp = SftpStatus::Unavailable(e),
+            SftpEvent::SudoPasswordNeeded => {
+                if let SftpStatus::Ready(v) = &mut self.sftp {
+                    v.prompt = Some(BrowserPrompt::SudoPassword(Default::default()));
+                }
+            }
+            SftpEvent::SudoFailed(e) => {
+                self.sftp_sudo = !self.sftp_sudo;
+                self.sftp_reopen_cwd = None;
+                if let SftpStatus::Ready(v) = &mut self.sftp {
+                    v.sudo = self.sftp_sudo;
+                    v.error = Some(e);
+                }
+            }
             SftpEvent::Listing { id, path, entries } => {
                 if let SftpStatus::Ready(v) = &mut self.sftp
                     && v.listing == Some(id)
@@ -799,6 +844,21 @@ impl Tab {
         if let Backend::Ssh(ssh) = &self.backend {
             ssh.write(FOLDER_TRACKING_HOOK.as_bytes());
         }
+    }
+
+    /// "Use SUDO for SSH-browser": reopen the browser elevated or not. The
+    /// password, when sudo asks for one, goes straight to the server.
+    pub fn sftp_sudo(&mut self, on: bool, password: Option<String>) {
+        let Backend::Ssh(ssh) = &self.backend else {
+            return;
+        };
+        if let SftpStatus::Ready(v) = &mut self.sftp {
+            v.sudo = on;
+            v.error = None;
+            self.sftp_reopen_cwd = Some(v.cwd.clone());
+        }
+        self.sftp_sudo = on;
+        ssh.sftp_sudo(on, password);
     }
 
     /// Browse to a remote directory.

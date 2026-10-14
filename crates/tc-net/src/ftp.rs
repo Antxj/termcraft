@@ -57,6 +57,15 @@ impl FtpSession {
     }
 }
 
+/// TYPE A for "ASCII mode" transfers, TYPE I otherwise.
+fn file_type(ascii: bool) -> FileType {
+    if ascii {
+        FileType::Ascii(suppaftp::types::FormatControl::Default)
+    } else {
+        FileType::Binary
+    }
+}
+
 fn login(p: &FtpParams) -> Result<(FtpStream, String), String> {
     let mut ftp = FtpStream::connect((p.host.as_str(), p.port))
         .map_err(|e| format!("cannot connect to {}:{}: {e}", p.host, p.port))?;
@@ -72,12 +81,8 @@ fn login(p: &FtpParams) -> Result<(FtpStream, String), String> {
     };
     ftp.login(user, pass)
         .map_err(|e| format!("login failed: {e}"))?;
-    let kind = if p.ascii {
-        FileType::Ascii(suppaftp::types::FormatControl::Default)
-    } else {
-        FileType::Binary
-    };
-    ftp.transfer_type(kind).map_err(|e| e.to_string())?;
+    ftp.transfer_type(file_type(p.ascii))
+        .map_err(|e| e.to_string())?;
     if let Some(dir) = p.start_dir.as_deref().filter(|d| !d.trim().is_empty()) {
         ftp.cwd(dir.trim())
             .map_err(|e| format!("cannot open {dir}: {e}"))?;
@@ -138,7 +143,12 @@ fn execute(
             });
             Ok(FsEvent::Listing { id, path, entries })
         }
-        FsRequest::Download { remote, local } => {
+        FsRequest::Download {
+            remote,
+            local,
+            ascii,
+        } => {
+            ftp.transfer_type(file_type(ascii)).map_err(err)?;
             let total = ftp.size(&remote).ok().map(|s| s as u64);
             let mut out =
                 std::fs::File::create(&local).map_err(|e| format!("{}: {e}", local.display()))?;
@@ -162,7 +172,12 @@ fn execute(
             .map_err(err)?;
             Ok(FsEvent::Done { id })
         }
-        FsRequest::Upload { local, remote } => {
+        FsRequest::Upload {
+            local,
+            remote,
+            ascii,
+        } => {
+            ftp.transfer_type(file_type(ascii)).map_err(err)?;
             let file =
                 std::fs::File::open(&local).map_err(|e| format!("{}: {e}", local.display()))?;
             let total = file.metadata().ok().map(|m| m.len());

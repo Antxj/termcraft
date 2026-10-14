@@ -307,6 +307,7 @@ fn sftp_browser_operations() {
     let id = s.sftp(SftpRequest::Download {
         remote: "/hello.txt".into(),
         local: dl.clone(),
+        ascii: false,
     });
     done(&s, id);
     assert_eq!(std::fs::read(&dl).unwrap(), b"hello over sftp");
@@ -318,9 +319,37 @@ fn sftp_browser_operations() {
     let id = s.sftp(SftpRequest::Upload {
         local: up,
         remote: "/up.bin".into(),
+        ascii: false,
     });
     done(&s, id);
     assert_eq!(std::fs::read(root.path().join("up.bin")).unwrap(), big);
+
+    // ASCII mode: CRLF goes up as LF, and comes back with local endings.
+    let text = local.path().join("text.txt");
+    std::fs::write(&text, b"one\r\ntwo\r\n").unwrap();
+    let id = s.sftp(SftpRequest::Upload {
+        local: text,
+        remote: "/text.txt".into(),
+        ascii: true,
+    });
+    done(&s, id);
+    assert_eq!(
+        std::fs::read(root.path().join("text.txt")).unwrap(),
+        b"one\ntwo\n"
+    );
+    let back = local.path().join("back.txt");
+    let id = s.sftp(SftpRequest::Download {
+        remote: "/text.txt".into(),
+        local: back.clone(),
+        ascii: true,
+    });
+    done(&s, id);
+    let expected: &[u8] = if cfg!(windows) {
+        b"one\r\ntwo\r\n"
+    } else {
+        b"one\ntwo\n"
+    };
+    assert_eq!(std::fs::read(&back).unwrap(), expected);
 
     // mkdir, rename into it, remove both
     done(&s, s.sftp(SftpRequest::Mkdir("/d".into())));

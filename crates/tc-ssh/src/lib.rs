@@ -197,6 +197,11 @@ enum Input {
     Data(Vec<u8>),
     Resize(u16, u16),
     Sftp(u64, SftpRequest),
+    /// Reopen the SSH-browser with or without sudo.
+    SftpSudo {
+        on: bool,
+        password: Option<zeroize::Zeroizing<String>>,
+    },
     Close,
 }
 
@@ -284,6 +289,15 @@ impl SshSession {
         let id = self.next_request.fetch_add(1, Ordering::Relaxed);
         let _ = self.input.send(Input::Sftp(id, request));
         id
+    }
+
+    /// "Use SUDO for SSH-browser": reopen the browser elevated (or not).
+    /// Answers with `SftpEvent::Ready`, `SudoPasswordNeeded` or `SudoFailed`.
+    pub fn sftp_sudo(&self, on: bool, password: Option<String>) {
+        let _ = self.input.send(Input::SftpSudo {
+            on,
+            password: password.map(zeroize::Zeroizing::new),
+        });
     }
 
     pub fn reply(&self, reply: Reply) {
@@ -567,6 +581,8 @@ pub(crate) async fn establish(
     })
 }
 
+type SftpOpened = (Arc<russh_sftp::client::SftpSession>, String);
+
 async fn run_shell(
     params: ConnectParams,
     mut input: mpsc::UnboundedReceiver<Input>,
@@ -632,7 +648,12 @@ async fn run_shell(
             events.send(SshEvent::LoginShell(shell));
         }
     };
-    let (sftp, ()) = tokio::join!(open_sftp, probe);
+    let (mut sftp, ()) = tokio::join!(open_sftp, probe);
+    // A sudo switch in progress; the old browser keeps working meanwhile.
+    type Reopen<'a> = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<SftpOpened, sftp::SudoError>> + Send + 'a>,
+    >;
+    let mut reopening: Option<Reopen<'_>> = None;
 
     let mut exit_status = None;
     loop {
@@ -663,7 +684,31 @@ async fn run_shell(
                         error: "SFTP is not available on this connection".into(),
                     })),
                 },
+                Some(Input::SftpSudo { on, password }) => {
+                    reopening = Some(Box::pin(async move {
+                        if on {
+                            sftp::open_sudo(session, password.as_deref().map(String::as_str)).await
+                        } else {
+                            sftp::open(session).await.map_err(sftp::SudoError::Failed)
+                        }
+                    }));
+                }
                 Some(Input::Close) | None => break,
+            },
+            opened = async { reopening.as_mut().expect("guarded").await }, if reopening.is_some() => {
+                reopening = None;
+                match opened {
+                    Ok((s, home)) => {
+                        sftp = Some(s);
+                        events.send(SshEvent::Sftp(SftpEvent::Ready { home }));
+                    }
+                    Err(sftp::SudoError::PasswordNeeded) => {
+                        events.send(SshEvent::Sftp(SftpEvent::SudoPasswordNeeded));
+                    }
+                    Err(sftp::SudoError::Failed(e)) => {
+                        events.send(SshEvent::Sftp(SftpEvent::SudoFailed(e)));
+                    }
+                }
             },
         }
     }

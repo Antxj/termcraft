@@ -5,6 +5,7 @@ use crate::Events;
 use crate::SshEvent;
 use russh_sftp::client::SftpSession;
 use std::sync::Arc;
+use tc_core::remote_fs::EolConverter;
 pub use tc_core::remote_fs::{
     FsEvent as SftpEvent, FsRequest as SftpRequest, RemoteEntry, join, parent,
 };
@@ -24,6 +25,111 @@ pub(crate) async fn open(
     let sftp = SftpSession::new(channel.into_stream())
         .await
         .map_err(|e| format!("SFTP init failed: {e}"))?;
+    let home = sftp
+        .canonicalize(".")
+        .await
+        .unwrap_or_else(|_| "/".to_string());
+    Ok((Arc::new(sftp), home))
+}
+
+/// Printed by the elevated shell right before it becomes `sftp-server`, so
+/// the SFTP protocol only starts once sudo has finished with stdin.
+const SUDO_READY: &str = "TC_SUDO_READY";
+
+/// The remote command for "Use SUDO for SSH-browser". The password (if
+/// any) is written to stdin, never put on the command line.
+pub(crate) fn sudo_command(with_password: bool) -> String {
+    let servers = [
+        "/usr/lib/openssh/sftp-server",
+        "/usr/libexec/openssh/sftp-server",
+        "/usr/lib/ssh/sftp-server",
+        "/usr/libexec/sftp-server",
+        "/usr/lib/sftp-server",
+        "/usr/local/libexec/sftp-server",
+    ]
+    .join(" ");
+    let script = format!(
+        "for p in {servers}; do if [ -x \"$p\" ]; then echo {SUDO_READY}; exec \"$p\"; fi; done; \
+         echo 'sftp-server not found' >&2; exit 127"
+    );
+    let mode = if with_password { "-S -p ''" } else { "-n" };
+    format!("sudo {mode} -- sh -c '{}'", script.replace('\'', "'\\''"))
+}
+
+pub(crate) enum SudoError {
+    PasswordNeeded,
+    Failed(String),
+}
+
+/// Open the browser through `sudo sftp-server`. Without a password, only
+/// `sudo -n` is tried (no prompt, no stdin).
+pub(crate) async fn open_sudo(
+    session: &russh::client::Handle<crate::Handler>,
+    password: Option<&str>,
+) -> Result<(Arc<SftpSession>, String), SudoError> {
+    use russh::ChannelMsg;
+    let fail = |e: String| SudoError::Failed(e);
+    let mut channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| fail(format!("cannot open SFTP channel: {e}")))?;
+    channel
+        .exec(true, sudo_command(password.is_some()))
+        .await
+        .map_err(|e| fail(format!("sudo: {e}")))?;
+    if let Some(pw) = password {
+        let line = zeroize::Zeroizing::new(format!("{pw}\n"));
+        channel
+            .data(line.as_bytes())
+            .await
+            .map_err(|e| fail(format!("sudo: {e}")))?;
+    }
+    let mut stdout = Vec::new();
+    let mut stderr = String::new();
+    let wait = async {
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { data } => {
+                    stdout.extend_from_slice(&data);
+                    if String::from_utf8_lossy(&stdout).contains(SUDO_READY) {
+                        return Ok(());
+                    }
+                }
+                ChannelMsg::ExtendedData { data, .. } => {
+                    stderr.push_str(&String::from_utf8_lossy(&data));
+                    // A wrong password: sudo asks again on stdin; stop here.
+                    if stderr.contains("Sorry, try again") || stderr.contains("incorrect password")
+                    {
+                        return Err(fail("sudo: wrong password".into()));
+                    }
+                }
+                ChannelMsg::ExitStatus { .. } | ChannelMsg::Eof | ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        let e = stderr.trim();
+        if password.is_none() && (e.contains("password") || e.contains("terminal")) {
+            Err(SudoError::PasswordNeeded)
+        } else if e.is_empty() {
+            Err(fail("sudo is not available on this server".into()))
+        } else {
+            Err(fail(format!("sudo: {}", e.lines().last().unwrap_or(e))))
+        }
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(15), wait).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            let _ = channel.close().await;
+            return Err(e);
+        }
+        Err(_) => {
+            let _ = channel.close().await;
+            return Err(fail("sudo did not answer".into()));
+        }
+    }
+    let sftp = SftpSession::new(channel.into_stream())
+        .await
+        .map_err(|e| fail(format!("SFTP init failed: {e}")))?;
     let home = sftp
         .canonicalize(".")
         .await
@@ -63,7 +169,13 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                 });
                 Ok(Some(SftpEvent::Listing { id, path, entries }))
             }
-            SftpRequest::Download { remote, local } => {
+            SftpRequest::Download {
+                remote,
+                local,
+                ascii,
+            } => {
+                let mut eol = ascii.then(EolConverter::to_local).flatten();
+                let mut converted = Vec::new();
                 let total = sftp
                     .metadata(remote.clone())
                     .await
@@ -80,14 +192,33 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                     if n == 0 {
                         break;
                     }
-                    dst.write_all(&buf[..n]).await.map_err(|e| e.to_string())?;
+                    let chunk = match &mut eol {
+                        Some(c) => {
+                            converted.clear();
+                            c.convert(&buf[..n], &mut converted);
+                            &converted[..]
+                        }
+                        None => &buf[..n],
+                    };
+                    dst.write_all(chunk).await.map_err(|e| e.to_string())?;
                     done += n as u64;
                     send(SftpEvent::Progress { id, done, total });
+                }
+                if let Some(c) = &mut eol {
+                    converted.clear();
+                    c.finish(&mut converted);
+                    dst.write_all(&converted).await.map_err(|e| e.to_string())?;
                 }
                 dst.flush().await.map_err(|e| e.to_string())?;
                 Ok(None)
             }
-            SftpRequest::Upload { local, remote } => {
+            SftpRequest::Upload {
+                local,
+                remote,
+                ascii,
+            } => {
+                let mut eol = ascii.then(EolConverter::to_lf);
+                let mut converted = Vec::new();
                 let mut src = tokio::fs::File::open(&local)
                     .await
                     .map_err(|e| format!("{}: {e}", local.display()))?;
@@ -100,9 +231,22 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                     if n == 0 {
                         break;
                     }
-                    dst.write_all(&buf[..n]).await.map_err(|e| e.to_string())?;
+                    let chunk = match &mut eol {
+                        Some(c) => {
+                            converted.clear();
+                            c.convert(&buf[..n], &mut converted);
+                            &converted[..]
+                        }
+                        None => &buf[..n],
+                    };
+                    dst.write_all(chunk).await.map_err(|e| e.to_string())?;
                     done += n as u64;
                     send(SftpEvent::Progress { id, done, total });
+                }
+                if let Some(c) = &mut eol {
+                    converted.clear();
+                    c.finish(&mut converted);
+                    dst.write_all(&converted).await.map_err(|e| e.to_string())?;
                 }
                 dst.shutdown().await.map_err(|e| e.to_string())?;
                 Ok(None)
@@ -139,5 +283,21 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
         Ok(Some(event)) => send(event),
         Ok(None) => send(SftpEvent::Done { id }),
         Err(error) => send(SftpEvent::Failed { id, error }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sudo_command_never_contains_a_password_and_is_quoted() {
+        let cmd = sudo_command(true);
+        assert!(cmd.starts_with("sudo -S -p '' -- sh -c '"));
+        assert!(cmd.ends_with('\''));
+        assert!(cmd.contains(SUDO_READY));
+        // The inner single quotes are escaped for the outer sh -c '...'.
+        assert!(cmd.contains("'\\''sftp-server not found'\\''"));
+        assert!(sudo_command(false).starts_with("sudo -n -- sh -c '"));
     }
 }

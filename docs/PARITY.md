@@ -101,6 +101,8 @@ refined against it.
 | P1 | [ ] | Open remote file in local editor, upload on save | `tc-sftp` |
 | P2 | [ ] | SCP mode (fast / legacy) when SFTP is unavailable | `tc-sftp` |
 | P2 | [~] | Rename / new folder / new file / delete (with confirmation), copy path (to clipboard or terminal), hidden files toggle; chmod pending | `tc-ui` |
+| P1 | [x] | SSH-browser "ASCII mode" (line endings converted while streaming; FTP uses TYPE A) | `tc-core` + `tc-ssh` + `tc-net` |
+| P1 | [~] | "Use SUDO for SSH-browser": `sudo -n` first, then the sudo password over stdin (never on the command line, never saved); keeps the current folder. Needs an end-to-end test on a Linux server | `tc-ssh` + `tc-ui` |
 
 ## 5. Sessions manager
 

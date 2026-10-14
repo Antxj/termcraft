@@ -20,13 +20,17 @@ pub struct RemoteEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FsRequest {
     List(String),
+    /// `ascii`: "ASCII mode", convert line endings to the local ones.
     Download {
         remote: String,
         local: PathBuf,
+        ascii: bool,
     },
+    /// `ascii`: "ASCII mode", send Unix line endings.
     Upload {
         local: PathBuf,
         remote: String,
+        ascii: bool,
     },
     Mkdir(String),
     /// Create an empty file (fails if it exists).
@@ -48,6 +52,10 @@ pub enum FsEvent {
         home: String,
     },
     Unavailable(String),
+    /// "Use SUDO for SSH-browser" needs the user's sudo password (SFTP only).
+    SudoPasswordNeeded,
+    /// Switching to or from sudo failed; the previous browser stays usable.
+    SudoFailed(String),
     Listing {
         id: u64,
         path: String,
@@ -97,5 +105,101 @@ mod tests {
         assert_eq!(parent("/home/u/"), "/home");
         assert_eq!(parent("/home"), "/");
         assert_eq!(parent("/"), "/");
+    }
+}
+
+/// Line-ending conversion for "ASCII mode" transfers, chunk by chunk
+/// (a CR at the end of one chunk and its LF in the next stay together).
+#[derive(Debug, Clone, Copy)]
+pub struct EolConverter {
+    to_crlf: bool,
+    /// Upload: a CR held back until we know whether LF follows.
+    /// Download: the previous byte was CR.
+    cr: bool,
+}
+
+impl EolConverter {
+    /// CRLF -> LF (to a Unix server).
+    pub fn to_lf() -> Self {
+        Self {
+            to_crlf: false,
+            cr: false,
+        }
+    }
+
+    /// LF -> CRLF.
+    pub fn to_crlf() -> Self {
+        Self {
+            to_crlf: true,
+            cr: false,
+        }
+    }
+
+    /// Remote -> local: CRLF on Windows, unchanged elsewhere.
+    pub fn to_local() -> Option<Self> {
+        cfg!(windows).then(Self::to_crlf)
+    }
+
+    pub fn convert(&mut self, input: &[u8], out: &mut Vec<u8>) {
+        out.reserve(input.len() + input.len() / 16);
+        for &b in input {
+            if self.to_crlf {
+                if b == b'\n' && !self.cr {
+                    out.push(b'\r');
+                }
+                out.push(b);
+                self.cr = b == b'\r';
+            } else {
+                if self.cr {
+                    self.cr = false;
+                    if b != b'\n' {
+                        out.push(b'\r');
+                    }
+                }
+                if b == b'\r' {
+                    self.cr = true;
+                } else {
+                    out.push(b);
+                }
+            }
+        }
+    }
+
+    /// Flush what is held back at the end of the file.
+    pub fn finish(&mut self, out: &mut Vec<u8>) {
+        if !self.to_crlf && std::mem::take(&mut self.cr) {
+            out.push(b'\r');
+        }
+    }
+}
+
+#[cfg(test)]
+mod eol_tests {
+    use super::EolConverter;
+
+    fn run(mut c: EolConverter, chunks: &[&[u8]]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for chunk in chunks {
+            c.convert(chunk, &mut out);
+        }
+        c.finish(&mut out);
+        out
+    }
+
+    #[test]
+    fn crlf_to_lf_across_chunks() {
+        assert_eq!(
+            run(EolConverter::to_lf(), &[b"a\r\nb\r", b"\nc\r"]),
+            b"a\nb\nc\r"
+        );
+        assert_eq!(run(EolConverter::to_lf(), &[b"x\ry"]), b"x\ry");
+    }
+
+    #[test]
+    fn lf_to_crlf_keeps_existing_pairs() {
+        assert_eq!(
+            run(EolConverter::to_crlf(), &[b"a\nb\r", b"\nc\n"]),
+            b"a\r\nb\r\nc\r\n"
+        );
     }
 }

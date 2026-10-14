@@ -62,6 +62,9 @@ enum BrowserAction {
     Request(SftpRequest),
     TypeInTerminal(String),
     InstallFolderTracking,
+    /// Reopen the browser with (or without) sudo.
+    Sudo(bool),
+    SudoPassword(String),
 }
 
 fn apply(tab: &mut Tab, action: BrowserAction) {
@@ -70,6 +73,8 @@ fn apply(tab: &mut Tab, action: BrowserAction) {
         BrowserAction::Request(r) => tab.sftp_op(r),
         BrowserAction::TypeInTerminal(text) => tab.send(text.as_bytes()),
         BrowserAction::InstallFolderTracking => tab.install_folder_tracking(),
+        BrowserAction::Sudo(on) => tab.sftp_sudo(on, None),
+        BrowserAction::SudoPassword(pw) => tab.sftp_sudo(true, Some(pw)),
     }
 }
 
@@ -101,6 +106,17 @@ fn tool(ui: &mut egui::Ui, glyph: &str, hint: &str, enabled: bool) -> bool {
         b.on_disabled_hover_text(format!("{hint}\n{NOT_YET}"));
         false
     }
+}
+
+/// A toolbar toggle (pressed look while on).
+fn toggle(ui: &mut egui::Ui, glyph: &str, hint: &str, on: bool) -> bool {
+    ui.add(
+        egui::Button::new(egui::RichText::new(glyph).size(15.0))
+            .frame(on)
+            .selected(on),
+    )
+    .on_hover_text(hint)
+    .clicked()
 }
 
 fn selected_entries(view: &SftpView) -> Vec<&RemoteEntry> {
@@ -148,8 +164,19 @@ fn toolbar(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>)
                 .collect();
             view.prompt = Some(BrowserPrompt::ConfirmDelete(items));
         }
-        tool(ui, icon::SHIELD_CHECK, "Use SUDO for SSH-browser", false);
-        tool(ui, icon::TEXT_AA, "ASCII mode", false);
+        if view.sudo_supported
+            && toggle(
+                ui,
+                icon::SHIELD_CHECK,
+                "Use SUDO for SSH-browser",
+                view.sudo,
+            )
+        {
+            out.push(BrowserAction::Sudo(!view.sudo));
+        }
+        if toggle(ui, icon::TEXT_AA, "ASCII mode", view.ascii) {
+            view.ascii = !view.ascii;
+        }
         let hidden_hint = if view.show_hidden {
             "Hide hidden (dot) files"
         } else {
@@ -251,6 +278,18 @@ fn prompt(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) 
                     from: join(&cwd, from),
                     to: join(&cwd, to.trim()),
                 }));
+                close = true;
+            }
+        }
+        BrowserPrompt::SudoPassword(password) => {
+            ui.label("sudo password:");
+            let edit = ui.add(egui::TextEdit::singleline(&mut **password).password(true));
+            edit.request_focus();
+            let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            let choice = buttons(ui, enter);
+            close |= choice == Some(false);
+            if choice == Some(true) {
+                out.push(BrowserAction::SudoPassword(std::mem::take(&mut **password)));
                 close = true;
             }
         }
@@ -435,6 +474,7 @@ fn download(view: &SftpView, entries: &[&RemoteEntry], out: &mut Vec<BrowserActi
                 out.push(BrowserAction::Request(SftpRequest::Download {
                     remote: join(&view.cwd, &one.name),
                     local,
+                    ascii: view.ascii,
                 }));
             }
         }
@@ -447,6 +487,7 @@ fn download(view: &SftpView, entries: &[&RemoteEntry], out: &mut Vec<BrowserActi
                     out.push(BrowserAction::Request(SftpRequest::Download {
                         remote: join(&view.cwd, &e.name),
                         local: dir.join(&e.name),
+                        ascii: view.ascii,
                     }));
                 }
             }
@@ -462,6 +503,7 @@ fn upload(view: &SftpView, files: Vec<PathBuf>, out: &mut Vec<BrowserAction>) {
         out.push(BrowserAction::Request(SftpRequest::Upload {
             remote: join(&view.cwd, &name),
             local,
+            ascii: view.ascii,
         }));
     }
 }
