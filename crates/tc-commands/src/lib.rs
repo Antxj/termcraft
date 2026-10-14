@@ -3,6 +3,7 @@
 //! the JSON result. Adding a feature = add a variant + a [`CommandSpec`].
 
 mod catalog;
+pub mod control;
 
 pub use catalog::{CATALOG, CommandSpec, spec};
 

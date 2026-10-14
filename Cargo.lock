@@ -4897,7 +4897,9 @@ dependencies = [
  "tc-core",
  "tc-import",
  "tc-vault",
+ "tempfile",
  "thiserror 2.0.21",
+ "uuid",
 ]
 
 [[package]]

@@ -62,6 +62,11 @@ impl Paths {
         self.config_dir.join("tunnels.toml")
     }
 
+    /// Port and token of the running window's control channel.
+    pub fn control_file(&self) -> PathBuf {
+        self.data_dir.join("control.json")
+    }
+
     /// Names of saved passwords (the secrets live in the OS keychain).
     pub fn passwords_index_file(&self) -> PathBuf {
         self.data_dir.join("saved_passwords.toml")

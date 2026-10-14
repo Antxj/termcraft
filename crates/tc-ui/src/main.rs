@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod control_server;
 mod credentials;
 mod external;
 mod folder_hook;
@@ -16,6 +17,24 @@ mod ui;
 mod updates;
 
 fn main() -> eframe::Result<()> {
+    // Command-line options: hand them to the running window if there is
+    // one, else run them in this new one.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let paths = tc_core::Paths::resolve();
+    let macros = tc_core::MacroStore::load(&paths.macros_file()).unwrap_or_default();
+    let startup = match control_server::commands_from_args(&args, &|name| {
+        macros.macros.iter().find(|m| m.name == name).map(|m| m.id)
+    }) {
+        Ok(cmds) => cmds,
+        Err(e) => {
+            eprintln!("termcraft: {e}");
+            std::process::exit(2);
+        }
+    };
+    if !startup.is_empty() && forward(&paths, &startup) {
+        return Ok(());
+    }
+
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("TermCraft")
         .with_inner_size([1100.0, 700.0])
@@ -35,6 +54,23 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "TermCraft",
         options,
-        Box::new(|cc| Ok(Box::new(app::TermCraftApp::new(cc)))),
+        Box::new(|cc| Ok(Box::new(app::TermCraftApp::new(cc, startup)))),
     )
+}
+
+/// Send the commands to an already running window. False when none runs.
+fn forward(paths: &tc_core::Paths, commands: &[tc_commands::Command]) -> bool {
+    let file = paths.control_file();
+    for (i, cmd) in commands.iter().enumerate() {
+        match tc_commands::control::send(&file, cmd.clone()) {
+            Ok(_) => {}
+            // Nothing listening: start a window (only if nothing was sent).
+            Err(_) if i == 0 => return false,
+            Err(e) => {
+                eprintln!("termcraft: {e}");
+                return true;
+            }
+        }
+    }
+    true
 }

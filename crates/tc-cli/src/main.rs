@@ -23,6 +23,13 @@ enum Cmd {
         #[arg(default_value = "{}")]
         args: String,
     },
+    /// Send a command to the running TermCraft window (open tabs, type,
+    /// run macros…): `gui tab_open '{"session":"web01"}'`.
+    Gui {
+        name: String,
+        #[arg(default_value = "{}")]
+        args: String,
+    },
     /// List saved sessions.
     Sessions,
     /// Import sessions from a MobaXterm export (.mxtsessions or MobaXterm.ini).
@@ -169,6 +176,15 @@ fn main() -> anyhow::Result<()> {
         Cmd::Run { name, args } => {
             let args: Value = serde_json::from_str(&args).context("args must be JSON")?;
             run_command(&mut FileHost::open()?, Command::from_call(&name, args)?)?;
+        }
+        Cmd::Gui { name, args } => {
+            let args: Value = serde_json::from_str(&args).context("args must be JSON")?;
+            let command = Command::from_call(&name, args)?;
+            let file = Paths::resolve().control_file();
+            match tc_commands::control::send(&file, command) {
+                Ok(v) => println!("{}", serde_json::to_string_pretty(&v)?),
+                Err(e) => bail!(e),
+            }
         }
         Cmd::Sessions => run_command(&mut FileHost::open()?, Command::SessionList {})?,
         Cmd::ImportMobaxterm { path } => {

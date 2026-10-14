@@ -204,6 +204,10 @@ pub struct TermCraftApp {
     passwords: crate::ui::passwords_window::PasswordsUi,
     /// "Hotkeys edition" window.
     show_hotkeys: bool,
+    /// Loopback control channel (other processes send commands).
+    control: Option<crate::control_server::ControlServer>,
+    /// Commands from the command line, run on the first frame.
+    startup: Vec<Command>,
     show_config: bool,
     config_tab: crate::ui::config_window::ConfigTab,
     /// "Close prompt" waiting for an answer.
@@ -226,7 +230,7 @@ pub struct TermCraftApp {
 }
 
 impl TermCraftApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, startup: Vec<Command>) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
@@ -282,6 +286,8 @@ impl TermCraftApp {
             show_about: false,
             passwords: Default::default(),
             show_hotkeys: false,
+            control: None,
+            startup,
             show_config: false,
             config_tab: Default::default(),
             confirm_exit: false,
@@ -298,6 +304,10 @@ impl TermCraftApp {
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
         };
+        app.control = crate::control_server::ControlServer::start(
+            app.core.paths.control_file(),
+            app.core.repaint.clone(),
+        );
         app.unlock_vault_at_startup();
         app.autostart_tunnels();
         app
@@ -524,6 +534,34 @@ impl TermCraftApp {
             ),
             Err(e) => format!("export failed: {e}"),
         };
+    }
+
+    /// Run commands from other processes (control channel) and answer.
+    fn serve_control(&mut self, ctx: &egui::Context) {
+        let Some(control) = &self.control else {
+            return;
+        };
+        let incoming = control.take();
+        for msg in incoming {
+            let opens_tab = matches!(msg.command, Command::TabOpen { .. });
+            let response = match tc_commands::execute(&mut self.core, msg.command) {
+                Ok(result) => tc_commands::control::Response {
+                    ok: true,
+                    result,
+                    error: None,
+                },
+                Err(e) => tc_commands::control::Response {
+                    ok: false,
+                    result: serde_json::Value::Null,
+                    error: Some(e.to_string()),
+                },
+            };
+            if opens_tab && response.ok {
+                // Like opening a bookmark from the shell: bring us forward.
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            let _ = msg.reply.send(response);
+        }
     }
 
     /// Keys pressed at a "Session stopped" prompt: close, restart, save.
@@ -1266,6 +1304,10 @@ impl eframe::App for TermCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         apply_view(&ctx, &self.core.settings.view);
+        for cmd in std::mem::take(&mut self.startup) {
+            self.run(cmd);
+        }
+        self.serve_control(&ctx);
         // Shortcuts first, so the terminal never sees their keys.
         let shortcuts = crate::ui::hotkeys_window::take_shortcuts(
             &ctx,

@@ -158,8 +158,8 @@ refined against it.
 | P1 | [x] | Macros: record keystrokes (recording bar + STOP), name, replay on any tab from the Macros menu / sidebar, rename / delete; macro_* commands | `tc-core` + `tc-ui` |
 | P0 | [x] | CLI exposing every command (`termcraft-cli`) | `tc-cli` |
 | P0 | [~] | MCP server (agents drive the app) | `tc-mcp` |
-| P1 | [ ] | Loopback JSON control channel to running app | `tc-ui` |
-| P1 | [ ] | Command-line: `--bookmark`, `--exec`, `--newtab`, `--runmacro` | `termcraft` |
+| P1 | [x] | Loopback JSON control channel to the running window (127.0.0.1, random port, per-run token in a user-only file, bounded requests); `termcraft-cli gui <command>` | `tc-commands` + `tc-ui` |
+| P1 | [x] | Command-line: `--bookmark`, `--exec`, `--newtab`, `--runmacro` (also `-bookmark` …); handed to the running window when there is one | `tc-ui` |
 
 ## 9. X11
 
