@@ -579,6 +579,9 @@ pub struct ExpertTerminal {
     pub scrollbar: bool,
     /// "Force local echo on / off" (`None` = the remote side echoes).
     pub local_echo: Option<bool>,
+    /// "Force local line editing on / off" (`None` = off: characters go
+    /// as they are typed).
+    pub local_line_editing: Option<bool>,
     /// "Implicit CR in every LF".
     pub implicit_cr_in_lf: bool,
     /// "Implicit LF in every CR".
@@ -622,6 +625,7 @@ impl Default for ExpertTerminal {
         Self {
             scrollbar: true,
             local_echo: None,
+            local_line_editing: None,
             implicit_cr_in_lf: false,
             implicit_lf_in_cr: false,
             flush_logs: false,

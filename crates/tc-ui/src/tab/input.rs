@@ -59,9 +59,24 @@ impl Tab {
         if let Some(hook) = &mut self.folder_hook {
             hook.on_user_input();
         }
+        if self.expert.local_line_editing == Some(true) {
+            let edit = self.line_editor.feed(bytes);
+            if self.expert.local_echo != Some(false) && !edit.shown.is_empty() {
+                self.term.feed(&edit.shown);
+            }
+            if !edit.send.is_empty() {
+                self.write(&edit.send);
+            }
+            return;
+        }
         if self.expert.local_echo == Some(true) {
             self.local_echo(bytes);
         }
+        self.write(bytes);
+    }
+
+    /// To the program, in the session charset.
+    fn write(&mut self, bytes: &[u8]) {
         let bytes: &[u8] = &self.charset.encode(bytes);
         match &mut self.backend {
             Backend::None => {}

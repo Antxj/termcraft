@@ -225,6 +225,8 @@ pub struct Tab {
     /// Set once when the SSH-browser becomes ready (the app shows the Sftp tab).
     pub sftp_just_ready: bool,
     line: Option<LineInput>,
+    /// "Force local line editing on": the line being typed.
+    line_editor: tc_term::LineEditor,
     known_hosts: PathBuf,
     repaint: Arc<dyn Fn() + Send + Sync>,
     credentials: Credentials,
@@ -343,6 +345,7 @@ impl Tab {
             sftp: SftpStatus::Off,
             sftp_just_ready: false,
             line: None,
+            line_editor: tc_term::LineEditor::default(),
             known_hosts: env.known_hosts.clone(),
             repaint: env.repaint.clone(),
             credentials: Credentials::new(

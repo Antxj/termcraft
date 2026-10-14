@@ -406,3 +406,65 @@ fn folder_tracking_hook_reports_pwd_in_bash() {
     assert!(stdout.starts_with("\x1b]7;file://"), "{stdout:?}");
     assert!(stdout.ends_with("/tmp\x07"), "{stdout:?}");
 }
+
+/// "Force local line editing on": the server gets whole, edited lines.
+#[test]
+fn local_line_editing_sends_edited_lines() {
+    use std::io::Read;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let mut buf = [0u8; 256];
+        while let Ok(n) = s.read(&mut buf) {
+            if n == 0 || tx.send(buf[..n].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let env = TabEnv {
+        scrollback: 100,
+        known_hosts: dir.path().join("kh"),
+        repaint: Arc::new(|| {}),
+        vault: Arc::new(Vault::open(
+            dir.path().join("i.toml"),
+            Box::new(tc_vault::MemoryStore::default()),
+        )),
+        save_passwords: SavePasswords::Ask,
+        ssh: Default::default(),
+        backspace_ctrl_h: false,
+        paste_right_click: true,
+        local_shell: Default::default(),
+        save_key_passphrases: false,
+        log_dir: None,
+        use_windows_path: true,
+        home: None,
+    };
+    let session = Session::new(
+        "t",
+        SessionKind::Telnet {
+            host: "127.0.0.1".into(),
+            port,
+        },
+    );
+    let mut tab = Tab::open(1, Some(session), &env);
+    tab.expert.local_line_editing = Some(true);
+    pump_until(&mut tab, |t| matches!(t.backend, Backend::Stream(_)));
+    tab.send(b"lx");
+    tab.send(b"\x7fs -a\r");
+    let mut got = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let done = |got: &[u8]| got.windows(6).any(|w| w == b"ls -a\r");
+    while !done(&got) && Instant::now() < deadline {
+        tab.pump();
+        if let Ok(chunk) = rx.recv_timeout(Duration::from_millis(50)) {
+            got.extend(chunk);
+        }
+    }
+    // Telnet sends CR as CR NUL (RFC 854); option answers may come first.
+    assert!(done(&got), "{got:?}");
+    assert!(!got.windows(2).any(|w| w == b"lx"), "nothing before Enter");
+    assert!(tab.term.contents().contains("ls -a"), "echoed locally");
+}

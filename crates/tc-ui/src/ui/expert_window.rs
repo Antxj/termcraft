@@ -22,6 +22,8 @@ fn feature(e: &mut ExpertTerminal, index: usize) -> Option<FeatureRef<'_>> {
         9 => FeatureRef::Flag(&mut e.charset_config),
         12 => FeatureRef::Force(&mut e.local_echo, true),
         13 => FeatureRef::Force(&mut e.local_echo, false),
+        14 => FeatureRef::Force(&mut e.local_line_editing, true),
+        15 => FeatureRef::Force(&mut e.local_line_editing, false),
         16 => FeatureRef::Force(&mut e.app_cursor, true),
         17 => FeatureRef::Force(&mut e.app_cursor, false),
         22 => FeatureRef::Flag(&mut e.bracketed_paste),

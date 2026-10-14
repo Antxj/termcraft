@@ -5,7 +5,7 @@ and behavior; own icons and branding). Seeded from the public feature page and
 documentation; to be refined with inventories generated from the reference
 copy in `reference/`. See [CLEAN_ROOM.md](CLEAN_ROOM.md).
 
-Legend: `[x]` done · `[~]` partial · `[ ]` not started
+Legend: `[x]` done · `[~]` partial · `[ ]` not started · `[-]` not in the reference version (from the first, web-based list; dropped)
 Priority: **P0** MVP · **P1** next · **P2** later · **P3** nice-to-have
 
 > A checked box means the feature is wired and tested, not that behavior is
@@ -63,11 +63,11 @@ refined against it.
 | P1 | [x] | Exit confirmation ("Close prompt") from menu, Exit button and window close | `tc-ui` |
 | P2 | [x] | Column (block) selection (Ctrl+Alt drag) | `tc-term` |
 | P2 | [x] | Word delimiters for double-click: Add / Remove left / right delimiters in "Expert settings" | `tc-term` + `tc-core` |
-| P2 | [~] | Configuration › Terminal › "Expert settings" (TFORMADVANCEDTERMSETTINGS): implicit CR in LF / LF in CR, frequent log flush, mouse reporting and bracketed paste switches, forced application cursor keys, answerback to ^E (printable ASCII only), visual bell, scrollback lines, auto-copy, reconnection keys of "Session stopped", history scrollbar (drag / click), forced local echo, alternate screen / scrollback clearing / character set switches and destructive backspace (an output filter that keeps split sequences and leaves OSC / DCS strings alone). AltGr, Arabic / bidi, local line editing, keypad modes and bell sounds pending; the per-session "Expert settings" (4_44) too | `tc-term` + `tc-ui` |
+| P2 | [~] | Configuration › Terminal › "Expert settings" (TFORMADVANCEDTERMSETTINGS): implicit CR in LF / LF in CR, frequent log flush, mouse reporting and bracketed paste switches, forced application cursor keys, answerback to ^E (printable ASCII only), visual bell, scrollback lines, auto-copy, reconnection keys of "Session stopped", history scrollbar (drag / click), forced local echo, alternate screen / scrollback clearing / character set switches and destructive backspace (an output filter that keeps split sequences and leaves OSC / DCS strings alone), forced local line editing (Backspace, ^U, ^W; sent with Enter). Real AltGr keys type their characters (winit reports them without Ctrl / Alt), so the left Ctrl+Alt is always "different from AltGr". Arabic / bidi, keypad modes and bell sounds pending; the per-session "Expert settings" (4_44) too | `tc-term` + `tc-ui` |
 | P2 | [x] | Syntax highlighting of output (4_36 per session, Configuration › Terminal globally): None / Standard keywords (OK, warning, error…, IPv4) / Unix shell / Cisco / Perl / SQL, only on cells the program left uncolored, not on the alternate screen. "Customize" dialog: 8 user syntaxes (patterns per Underline / Red … Cyan / Blinking, case-sensitive, regex mode with the linear-time `regex` crate and size limits), samples, import / export (TOML) | `tc-term` + `tc-ui` |
-| P2 | [~] | Activity on background tabs (accent dot); silence alerts pending | `tc-ui` |
+| P2 | [x] | Activity on background tabs (accent dot); "silence alerts" are not in the reference version | `tc-ui` |
 | P2 | [x] | Save / print terminal text (history included; printing through Notepad on Windows, `lp` elsewhere) | `tc-ui` |
-| P2 | [ ] | Separator line on Enter | `tc-term` |
+| P2 | [-] | Separator line on Enter | `tc-term` |
 | P2 | [ ] | GPU renderer (wgpu glyph atlas) | `tc-ui` |
 | P2 | [ ] | Migrate emulator core to `alacritty_terminal` | `tc-term` |
 
@@ -90,7 +90,7 @@ refined against it.
 | P2 | [x] | Aws S3 session (3_2 Key ID; secret access key asked or taken from the password store): buckets and prefixes browsed like folders in the two-pane view, download / upload (single PUT, progress), new folder / empty file, rename (copy + delete), delete (non-empty folders refused); AWS Signature V4 (checked against the AWS test suite), per-bucket region, virtual-hosted style (path style for dotted names) | `tc-net` + `tc-ui` |
 | P2 | [~] | Mosh: mosh-server started over SSH (UDP port, charset, prediction, server path), then the local `mosh-client` with the key in its environment; needs Mosh installed (a built-in Mosh client is pending) | `tc-ui` |
 | P2 | [x] | WSL as local shell and WSL sessions (installed distributions listed, user, startup directory); graphical environments pending (X server) | `tc-pty` + `tc-ui` |
-| P2 | [ ] | Custom shell-script bookmark | `tc-core` |
+| P2 | [-] | Custom shell-script bookmark | `tc-core` |
 | P3 | [x] | Rsh sessions over rlogin (privileged source port when allowed, window size) | `tc-net` |
 | P2 | [x] | File and Browser sessions: open with the default application / browser (only http(s) URLs; values checked so nothing reaches a command line as an option) | `tc-ui` |
 | P3 | [~] | XDMCP session: an external X server queries the display manager (3_5 host or broadcast, 3_3 sender IP, 3_12 screen, 3_14 / 3_15 size): VcXsrv / Xming on Windows, Xephyr on Linux / macOS (arguments validated). The built-in X server is pending | `tc-ui` |
