@@ -133,9 +133,22 @@ impl russh_sftp::server::Handler for SftpFs {
     async fn setstat(
         &mut self,
         id: u32,
-        _path: String,
-        _attrs: FileAttributes,
+        path: String,
+        attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
+        if let Some(mode) = attrs.permissions {
+            let local = self.local(&path);
+            let mut perms = std::fs::metadata(&local).map_err(io_err)?.permissions();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                perms.set_mode(mode & 0o7777);
+            }
+            // Windows only has "read-only": no write bit for the owner.
+            #[cfg(not(unix))]
+            perms.set_readonly(mode & 0o200 == 0);
+            std::fs::set_permissions(&local, perms).map_err(io_err)?;
+        }
         Ok(ok(id))
     }
 

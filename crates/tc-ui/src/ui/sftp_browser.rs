@@ -309,6 +309,80 @@ fn prompt(ui: &mut egui::Ui, view: &mut SftpView, out: &mut Vec<BrowserAction>) 
                 close = true;
             }
         }
+        BrowserPrompt::Permissions { path, mode } => {
+            ui.label(format!("Permissions of {path}"));
+            egui::Grid::new("perm-grid").num_columns(4).show(ui, |ui| {
+                ui.label("");
+                for h in ["Read", "Write", "Execute"] {
+                    ui.label(h);
+                }
+                ui.end_row();
+                for (who, shift) in [("Owner", 6), ("Group", 3), ("Others", 0)] {
+                    ui.label(who);
+                    for bit in [4, 2, 1] {
+                        let mask = bit << shift;
+                        let mut on = *mode & mask != 0;
+                        if ui.checkbox(&mut on, "").changed() {
+                            *mode ^= mask;
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Octal:");
+                let mut octal = format!("{:04o}", *mode & 0o7777);
+                if ui
+                    .add(egui::TextEdit::singleline(&mut octal).desired_width(50.0))
+                    .changed()
+                    && let Ok(v) = u32::from_str_radix(octal.trim(), 8)
+                    && v <= 0o7777
+                {
+                    *mode = v;
+                }
+            });
+            let choice = buttons(ui, false);
+            close |= choice == Some(false);
+            if choice == Some(true) {
+                out.push(BrowserAction::Request(SftpRequest::SetPermissions {
+                    path: path.clone(),
+                    mode: *mode,
+                }));
+                close = true;
+            }
+        }
+        BrowserPrompt::Properties(e) => {
+            egui::Grid::new("props-grid").num_columns(2).show(ui, |ui| {
+                ui.label("Name:");
+                ui.label(&e.name);
+                ui.end_row();
+                ui.label("Location:");
+                ui.label(&cwd);
+                ui.end_row();
+                ui.label("Type:");
+                ui.label(if e.is_dir { "Folder" } else { "File" });
+                ui.end_row();
+                ui.label("Size:");
+                ui.label(format!("{} bytes", e.size));
+                ui.end_row();
+                ui.label("Modified:");
+                ui.label(e.modified.map(format_time).unwrap_or_default());
+                ui.end_row();
+                ui.label("Owner / group:");
+                ui.label(format!(
+                    "{} / {}",
+                    e.owner.as_deref().unwrap_or("?"),
+                    e.group.as_deref().unwrap_or("?")
+                ));
+                ui.end_row();
+                ui.label("Permissions:");
+                ui.monospace(e.permissions.map(access_string).unwrap_or_default());
+                ui.end_row();
+            });
+            if ui.button("Close").clicked() {
+                close = true;
+            }
+        }
         BrowserPrompt::ConfirmDelete(items) => {
             ui.label(format!("Delete {} item(s)?", items.len()));
             for (path, _) in items.iter().take(5) {
@@ -488,10 +562,19 @@ fn context_menu(
         out.push(BrowserAction::TypeInTerminal(shell_quote(&path)));
         ui.close();
     }
-    ui.add_enabled(false, egui::Button::new("Properties"))
-        .on_disabled_hover_text(NOT_YET);
-    ui.add_enabled(false, egui::Button::new("Permissions"))
-        .on_disabled_hover_text(NOT_YET);
+    if ui.button("Properties").clicked() {
+        view.prompt = Some(BrowserPrompt::Properties(e.clone()));
+        ui.close();
+    }
+    if ui.button("Permissions").clicked() {
+        view.prompt = Some(BrowserPrompt::Permissions {
+            path: path.clone(),
+            mode: e
+                .permissions
+                .unwrap_or(if e.is_dir { 0o755 } else { 0o644 }),
+        });
+        ui.close();
+    }
 }
 
 /// Ask where to save, then queue downloads (directories are skipped).

@@ -276,6 +276,14 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                 sftp.rename(from, to).await.map_err(|e| e.to_string())?;
                 Ok(None)
             }
+            SftpRequest::SetPermissions { path, mode } => {
+                let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+                attrs.permissions = Some(mode & 0o7777);
+                sftp.set_metadata(path, attrs)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(None)
+            }
         }
     }
     .await;

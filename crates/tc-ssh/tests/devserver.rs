@@ -556,6 +556,35 @@ fn sftp_browser_operations() {
     };
     assert_eq!(std::fs::read(&back).unwrap(), expected);
 
+    // Permissions: read-only, then writable again.
+    done(
+        &s,
+        s.sftp(SftpRequest::SetPermissions {
+            path: "/text.txt".into(),
+            mode: 0o444,
+        }),
+    );
+    let meta = std::fs::metadata(root.path().join("text.txt")).unwrap();
+    assert!(meta.permissions().readonly());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(meta.permissions().mode() & 0o777, 0o444);
+    }
+    done(
+        &s,
+        s.sftp(SftpRequest::SetPermissions {
+            path: "/text.txt".into(),
+            mode: 0o644,
+        }),
+    );
+    assert!(
+        !std::fs::metadata(root.path().join("text.txt"))
+            .unwrap()
+            .permissions()
+            .readonly()
+    );
+
     // mkdir, rename into it, remove both
     done(&s, s.sftp(SftpRequest::Mkdir("/d".into())));
     done(

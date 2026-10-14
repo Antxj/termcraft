@@ -211,6 +211,14 @@ fn execute(
             ftp.rename(&from, &to).map_err(err)?;
             Ok(FsEvent::Done { id })
         }
+        FsRequest::SetPermissions { path, mode } => {
+            if path.contains(['\r', '\n']) {
+                return Err("invalid path".into());
+            }
+            ftp.site(format!("CHMOD {:o} {path}", mode & 0o7777))
+                .map_err(err)?;
+            Ok(FsEvent::Done { id })
+        }
     }
 }
 

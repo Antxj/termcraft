@@ -43,6 +43,11 @@ pub enum FsRequest {
         from: String,
         to: String,
     },
+    /// "Permissions": set the mode bits (`0o755`…).
+    SetPermissions {
+        path: String,
+        mode: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

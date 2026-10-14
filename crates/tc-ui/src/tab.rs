@@ -189,6 +189,13 @@ pub struct SftpView {
 }
 
 pub enum BrowserPrompt {
+    /// "Permissions": mode bits being edited.
+    Permissions {
+        path: String,
+        mode: u32,
+    },
+    /// "Properties" of an entry.
+    Properties(RemoteEntry),
     /// "Use SUDO for SSH-browser" needs the sudo password (never saved).
     SudoPassword(zeroize::Zeroizing<String>),
     NewFolder(String),
@@ -1452,6 +1459,9 @@ impl Tab {
             SftpRequest::Remove { path, .. } => (format!("Delete {path}"), false),
             SftpRequest::Rename { from, .. } => (format!("Rename {from}"), false),
             SftpRequest::List(p) => (format!("List {p}"), false),
+            SftpRequest::SetPermissions { path, mode } => {
+                (format!("Set permissions {mode:o} on {path}"), false)
+            }
         };
         let Some(id) = self.fs_request(request) else {
             return;
