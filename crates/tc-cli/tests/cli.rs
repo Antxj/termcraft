@@ -5,6 +5,21 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+/// Run `cmd`. On Linux, a test thread that forks while another one is
+/// still writing its copy of the program makes starting that copy fail for
+/// a moment ("Text file busy"): try again.
+fn output(cmd: &mut Command) -> Output {
+    for _ in 0..50 {
+        match cmd.output() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            result => return result.unwrap(),
+        }
+    }
+    panic!("program stays busy");
+}
+
 struct Portable {
     dir: tempfile::TempDir,
     exe: PathBuf,
@@ -21,12 +36,12 @@ impl Portable {
     }
 
     fn run(&self, args: &[&str]) -> Output {
-        Command::new(&self.exe)
-            .args(args)
-            .current_dir(self.dir.path())
-            .env_remove("TERMCRAFT_UPDATE_SECRET")
-            .output()
-            .unwrap()
+        output(
+            Command::new(&self.exe)
+                .args(args)
+                .current_dir(self.dir.path())
+                .env_remove("TERMCRAFT_UPDATE_SECRET"),
+        )
     }
 
     fn ok(&self, args: &[&str]) -> String {
@@ -127,11 +142,11 @@ fn release_signing_round_trip() {
             .status
             .success()
     );
-    let out = Command::new(&cli.exe)
-        .args(["update", "sign", manifest.to_str().unwrap()])
-        .env("TERMCRAFT_UPDATE_SECRET", &secret)
-        .output()
-        .unwrap();
+    let out = output(
+        Command::new(&cli.exe)
+            .args(["update", "sign", manifest.to_str().unwrap()])
+            .env("TERMCRAFT_UPDATE_SECRET", &secret),
+    );
     assert!(out.status.success());
 
     let sig = std::fs::read_to_string(dir.join("stable.json.sig")).unwrap();
