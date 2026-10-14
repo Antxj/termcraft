@@ -62,7 +62,7 @@ fn drive(session: &SshSession, mut answer: impl FnMut(&SshEvent) -> Option<Reply
             .expect("ssh event timeout");
         match &event {
             SshEvent::Output(b) => out.output.push_str(&String::from_utf8_lossy(b)),
-            SshEvent::UnknownHostKey { .. } => out.host_key_prompts += 1,
+            SshEvent::HostKey(_) => out.host_key_prompts += 1,
             SshEvent::SecretNeeded { .. } => out.secret_prompts += 1,
             SshEvent::Error(e) => out.errors.push(e.clone()),
             SshEvent::Closed { exit_status } => {
@@ -83,7 +83,7 @@ fn drive(session: &SshSession, mut answer: impl FnMut(&SshEvent) -> Option<Reply
 
 fn accept_and_login(event: &SshEvent) -> Option<Reply> {
     match event {
-        SshEvent::UnknownHostKey { .. } => Some(Reply::HostKey {
+        SshEvent::HostKey(_) => Some(Reply::HostKey {
             accept: true,
             remember: true,
         }),
@@ -129,7 +129,7 @@ fn wrong_password_then_cancel() {
     let s = SshSession::connect(params(server.port, &known, "echo never"), noop());
     let mut tries = 0;
     let out = drive(&s, |e| match e {
-        SshEvent::UnknownHostKey { .. } => Some(Reply::HostKey {
+        SshEvent::HostKey(_) => Some(Reply::HostKey {
             accept: true,
             remember: false,
         }),
@@ -175,7 +175,7 @@ fn public_key_login() {
 }
 
 #[test]
-fn changed_host_key_is_refused() {
+fn changed_host_key_warns_and_cancel_refuses() {
     let server = start(DevConfig::default());
     let dir = tempfile::tempdir().unwrap();
     let known = dir.path().join("known_hosts");
@@ -190,10 +190,53 @@ fn changed_host_key_is_refused() {
     .unwrap();
 
     let s = SshSession::connect(params(server.port, &known, "echo should-not-run"), noop());
+    let mut changed_line = None;
+    let out = drive(&s, |e| match e {
+        SshEvent::HostKey(info) => {
+            changed_line = info.changed_line;
+            Some(Reply::HostKey {
+                accept: false,
+                remember: false,
+            })
+        }
+        _ => None,
+    });
+    assert_eq!(out.host_key_prompts, 1, "{out:?}");
+    assert!(!out.output.contains("should-not-run"));
+    let saved = std::fs::read_to_string(&known).unwrap();
+    let line = changed_line.expect("the alert names the saved key");
+    let other_b64 = other.public_key().to_openssh().unwrap();
+    let other_b64 = other_b64.split_whitespace().nth(1).unwrap();
+    assert!(saved.lines().nth(line - 1).unwrap().contains(other_b64));
+    assert_eq!(entries(&saved), 1, "cancel leaves known_hosts alone");
+}
+
+#[test]
+fn accepting_a_changed_host_key_replaces_the_old_one() {
+    let server = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let known = dir.path().join("known_hosts");
+    let other = PrivateKey::from(Ed25519Keypair::from_seed(&[7; 32]));
+    russh::keys::known_hosts::learn_known_hosts_path(
+        "127.0.0.1",
+        server.port,
+        other.public_key(),
+        &known,
+    )
+    .unwrap();
+
+    let s = SshSession::connect(params(server.port, &known, "echo replaced-ok"), noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.output.contains("replaced-ok"), "{out:?}");
+    // Next time the new key is known: no question.
+    let s = SshSession::connect(params(server.port, &known, "echo again"), noop());
     let out = drive(&s, accept_and_login);
     assert_eq!(out.host_key_prompts, 0, "{out:?}");
-    assert!(out.errors.iter().any(|e| e.contains("CHANGED")), "{out:?}");
-    assert!(!out.output.contains("should-not-run"));
+    assert_eq!(entries(&std::fs::read_to_string(&known).unwrap()), 1);
+}
+
+fn entries(known_hosts: &str) -> usize {
+    known_hosts.lines().filter(|l| !l.trim().is_empty()).count()
 }
 
 /// Wait for the first event matching `want`, answering prompts on the way.

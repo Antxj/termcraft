@@ -129,7 +129,7 @@ refined against it.
 | P1 | [~] | Master Password dialog (strength meter; prompt only on a new account / computer via a key cached in the keychain, or at every startup). "After unlocking my user session" and OS sign-in (Windows Hello) pending | `tc-vault` + `tc-ui` |
 | P1 | [x] | Named credentials used by sessions as `[name]` in the username field; "Create or manage credentials" button | `tc-vault` + `tc-ui` |
 | P1 | [ ] | Key generator (ed25519 / RSA, OpenSSH + PPK formats) | `tc-vault` |
-| P1 | [x] | Host key validation dialog, known_hosts (OpenSSH format), changed-key refusal | `tc-ssh` |
+| P1 | [x] | Host key validation like the reference (PuTTY alert: Accept / Connect Once / More info / Cancel; "POTENTIAL SECURITY BREACH" on a changed key, Cancel by default, Accept replaces the old known_hosts line); "more information" with SHA256, MD5, full key and paste-to-verify | `tc-ssh` + `tc-ui` |
 | P2 | [ ] | known_hosts management UI | `tc-ssh` |
 
 ## 7. Tunnels and networking

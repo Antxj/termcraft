@@ -6,6 +6,7 @@
 
 pub mod config_window;
 pub mod home;
+pub mod host_key_dialog;
 pub mod menus;
 pub mod passwords_window;
 pub mod session_editor;

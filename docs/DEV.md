@@ -48,6 +48,11 @@ $env:TERMCRAFT_SNAPSHOT_DELAY_MS = "7000"      # optional: settle time
 cargo run -p tc-ui
 ```
 
+Other switches (see `crates/tc-ui/src/snapshot.rs`): `TERMCRAFT_SNAPSHOT_LOCAL_TABS`,
+`TERMCRAFT_SNAPSHOT_WINDOW`, `TERMCRAFT_SNAPSHOT_TUNNELS`, `TERMCRAFT_SNAPSHOT_HOSTKEY`.
+The snapshot window stays below other windows and lets mouse clicks
+pass through, so it cannot catch a click meant for another window.
+
 Run it from a portable folder (with `termcraft.portable`) so your real
 settings are never touched.
 

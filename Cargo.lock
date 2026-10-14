@@ -4966,6 +4966,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
+ "md5",
  "russh",
  "russh-sftp",
  "tc-core",

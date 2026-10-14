@@ -717,54 +717,18 @@ impl TermCraftApp {
     }
 
     /// "Host key validation" for the active tab's pending SSH connection.
+    /// Host key validation for the active tab's pending SSH connection.
     fn host_key_dialog(&mut self, ctx: &egui::Context) {
         let active = self.core.active;
         let Some(tab) = self.core.tabs.iter_mut().find(|t| Some(t.id) == active) else {
             return;
         };
-        let Some(prompt) = &tab.host_key else {
+        let Some(info) = &tab.host_key else {
             return;
         };
-        let mut answer = None;
-        egui::Window::new("Host key validation")
-            .id(egui::Id::new(("host-key", tab.id)))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(ui::icon::SHIELD_WARNING).size(40.0));
-                    ui.vertical(|ui| {
-                        ui.label(format!("The host key of {} is not known yet.", prompt.host));
-                        ui.label("Check the fingerprint before trusting this server.");
-                    });
-                });
-                ui.add_space(6.0);
-                egui::Grid::new("host-key-info")
-                    .num_columns(2)
-                    .show(ui, |ui| {
-                        ui.label("Key type:");
-                        ui.monospace(&prompt.algorithm);
-                        ui.end_row();
-                        ui.label("SHA256 fingerprint:");
-                        ui.monospace(&prompt.fingerprint);
-                        ui.end_row();
-                    });
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Accept and save").clicked() {
-                        answer = Some((true, true));
-                    }
-                    if ui.button("Accept once").clicked() {
-                        answer = Some((true, false));
-                    }
-                    if ui.button("Cancel").clicked() {
-                        answer = Some((false, false));
-                    }
-                });
-            });
-        if let Some((accept, remember)) = answer {
-            tab.answer_host_key(accept, remember);
+        let id = egui::Id::new(("host-key", tab.id));
+        if let Some(a) = ui::host_key_dialog::show(ctx, id, info) {
+            tab.answer_host_key(a.accept, a.remember);
         }
     }
 

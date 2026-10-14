@@ -53,13 +53,6 @@ enum Backend {
     Ftp(tc_net::ftp::FtpSession),
 }
 
-/// An unknown SSH host key waiting for the user's decision.
-pub struct HostKeyPrompt {
-    pub host: String,
-    pub algorithm: String,
-    pub fingerprint: String,
-}
-
 /// State of the SSH-browser (SFTP side panel) for one tab.
 #[derive(Default)]
 pub struct SftpView {
@@ -120,7 +113,8 @@ pub struct Tab {
     pending_ftp: Option<tc_net::ftp::FtpParams>,
     backend: Backend,
     pub status: Option<String>,
-    pub host_key: Option<HostKeyPrompt>,
+    /// SSH host key waiting for the user's decision.
+    pub host_key: Option<Box<tc_ssh::HostKeyInfo>>,
     pub sftp: SftpStatus,
     /// Set once when the SSH-browser becomes ready (the app shows the Sftp tab).
     pub sftp_just_ready: bool,
@@ -616,18 +610,7 @@ impl Tab {
                     }
                 }
                 SshEvent::Info(text) => self.message(&format!("\x1b[90m{text}\x1b[0m")),
-                SshEvent::UnknownHostKey {
-                    host,
-                    port,
-                    algorithm,
-                    fingerprint,
-                } => {
-                    self.host_key = Some(HostKeyPrompt {
-                        host: format!("{host}:{port}"),
-                        algorithm,
-                        fingerprint,
-                    });
-                }
+                SshEvent::HostKey(info) => self.host_key = Some(info),
                 SshEvent::SecretNeeded {
                     prompt,
                     kind,

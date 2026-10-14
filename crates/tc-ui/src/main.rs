@@ -14,13 +14,20 @@ mod ui;
 mod updates;
 
 fn main() -> eframe::Result<()> {
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("TermCraft")
+        .with_inner_size([1100.0, 700.0])
+        .with_min_inner_size([480.0, 320.0]);
+    if std::env::var_os("TERMCRAFT_SNAPSHOT").is_some() {
+        // Snapshot runs must not get in the way of whatever the user is
+        // doing: no focus, below other windows, clicks pass through.
+        viewport = viewport
+            .with_active(false)
+            .with_window_level(egui::WindowLevel::AlwaysOnBottom)
+            .with_mouse_passthrough(true);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("TermCraft")
-            .with_inner_size([1100.0, 700.0])
-            .with_min_inner_size([480.0, 320.0])
-            // Snapshot runs must not steal focus from whatever the user is doing.
-            .with_active(std::env::var_os("TERMCRAFT_SNAPSHOT").is_none()),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

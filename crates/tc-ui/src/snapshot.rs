@@ -9,6 +9,8 @@
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
 //! - `TERMCRAFT_SNAPSHOT_LOCAL_TABS=3` — also open N local terminals
 //! - `TERMCRAFT_SNAPSHOT_WINDOW=config|passwords|credentials|master|master_settings` — open that window
+//! - `TERMCRAFT_SNAPSHOT_HOSTKEY=1` — leave host key questions open (to
+//!   capture the host key dialog)
 //! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start
 //!   every saved tunnel (prompts are answered like for the session)
 
@@ -84,8 +86,9 @@ impl Snapshot {
                 return cmds;
             }
             Phase::Waiting => {
+                let answer_keys = std::env::var_os("TERMCRAFT_SNAPSHOT_HOSTKEY").is_none();
                 if let Some(tab) = active {
-                    if tab.host_key.is_some() {
+                    if answer_keys && tab.host_key.is_some() {
                         tab.answer_host_key(true, false);
                     }
                     if tab.awaiting_secret()
@@ -97,7 +100,7 @@ impl Snapshot {
                     tab.offers.clear();
                 }
                 for t in running.values_mut() {
-                    if t.host_key.is_some() {
+                    if answer_keys && t.host_key.is_some() {
                         t.answer_host_key(true, false);
                     }
                     if t.secret.is_some() {

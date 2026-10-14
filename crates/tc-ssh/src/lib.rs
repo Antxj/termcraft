@@ -77,13 +77,9 @@ pub enum SshEvent {
     Output(Vec<u8>),
     /// Status line for the terminal ("Connecting…", "Authenticated").
     Info(String),
-    /// The server key is not in known_hosts; answer with `Reply::HostKey`.
-    UnknownHostKey {
-        host: String,
-        port: u16,
-        algorithm: String,
-        fingerprint: String,
-    },
+    /// The server key is not in known_hosts, or differs from the saved
+    /// one; answer with `Reply::HostKey`.
+    HostKey(Box<HostKeyInfo>),
     /// A secret is needed (password, keyboard-interactive or key
     /// passphrase) for `user@host:port`; answer with `Reply::Secret`.
     SecretNeeded {
@@ -109,6 +105,75 @@ pub enum SshEvent {
 
 /// Command run on a separate exec channel to find the login shell.
 pub const LOGIN_SHELL_PROBE: &str = "echo \"$SHELL\"";
+
+/// A server host key waiting for the user's decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostKeyInfo {
+    pub host: String,
+    pub port: u16,
+    /// e.g. `ssh-ed25519`.
+    pub algorithm: String,
+    /// `SHA256:…` (base64, as OpenSSH prints it).
+    pub sha256: String,
+    /// Legacy `aa:bb:…` MD5 fingerprint.
+    pub md5: String,
+    /// The full public key, OpenSSH one-line format.
+    pub public_key: String,
+    /// known_hosts line of the *different* key saved for this host.
+    pub changed_line: Option<usize>,
+}
+
+impl HostKeyInfo {
+    fn new(host: &str, port: u16, key: &PublicKey, changed_line: Option<usize>) -> Self {
+        let blob = key.to_bytes().unwrap_or_default();
+        let md5 = md5::compute(&blob)
+            .0
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(":");
+        Self {
+            host: host.to_string(),
+            port,
+            algorithm: key.algorithm().to_string(),
+            sha256: key.fingerprint(HashAlg::Sha256).to_string(),
+            md5,
+            public_key: key.to_openssh().unwrap_or_default(),
+            changed_line,
+        }
+    }
+
+    /// "You can verify the expected host key by pasting it below": does
+    /// `text` (a fingerprint, with or without its prefix, or the public
+    /// key) match this key?
+    pub fn matches(&self, text: &str) -> bool {
+        let t = text.trim();
+        if t.is_empty() {
+            return false;
+        }
+        let sha = self.sha256.trim_start_matches("SHA256:");
+        let t_sha = t.trim_start_matches("SHA256:");
+        let md5 = t.trim_start_matches("MD5:").to_ascii_lowercase();
+        let key_body = |k: &str| k.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+        t_sha == sha || md5 == self.md5 || key_body(t) == key_body(&self.public_key)
+    }
+}
+
+/// Remove line `line` (1-based) from a known_hosts file.
+fn forget_known_host_line(path: &std::path::Path, line: usize) -> std::io::Result<()> {
+    let text = std::fs::read_to_string(path)?;
+    let kept: Vec<&str> = text
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| i + 1 != line)
+        .map(|(_, l)| l)
+        .collect();
+    let mut out = kept.join("\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    std::fs::write(path, out)
+}
 
 /// What a `SecretNeeded` prompt is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,16 +379,11 @@ impl client::Handler for Handler {
         };
         match keys::check_known_hosts_path(&self.host, self.port, key, &self.known_hosts) {
             Ok(true) => Ok(true),
-            Err(keys::Error::KeyChanged { line }) => {
-                self.events.send(SshEvent::Error(format!(
-                    "WARNING: the host key of {}:{} has CHANGED (known_hosts line {line}). \
-                     This may be a man-in-the-middle attack; connection refused.",
-                    self.host, self.port
-                )));
-                Ok(false)
-            }
+            // A different key is saved: warn, and only go on if the user
+            // explicitly accepts (PuTTY "POTENTIAL SECURITY BREACH").
+            Err(keys::Error::KeyChanged { line }) => Ok(self.ask_host_key(key, Some(line)).await),
             // Not recorded yet (or no known_hosts file): ask the user.
-            Ok(false) | Err(_) => Ok(self.ask_host_key(key).await),
+            Ok(false) | Err(_) => Ok(self.ask_host_key(key, None).await),
         }
     }
 
@@ -367,19 +427,23 @@ impl client::Handler for Handler {
 }
 
 impl Handler {
-    async fn ask_host_key(&mut self, key: &PublicKey) -> bool {
-        self.events.send(SshEvent::UnknownHostKey {
-            host: self.host.clone(),
-            port: self.port,
-            algorithm: key.algorithm().to_string(),
-            fingerprint: key.fingerprint(HashAlg::Sha256).to_string(),
-        });
+    async fn ask_host_key(&mut self, key: &PublicKey, changed_line: Option<usize>) -> bool {
+        let info = HostKeyInfo::new(&self.host, self.port, key, changed_line);
+        self.events.send(SshEvent::HostKey(Box::new(info)));
         loop {
             match next_reply(&self.replies).await {
                 Reply::HostKey { accept, remember } => {
                     if accept && remember {
                         if let Some(dir) = self.known_hosts.parent() {
                             let _ = std::fs::create_dir_all(dir);
+                        }
+                        // Replace the old key rather than adding a second one.
+                        if let Some(line) = changed_line
+                            && let Err(e) = forget_known_host_line(&self.known_hosts, line)
+                        {
+                            self.events
+                                .send(SshEvent::Info(format!("could not update known_hosts: {e}")));
+                            return false;
                         }
                         if let Err(e) = keys::known_hosts::learn_known_hosts_path(
                             &self.host,
@@ -758,5 +822,40 @@ async fn keyboard_interactive(
                     .map_err(err)?;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod host_key_tests {
+    use super::*;
+
+    fn info() -> HostKeyInfo {
+        let key = russh::keys::PrivateKey::from(
+            russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7; 32]),
+        );
+        HostKeyInfo::new("h", 22, key.public_key(), None)
+    }
+
+    #[test]
+    fn fingerprints_and_paste_check() {
+        let i = info();
+        assert!(i.sha256.starts_with("SHA256:"));
+        assert_eq!(i.md5.split(':').count(), 16);
+        assert!(i.public_key.starts_with("ssh-ed25519 "));
+        assert!(i.matches(&i.sha256));
+        assert!(i.matches(i.sha256.trim_start_matches("SHA256:")));
+        assert!(i.matches(&i.md5.to_uppercase()));
+        assert!(i.matches(&format!("{} comment", i.public_key)));
+        assert!(!i.matches("SHA256:AAAA"));
+        assert!(!i.matches("  "));
+    }
+
+    #[test]
+    fn forget_line_keeps_the_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("known_hosts");
+        std::fs::write(&p, "a key1\nb key2\nc key3\n").unwrap();
+        forget_known_host_line(&p, 2).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "a key1\nc key3\n");
     }
 }

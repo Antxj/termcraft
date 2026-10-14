@@ -10,12 +10,6 @@ use tc_core::{Tunnel, TunnelKind};
 use tc_ssh::{Endpoint, Reply, SecretKind, SshEvent, SshSession, TunnelParams, TunnelSpec};
 use tc_vault::{Target, Vault};
 
-pub struct HostKeyQuestion {
-    pub host: String,
-    pub algorithm: String,
-    pub fingerprint: String,
-}
-
 pub struct SecretQuestion {
     pub prompt: String,
     pub kind: SecretKind,
@@ -28,7 +22,7 @@ pub struct RunningTunnel {
     session: SshSession,
     pub status: String,
     pub listening: bool,
-    pub host_key: Option<HostKeyQuestion>,
+    pub host_key: Option<Box<tc_ssh::HostKeyInfo>>,
     pub secret: Option<SecretQuestion>,
     pub closed: bool,
     credentials: Credentials,
@@ -94,18 +88,7 @@ impl RunningTunnel {
         for event in events {
             match event {
                 SshEvent::Info(text) => self.status = text,
-                SshEvent::UnknownHostKey {
-                    host,
-                    port,
-                    algorithm,
-                    fingerprint,
-                } => {
-                    self.host_key = Some(HostKeyQuestion {
-                        host: format!("{host}:{port}"),
-                        algorithm,
-                        fingerprint,
-                    });
-                }
+                SshEvent::HostKey(info) => self.host_key = Some(info),
                 SshEvent::SecretNeeded {
                     prompt,
                     kind,

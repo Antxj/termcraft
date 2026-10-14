@@ -274,30 +274,11 @@ impl TunnelEditor {
 /// Host key and password questions of running tunnels.
 pub fn prompts(ctx: &egui::Context, running: &mut BTreeMap<TunnelId, RunningTunnel>) {
     for (id, t) in running.iter_mut() {
-        if let Some(q) = &t.host_key {
-            let mut answer = None;
-            egui::Window::new(format!("Host key validation — tunnel {}", t.name))
-                .id(egui::Id::new(("tunnel-hk", *id)))
-                .collapsible(false)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.label(format!("The host key of {} is not known yet.", q.host));
-                    ui.monospace(format!("{}  {}", q.algorithm, q.fingerprint));
-                    ui.horizontal(|ui| {
-                        if ui.button("Accept and save").clicked() {
-                            answer = Some((true, true));
-                        }
-                        if ui.button("Accept once").clicked() {
-                            answer = Some((true, false));
-                        }
-                        if ui.button("Cancel").clicked() {
-                            answer = Some((false, false));
-                        }
-                    });
-                });
-            if let Some((accept, remember)) = answer {
-                t.answer_host_key(accept, remember);
-            }
+        if let Some(info) = &t.host_key
+            && let Some(a) =
+                super::host_key_dialog::show(ctx, egui::Id::new(("tunnel-hk", *id)), info)
+        {
+            t.answer_host_key(a.accept, a.remember);
         }
         if let Some(q) = &mut t.secret {
             let mut answer = None;
