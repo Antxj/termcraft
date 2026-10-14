@@ -260,6 +260,7 @@ pub fn tools_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
 /// Tools that are implemented.
 pub fn tool_action(name: &str) -> Option<Action> {
     match name {
+        "Network services" => Some(Action::Servers),
         "SSH tunnels (port forwarding)" => Some(Action::Tunnels),
         "SSH key generator" => Some(Action::KeyGenerator),
         _ => None,
