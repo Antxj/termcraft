@@ -253,7 +253,12 @@ impl Tab {
     }
 
     pub(super) fn spawn_local(&mut self, program: Option<&str>, shell: LocalShell, env: &TabEnv) {
-        let windows_path = env.use_windows_path;
+        // 4_5 "Use Windows PATH" of the session, else the global setting.
+        let windows_path = self
+            .session
+            .as_ref()
+            .and_then(|s| s.options.get("4_5"))
+            .map_or(env.use_windows_path, |v| schema::is_true(v));
         let command = match program {
             Some(p) => tc_pty::ShellCommand {
                 program: p.to_string(),
