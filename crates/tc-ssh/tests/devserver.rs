@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tc_devserver::{DEV_PASSWORD, DEV_USER, DevConfig, bind};
-use tc_ssh::{ConnectParams, Reply, SshEvent, SshSession};
+use tc_ssh::{ConnectParams, Reply, SecretKind, SshEvent, SshSession};
 
 struct Server {
     _rt: tokio::runtime::Runtime,
@@ -220,6 +220,35 @@ fn agent_login() {
     let out = drive(&s, accept_and_login);
     assert_eq!(out.secret_prompts, 0, "{out:?}");
     assert!(out.output.contains("via-agent"), "{out:?}");
+}
+
+/// A PuTTY key file with a passphrase (written by the key generator).
+#[test]
+fn encrypted_ppk_key_login() {
+    let key = tc_ssh::keygen::generate(tc_ssh::keygen::KeyKind::Ed25519, "ppk-test").unwrap();
+    let server = start(DevConfig {
+        authorized_keys: vec![key.public_key().clone()],
+        ..DevConfig::default()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("id.ppk");
+    std::fs::write(
+        &key_path,
+        tc_ssh::keygen::to_ppk(&key, Some("pp")).unwrap().as_bytes(),
+    )
+    .unwrap();
+    let mut p = params(server.port, &dir.path().join("known_hosts"), "echo via-ppk");
+    p.private_key = Some(key_path);
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, |e| match e {
+        SshEvent::SecretNeeded {
+            kind: SecretKind::KeyPassphrase,
+            ..
+        } => Some(Reply::Secret("pp".into())),
+        other => accept_and_login(other),
+    });
+    assert_eq!(out.secret_prompts, 1, "only the passphrase: {out:?}");
+    assert!(out.output.contains("via-ppk"), "{out:?}");
 }
 
 #[test]

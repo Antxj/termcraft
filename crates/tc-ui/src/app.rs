@@ -204,6 +204,7 @@ pub struct TermCraftApp {
     passwords: crate::ui::passwords_window::PasswordsUi,
     /// "Hotkeys edition" window.
     show_hotkeys: bool,
+    keygen: crate::ui::keygen_window::KeygenWindow,
     /// Loopback control channel (other processes send commands).
     control: Option<crate::control_server::ControlServer>,
     /// Commands from the command line, run on the first frame.
@@ -286,6 +287,7 @@ impl TermCraftApp {
             show_about: false,
             passwords: Default::default(),
             show_hotkeys: false,
+            keygen: Default::default(),
             control: None,
             startup,
             show_config: false,
@@ -427,6 +429,7 @@ impl TermCraftApp {
                 return;
             }
             Action::KeyboardShortcuts => return self.show_hotkeys = true,
+            Action::KeyGenerator => return self.keygen.open = true,
             Action::SetTabColor(id, color) => {
                 if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
                     tab.color = color;
@@ -733,6 +736,7 @@ impl TermCraftApp {
         crate::ui::tunnels_window::prompts(ctx, &mut self.core.running);
         self.save_password_dialog(ctx);
         self.paste_confirm_dialog(ctx);
+        self.keygen.show(ctx);
         if self.show_hotkeys
             && crate::ui::hotkeys_window::show(
                 ctx,
@@ -1377,6 +1381,7 @@ impl eframe::App for TermCraftApp {
                 Some("master") => self.passwords.ask_unlock(),
                 Some("credentials") => self.passwords.open_credentials(),
                 Some("hotkeys") => self.show_hotkeys = true,
+                Some("keygen") => self.keygen.open = true,
                 Some(w) if w.starts_with("new_session") => {
                     let index = w
                         .split(':')

@@ -10,11 +10,13 @@
 //! Both kinds of session can go through an SSH gateway (jump host).
 
 pub mod agent;
+pub mod keygen;
 pub mod proxy;
 pub mod sftp;
 pub mod tunnel;
 
 pub use agent::AgentConfig;
+pub use russh::keys::PrivateKey;
 pub use sftp::{RemoteEntry, SftpEvent, SftpRequest};
 pub use tunnel::{TunnelParams, TunnelSpec};
 
@@ -864,6 +866,32 @@ async fn login_shell(session: &client::Handle<Handler>) -> Option<String> {
         .map(String::from)
 }
 
+enum KeyLoad {
+    Encrypted,
+    Failed(String),
+}
+
+/// A private key file: PuTTY `.ppk` through [`keygen`], the OpenSSH and
+/// PEM formats through russh.
+fn load_key_file(path: &std::path::Path, pass: Option<&str>) -> Result<keys::PrivateKey, KeyLoad> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    if text.trim_start().starts_with("PuTTY-User-Key-File-") {
+        return match keygen::load(&text, pass) {
+            Ok(k) => Ok(k),
+            Err(keygen::LoadError::NeedsPassphrase) => Err(KeyLoad::Encrypted),
+            Err(keygen::LoadError::Invalid(e)) if pass.is_some() && e == "wrong passphrase" => {
+                Err(KeyLoad::Encrypted)
+            }
+            Err(keygen::LoadError::Invalid(e)) => Err(KeyLoad::Failed(e)),
+        };
+    }
+    match keys::load_secret_key(path, pass) {
+        Ok(k) => Ok(k),
+        Err(keys::Error::KeyIsEncrypted) => Err(KeyLoad::Encrypted),
+        Err(e) => Err(KeyLoad::Failed(e.to_string())),
+    }
+}
+
 /// Key file, then the SSH agents, then password / keyboard-interactive.
 async fn authenticate(
     session: &mut client::Handle<Handler>,
@@ -876,19 +904,23 @@ async fn authenticate(
     let err = |e: russh::Error| format!("authentication error: {e}");
 
     if let Some(path) = &endpoint.private_key {
-        let key = match keys::load_secret_key(path, None) {
+        let key = match load_key_file(path, None) {
             Ok(k) => Some(k),
-            Err(keys::Error::KeyIsEncrypted) => {
+            Err(KeyLoad::Encrypted) => {
                 let prompt = format!("Passphrase for key {}:", path.display());
                 match ask_secret(events, replies, endpoint, prompt, SecretKind::KeyPassphrase).await
                 {
-                    Some(pass) => keys::load_secret_key(path, Some(&pass))
-                        .map_err(|e| format!("cannot load key {}: {e}", path.display()))
-                        .map(Some)?,
+                    Some(pass) => match load_key_file(path, Some(&pass)) {
+                        Ok(k) => Some(k),
+                        Err(KeyLoad::Encrypted) => return Err("wrong passphrase".into()),
+                        Err(KeyLoad::Failed(e)) => {
+                            return Err(format!("cannot load key {}: {e}", path.display()));
+                        }
+                    },
                     None => return Err("cancelled".into()),
                 }
             }
-            Err(e) => {
+            Err(KeyLoad::Failed(e)) => {
                 events.send(SshEvent::Info(format!(
                     "cannot load key {}: {e}",
                     path.display()

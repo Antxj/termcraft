@@ -4968,12 +4968,17 @@ name = "tc-ssh"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "argon2",
  "base64",
  "crossbeam-channel",
  "futures",
+ "hex",
+ "hmac",
  "md5",
+ "rand_core",
  "russh",
  "russh-sftp",
+ "sha2",
  "tc-core",
  "tc-devserver",
  "tempfile",
