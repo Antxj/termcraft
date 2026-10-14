@@ -186,7 +186,8 @@ impl TermCraftApp {
     pub fn new(cc: &eframe::CreationContext<'_>, startup: crate::control_server::Startup) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-        cc.egui_ctx.set_fonts(fonts);
+        cc.egui_ctx.set_fonts(fonts.clone());
+        crate::term_fonts::init(fonts);
 
         let paths = Paths::resolve();
         let mut status = String::new();

@@ -584,6 +584,11 @@ impl SessionEditor {
                 });
             return;
         }
+        // "Font name": the built-in font or an installed monospace one.
+        if p.id == "4_1" {
+            crate::term_fonts::combo(ui, "session-font", value);
+            return;
+        }
         // "Execute macro at session start": one of the saved macros.
         if p.id == "4_38" {
             let none = crate::app::NO_MACRO;

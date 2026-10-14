@@ -51,8 +51,20 @@ fn show_inner(
     opts: &TerminalSettings,
 ) -> TermOutput {
     let mut out = TermOutput::default();
-    let font = FontId::monospace(tab.font_size.unwrap_or(global_font_size));
-    let (cell_w, cell_h) = ui.fonts_mut(|f| (f.glyph_width(&font, 'M'), f.row_height(&font)));
+    let family = crate::term_fonts::family(
+        ui.ctx(),
+        tab.font_name.as_deref().unwrap_or(&opts.font_name),
+        tab.font_bold.unwrap_or(opts.font_bold),
+    );
+    let mut font = FontId::new(tab.font_size.unwrap_or(global_font_size), family);
+    let measure = |ui: &egui::Ui, font: &FontId| {
+        ui.fonts_mut(|f| (f.glyph_width(font, 'M'), f.row_height(font)))
+    };
+    let (mut cell_w, mut cell_h) = measure(ui, &font);
+    let fixed = tab.fixed_grid.unwrap_or_else(|| {
+        opts.fixed_grid
+            .then_some((opts.fixed_cols, opts.fixed_rows))
+    });
 
     let available = ui.available_size();
     let (area, response) = ui.allocate_exact_size(available, Sense::click_and_drag());
@@ -66,8 +78,20 @@ fn show_inner(
     } else {
         (area, None)
     };
-    let cols = ((rect.width() / cell_w).floor() as u16).max(2);
-    let rows = ((rect.height() / cell_h).floor() as u16).max(1);
+    let (cols, rows) = match fixed {
+        // "Force fixed rows / columns": the font size fits the grid.
+        Some((cols, rows)) => {
+            let scale = (rect.width() / (f32::from(cols) * cell_w))
+                .min(rect.height() / (f32::from(rows) * cell_h));
+            font.size = (font.size * scale).clamp(4.0, 96.0).floor();
+            (cell_w, cell_h) = measure(ui, &font);
+            (cols.max(2), rows.max(1))
+        }
+        None => (
+            ((rect.width() / cell_w).floor() as u16).max(2),
+            ((rect.height() / cell_h).floor() as u16).max(1),
+        ),
+    };
     tab.resize(rows, cols);
 
     // Focus follows the active terminal unless another widget holds it.

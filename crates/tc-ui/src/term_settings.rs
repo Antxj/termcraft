@@ -8,6 +8,12 @@ pub struct TermSettings {
     pub theme: Theme,
     /// Font size in pixels; `None` = global setting.
     pub font_px: Option<f32>,
+    /// 4_1 font name / 4_3 bold, when the session sets them.
+    pub font_name: Option<String>,
+    pub font_bold: Option<bool>,
+    /// 4_35 "Force fixed rows/columns on resize" with 4_33 columns and
+    /// 4_34 rows, when the session sets it (`Some(None)` = off).
+    pub fixed_grid: Option<Option<(u16, u16)>>,
     pub backspace_sends_ctrl_h: bool,
     /// `TERM` for remote shells when set explicitly in the session.
     pub term_type: Option<String>,
@@ -30,6 +36,9 @@ pub fn for_session(session: Option<&Session>) -> TermSettings {
         return TermSettings {
             theme: Theme::default(),
             font_px: None,
+            font_name: None,
+            font_bold: None,
+            fixed_grid: None,
             backspace_sends_ctrl_h: false,
             term_type: None,
         };
@@ -68,9 +77,21 @@ pub fn for_session(session: Option<&Session>) -> TermSettings {
         .ok()
         .filter(|pt| (4.0..=72.0).contains(pt))
         .map(|pt| pt * 4.0 / 3.0);
+    let explicit = |id: &str| session.options.get(id).map(|v| v.trim().to_string());
+    let number = |id: &str, default: u16| {
+        value(id)
+            .parse::<u16>()
+            .ok()
+            .filter(|n| (2..=1000).contains(n))
+            .unwrap_or(default)
+    };
     TermSettings {
         theme,
         font_px,
+        font_name: explicit("4_1").filter(|n| !n.is_empty()),
+        font_bold: explicit("4_3").map(|v| schema::is_true(&v)),
+        fixed_grid: explicit("4_35")
+            .map(|v| schema::is_true(&v).then(|| (number("4_33", 80), number("4_34", 24)))),
         backspace_sends_ctrl_h: schema::is_true(&value("4_11")),
         // Only an explicit choice overrides TermCraft's xterm-256color.
         term_type: session

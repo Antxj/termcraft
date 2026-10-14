@@ -53,7 +53,7 @@ refined against it.
 | P0 | [x] | Local shell tab (ConPTY on Windows, PTY on Unix) | `tc-pty` |
 | P0 | [~] | Scrollback (Shift+PgUp/PgDn/Home/End) | `tc-term` |
 | P0 | [x] | Mouse selection (drag, double-click word, triple-click line, Ctrl+Alt block), "Copy on select", right-click paste, Ctrl+Insert / Shift+Insert, Ctrl+Shift+C / V (Cmd on macOS); Ctrl+C / X / V reach the program as ^C / ^X / ^V | `tc-term` + `tc-ui` |
-| P1 | [x] | Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size | `tc-term` + `tc-ui` |
+| P1 | [x] | Terminal font (TFORMFONTSELECTOR): the built-in font or any installed monospace font (indexed in the background from the system font folders, reading only the name / post / OS/2 / head tables), "Bold", "Force fixed rows / columns number" (the font size follows the window), globally and per session (4_1, 4_3, 4_35 / 4_33 / 4_34); a missing font (such as an imported "MobaFont") falls back to the built-in one. Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size. Font charset, antialiasing and ligatures switches pending | `tc-term` + `tc-ui` |
 | P1 | [x] | Charset selection (4_6 "Term charset", all 41 choices): output decoded to UTF-8, typed / pasted text encoded back (`?` when unmappable); ISO-8859-x, KOI8, GBK, Big5, SJIS, EUC-KR, Windows-125x, CP437/850/852, HP-Roman8, DEC-MCS. CP620 (Mazovia) and VSCII fall back to ISO-8859-1 | `tc-term` |
 | P1 | [x] | Backspace behavior (^H / ^?) and terminal type (TERM) per session | `tc-ui` |
 | P1 | [x] | Find in terminal / Find next (F3): upwards through the history, match case, the match is selected and scrolled into view | `tc-term` + `tc-ui` |

@@ -181,8 +181,26 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
         .num_columns(2)
         .spacing([12.0, 8.0])
         .show(ui, |ui| {
+            ui.label("Font:");
+            ui.horizontal(|ui| {
+                crate::term_fonts::combo(ui, "cfg-font", &mut t.font_name);
+                ui.checkbox(&mut t.font_bold, "Bold")
+                    .on_hover_text("Always draw the terminal with the bold face");
+            });
+            ui.end_row();
             ui.label("Default font size (px):");
             ui.add(egui::Slider::new(&mut t.font_size, 8.0..=32.0).step_by(1.0));
+            ui.end_row();
+            ui.checkbox(&mut t.fixed_grid, "Force fixed rows / columns number:")
+                .on_hover_text(
+                    "Number of rows and columns will be kept upon resize: only font size will change.",
+                );
+            ui.horizontal(|ui| {
+                ui.label("Columns:");
+                ui.add(egui::DragValue::new(&mut t.fixed_cols).range(20..=500));
+                ui.label("x");
+                ui.add(egui::DragValue::new(&mut t.fixed_rows).range(5..=200));
+            });
             ui.end_row();
             ui.label("Scrollback lines:");
             ui.add(

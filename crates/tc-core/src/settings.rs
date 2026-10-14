@@ -546,6 +546,15 @@ impl Default for ViewSettings {
 #[serde(default)]
 pub struct TerminalSettings {
     pub font_size: f32,
+    /// Terminal font: an installed monospace family (empty = built-in).
+    pub font_name: String,
+    /// "Bold": always draw with the bold face.
+    pub font_bold: bool,
+    /// "Force fixed rows / columns number": the font size follows the
+    /// window instead of the grid.
+    pub fixed_grid: bool,
+    pub fixed_cols: u16,
+    pub fixed_rows: u16,
     pub scrollback_lines: usize,
     /// "Close prompt": confirm before exiting with sessions open.
     pub confirm_exit: bool,
@@ -805,6 +814,11 @@ impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
             font_size: 14.0,
+            font_name: String::new(),
+            font_bold: false,
+            fixed_grid: false,
+            fixed_cols: 80,
+            fixed_rows: 24,
             scrollback_lines: 10_000,
             confirm_exit: true,
             paste_right_click: true,

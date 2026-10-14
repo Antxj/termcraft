@@ -227,6 +227,10 @@ pub struct Tab {
     pub term: Terminal,
     /// Font size from the session (px); `None` = global setting.
     pub font_size: Option<f32>,
+    /// Session font (name / bold / fixed grid); `None` = global settings.
+    pub font_name: Option<String>,
+    pub font_bold: Option<bool>,
+    pub fixed_grid: Option<Option<(u16, u16)>>,
     pub backspace_sends_ctrl_h: bool,
     pub paste_right_click: bool,
     ssh_settings: tc_core::settings::SshSettings,
@@ -356,6 +360,9 @@ impl Tab {
             session,
             term: Terminal::new(INITIAL_ROWS, INITIAL_COLS, env.scrollback),
             font_size: None,
+            font_name: None,
+            font_bold: None,
+            fixed_grid: None,
             backspace_sends_ctrl_h: false,
             paste_right_click: env.paste_right_click,
             ssh_settings: env.ssh.clone(),
@@ -419,6 +426,9 @@ impl Tab {
         let settings = crate::term_settings::for_session(tab.session.as_ref());
         tab.term.theme = settings.theme;
         tab.font_size = settings.font_px;
+        tab.font_name = settings.font_name;
+        tab.font_bold = settings.font_bold;
+        tab.fixed_grid = settings.fixed_grid;
         tab.backspace_sends_ctrl_h = if tab.session.is_some() {
             settings.backspace_sends_ctrl_h
         } else {
