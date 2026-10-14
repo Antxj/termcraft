@@ -202,6 +202,8 @@ pub struct TermCraftApp {
     show_import: bool,
     show_about: bool,
     passwords: crate::ui::passwords_window::PasswordsUi,
+    /// "Hotkeys edition" window.
+    show_hotkeys: bool,
     show_config: bool,
     config_tab: crate::ui::config_window::ConfigTab,
     /// "Close prompt" waiting for an answer.
@@ -279,6 +281,7 @@ impl TermCraftApp {
             show_import: false,
             show_about: false,
             passwords: Default::default(),
+            show_hotkeys: false,
             show_config: false,
             config_tab: Default::default(),
             confirm_exit: false,
@@ -404,6 +407,16 @@ impl TermCraftApp {
                 return;
             }
             Action::SelectTab(id) => return self.core.active = Some(id),
+            Action::CycleTab(step) => {
+                let tabs = &self.core.tabs;
+                if let Some(i) = tabs.iter().position(|t| Some(t.id) == self.core.active) {
+                    let n = tabs.len() as i64;
+                    let next = (i as i64 + i64::from(step)).rem_euclid(n) as usize;
+                    self.core.active = Some(tabs[next].id);
+                }
+                return;
+            }
+            Action::KeyboardShortcuts => return self.show_hotkeys = true,
             Action::SetTabColor(id, color) => {
                 if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
                     tab.color = color;
@@ -682,6 +695,16 @@ impl TermCraftApp {
         crate::ui::tunnels_window::prompts(ctx, &mut self.core.running);
         self.save_password_dialog(ctx);
         self.paste_confirm_dialog(ctx);
+        if self.show_hotkeys
+            && crate::ui::hotkeys_window::show(
+                ctx,
+                &mut self.show_hotkeys,
+                &mut self.core.settings.hotkeys,
+            )
+            && let Err(e) = self.core.save_settings()
+        {
+            self.status = format!("could not save settings: {e}");
+        }
         self.passwords_window(ctx, out);
         self.host_key_dialog(ctx);
         if let Some(editor) = &mut self.editor {
@@ -1243,12 +1266,12 @@ impl eframe::App for TermCraftApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         apply_view(&ctx, &self.core.settings.view);
-        if ctx.input(|i| i.key_pressed(egui::Key::F3))
-            && let Some(tab) = self.core.active_tab_mut()
-            && tab.find.is_some()
-        {
-            find_next(tab);
-        }
+        // Shortcuts first, so the terminal never sees their keys.
+        let shortcuts = crate::ui::hotkeys_window::take_shortcuts(
+            &ctx,
+            &self.core.settings.hotkeys,
+            self.core.active,
+        );
         // The window close button goes through the same "Close prompt".
         if ctx.input(|i| i.viewport().close_requested()) && !self.exit_confirmed {
             // Snapshot runs close themselves without asking.
@@ -1311,6 +1334,7 @@ impl eframe::App for TermCraftApp {
                 Some("passwords") => self.passwords.open = true,
                 Some("master") => self.passwords.ask_unlock(),
                 Some("credentials") => self.passwords.open_credentials(),
+                Some("hotkeys") => self.show_hotkeys = true,
                 Some(w) if w.starts_with("new_session") => {
                     let index = w
                         .split(':')
@@ -1338,7 +1362,7 @@ impl eframe::App for TermCraftApp {
             }
         }
 
-        let mut out = Vec::new();
+        let mut out = shortcuts;
         let view = self.core.settings.view.clone();
 
         if view.show_menu_bar {

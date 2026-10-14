@@ -8,6 +8,9 @@ pub struct Settings {
     pub view: ViewSettings,
     pub passwords: PasswordSettings,
     pub ssh: SshSettings,
+    /// Keyboard shortcuts changed from their defaults: action id →
+    /// hotkey (`<none>` removes one). See `crate::hotkeys`.
+    pub hotkeys: std::collections::BTreeMap<String, String>,
 }
 
 /// Configuration › SSH.

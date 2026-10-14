@@ -7,6 +7,7 @@
 pub mod config_window;
 pub mod home;
 pub mod host_key_dialog;
+pub mod hotkeys_window;
 pub mod menus;
 pub mod monitor_bar;
 pub mod passwords_window;
@@ -56,6 +57,10 @@ pub enum Action {
     SetTabColor(u64, Option<[u8; 3]>),
     TogglePin(u64),
     SelectTab(u64),
+    /// Next (+1) / previous (-1) tab.
+    CycleTab(i32),
+    /// Settings › Keyboard shortcuts.
+    KeyboardShortcuts,
     QuickConnect(String),
     ZoomIn,
     ZoomOut,
