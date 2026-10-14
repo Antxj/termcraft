@@ -234,6 +234,9 @@ pub struct TermCraftApp {
     show_expert: bool,
     /// Built-in text editor.
     text_editor: crate::ui::text_editor::TextEditor,
+    /// Shared sessions (read-only) and their management window.
+    shared: crate::shared::SharedSessions,
+    shared_window: Option<crate::ui::shared_window::SharedWindow>,
     diff_tool: crate::ui::diff_window::DiffWindow,
     ascii_table: crate::ui::diff_window::AsciiTable,
     /// "Servers management" window and its page.
@@ -341,6 +344,8 @@ impl TermCraftApp {
             syntax_window: None,
             show_expert: false,
             text_editor: Default::default(),
+            shared: Default::default(),
+            shared_window: None,
             diff_tool: Default::default(),
             ascii_table: Default::default(),
             show_servers: false,
@@ -387,6 +392,9 @@ impl TermCraftApp {
             }
         }
         app.unlock_vault_at_startup();
+        // Shared sessions are read in the background at start-up.
+        app.shared
+            .refresh(&app.core.settings.shared_sessions, app.core.repaint.clone());
         app.autostart_tunnels();
         app
     }
@@ -459,6 +467,25 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::OpenSharedSession(session) => {
+                if let Err(e) = self.core.tab_open(Some(*session)) {
+                    self.status = e.to_string();
+                }
+                return;
+            }
+            Action::RefreshShared => {
+                self.shared.refresh(
+                    &self.core.settings.shared_sessions,
+                    self.core.repaint.clone(),
+                );
+                return;
+            }
+            Action::ManageShared => {
+                self.shared_window = Some(crate::ui::shared_window::SharedWindow::new(
+                    &self.core.settings.shared_sessions,
+                ));
+                return;
+            }
             Action::DiffTool => {
                 self.diff_tool.open = true;
                 return;
@@ -997,6 +1024,25 @@ impl TermCraftApp {
             .collect();
         if let Some(file) = compares.last() {
             self.diff_tool.compare_with(file);
+        }
+        self.shared.poll();
+        if let Some(window) = &mut self.shared_window {
+            use crate::ui::shared_window::Outcome;
+            match window.show(ctx) {
+                Outcome::Pending => {}
+                Outcome::Cancel => self.shared_window = None,
+                Outcome::Apply(entries) => {
+                    self.core.settings.shared_sessions = entries;
+                    self.shared_window = None;
+                    if let Err(e) = self.core.save_settings() {
+                        self.status = format!("could not save settings: {e}");
+                    }
+                    self.shared.refresh(
+                        &self.core.settings.shared_sessions,
+                        self.core.repaint.clone(),
+                    );
+                }
+            }
         }
         self.text_editor.show(ctx);
         self.diff_tool.show(ctx);
@@ -2042,6 +2088,7 @@ impl eframe::App for TermCraftApp {
             let quick = &mut self.quick_connect;
             let macros = &self.core.macros.macros;
             let recording = self.recording.is_some();
+            let (shared, shared_loading) = (&self.shared.groups, self.shared.is_loading());
             let active = self.core.active;
             let active_tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
             side("sidebar")
@@ -2057,6 +2104,8 @@ impl eframe::App for TermCraftApp {
                         list: sessions,
                         open: &open_sessions,
                         dots: view.session_dots,
+                        shared,
+                        shared_loading,
                     };
                     sidebar::content(ui, quick, &view, sessions, macros, active_tab, &mut out)
                 });

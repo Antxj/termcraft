@@ -11,9 +11,44 @@ pub struct Settings {
     pub general: GeneralSettings,
     /// "Servers" (network services) settings.
     pub servers: ServersSettings,
+    /// "Shared sessions locations".
+    pub shared_sessions: Vec<SharedSessionsEntry>,
     /// Keyboard shortcuts changed from their defaults: action id →
     /// hotkey (`<none>` removes one). See `crate::hotkeys`.
     pub hotkeys: std::collections::BTreeMap<String, String>,
+}
+
+/// A shared sessions location ("Shared sessions management").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SharedSessionsEntry {
+    /// "Tree folder name".
+    pub name: String,
+    pub backend: SharedBackend,
+    /// "File path or URL" of the MobaXterm sessions file.
+    pub location: String,
+}
+
+/// "Backend protocol" of a shared sessions location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SharedBackend {
+    /// "shared folder": a file path (network share, synced folder…).
+    #[default]
+    Folder,
+    /// "http / https": a URL.
+    Http,
+}
+
+impl SharedBackend {
+    pub const ALL: [SharedBackend; 2] = [Self::Folder, Self::Http];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Folder => "shared folder",
+            Self::Http => "http / https",
+        }
+    }
 }
 
 /// "Servers management" (reference `TFORMSERVICES`): one entry per

@@ -97,6 +97,9 @@ pub struct Sessions<'a> {
     pub folders: &'a std::collections::BTreeSet<String>,
     /// "Show green/orange buttons next to each open session".
     pub dots: bool,
+    /// Shared sessions (read-only), by location.
+    pub shared: &'a [crate::shared::Group],
+    pub shared_loading: bool,
 }
 
 /// What the Macros tab shows.
@@ -175,6 +178,77 @@ fn session_tree(ui: &mut egui::Ui, sessions: &Sessions<'_>, filter: &str, out: &
         .show(ui, |ui| draw_folder(ui, &root, "", sessions, out));
     drop_target(ui, &header.header_response, "", out);
     header.header_response.context_menu(|ui| root_menu(ui, out));
+    shared_tree(ui, sessions, filter, out);
+}
+
+/// "Shared sessions": read-only lists, opened as copies.
+fn shared_tree(ui: &mut egui::Ui, sessions: &Sessions<'_>, filter: &str, out: &mut Vec<Action>) {
+    if sessions.shared.is_empty() && !sessions.shared_loading {
+        return;
+    }
+    let header =
+        egui::CollapsingHeader::new(format!("{}  Shared sessions", icon::USERS))
+            .id_salt("shared-sessions")
+            .default_open(true)
+            .show(ui, |ui| {
+                if sessions.shared_loading {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.weak("Refreshing…");
+                    });
+                }
+                for group in sessions.shared {
+                    egui::CollapsingHeader::new(format!("{}  {}", icon::FOLDER, group.name))
+                        .id_salt(("shared-group", group.name.as_str()))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            if let Some(e) = &group.error {
+                                ui.colored_label(ui.visuals().warn_fg_color, e);
+                            }
+                            for s in group.sessions.iter().filter(|s| {
+                                filter.is_empty() || s.name.to_lowercase().contains(filter)
+                            }) {
+                                let label = session_icons::label(s, ui);
+                                let mut row = ui.add(egui::Button::selectable(false, label));
+                                if !s.folder.is_empty() {
+                                    row = row.on_hover_text(&s.folder);
+                                }
+                                if row.double_clicked() {
+                                    out.push(Action::OpenSharedSession(Box::new(s.clone())));
+                                }
+                                row.context_menu(|ui| {
+                                    item(
+                                        ui,
+                                        "Execute",
+                                        Some(Action::OpenSharedSession(Box::new(s.clone()))),
+                                        out,
+                                    );
+                                    ui.separator();
+                                    item(
+                                        ui,
+                                        "Refresh shared sessions",
+                                        Some(Action::RefreshShared),
+                                        out,
+                                    );
+                                });
+                            }
+                        });
+                }
+            });
+    header.header_response.context_menu(|ui| {
+        item(
+            ui,
+            "Refresh shared sessions",
+            Some(Action::RefreshShared),
+            out,
+        );
+        item(
+            ui,
+            "Manage existing shared sessions",
+            Some(Action::ManageShared),
+            out,
+        );
+    });
 }
 
 /// A folder (or session row) where a dragged session can be dropped.
@@ -345,6 +419,26 @@ fn root_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
         Some(Action::ExportSessions(None)),
         out,
     );
+    ui.separator();
+    item(
+        ui,
+        "Refresh shared sessions",
+        Some(Action::RefreshShared),
+        out,
+    );
+    item(
+        ui,
+        "Share these sessions with my team",
+        Some(Action::ManageShared),
+        out,
+    );
+    item(
+        ui,
+        "Manage existing shared sessions",
+        Some(Action::ManageShared),
+        out,
+    );
+    ui.separator();
     ui.menu_button("Import sessions from third-party programs", |ui| {
         let wsl = cfg!(windows).then_some(Action::Run(Command::SessionImportWsl {}));
         item(ui, "Import WSL sessions", wsl, out);

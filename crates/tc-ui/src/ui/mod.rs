@@ -21,6 +21,7 @@ pub mod servers_window;
 pub mod session_editor;
 pub mod session_icons;
 pub mod sftp_browser;
+pub mod shared_window;
 pub mod sidebar;
 pub mod syntax_window;
 pub mod tabbar;
@@ -55,6 +56,11 @@ pub enum Action {
     Servers,
     /// Tools › "Text editor".
     TextEditor,
+    /// Open a shared session (a read-only copy) in a tab.
+    OpenSharedSession(Box<tc_core::Session>),
+    /// "Refresh shared sessions" / "Manage existing shared sessions".
+    RefreshShared,
+    ManageShared,
     /// Tools › "Diff tool" / "Ascii table".
     DiffTool,
     AsciiTable,
