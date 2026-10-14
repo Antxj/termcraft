@@ -571,9 +571,16 @@ fn context_menu(
             ui.close();
         }
     }
-    for label in ["Open with...", "Compare text files"] {
-        ui.add_enabled(false, egui::Button::new(label))
-            .on_disabled_hover_text(NOT_YET);
+    ui.add_enabled(false, egui::Button::new("Open with..."))
+        .on_disabled_hover_text(NOT_YET);
+    if !e.is_dir
+        && ui
+            .button("Compare text files")
+            .on_hover_text("Compare this file with another one in the Diff tool")
+            .clicked()
+    {
+        out.push(BrowserAction::Edit(path.clone(), OpenWith::Compare));
+        ui.close();
     }
     if !e.is_dir && ui.button("Download").clicked() {
         download(view, &[e], out);

@@ -13,6 +13,8 @@ pub enum OpenWith {
     TextEditor,
     /// The default program for the file type (explicit user choice).
     DefaultProgram,
+    /// "Compare text files": the copy goes to the Diff tool.
+    Compare,
 }
 
 struct Edit {

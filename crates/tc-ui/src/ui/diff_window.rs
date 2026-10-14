@@ -55,6 +55,15 @@ AllowUsers ops
         self.open = true;
     }
 
+    /// Compare `file` with a file the user picks.
+    pub fn compare_with(&mut self, file: &std::path::Path) {
+        self.left = file.display().to_string();
+        self.right.clear();
+        self.rows.clear();
+        self.error = None;
+        self.open = true;
+    }
+
     fn compare(&mut self) {
         let read = |p: &str| crate::ui::text_editor::read_text(&PathBuf::from(p.trim()));
         match (read(&self.left), read(&self.right)) {

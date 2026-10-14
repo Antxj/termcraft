@@ -989,6 +989,15 @@ impl TermCraftApp {
                 self.status = format!("{e}; {e2}");
             }
         }
+        let compares: Vec<std::path::PathBuf> = self
+            .core
+            .tabs
+            .iter_mut()
+            .flat_map(|t| std::mem::take(&mut t.open_in_diff))
+            .collect();
+        if let Some(file) = compares.last() {
+            self.diff_tool.compare_with(file);
+        }
         self.text_editor.show(ctx);
         self.diff_tool.show(ctx);
         self.ascii_table.show(ctx);
