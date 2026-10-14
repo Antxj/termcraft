@@ -396,6 +396,8 @@ pub struct Tab {
     /// Bookmark 4_15 "Lock terminal title" (default on): titles set by
     /// programs are ignored.
     lock_title: bool,
+    /// Remote copies to open in the built-in text editor: (local, remote).
+    pub open_in_editor: Vec<(PathBuf, String)>,
     /// Local side of the SFTP / FTP session view.
     pub local_pane: Option<crate::ui::local_pane::LocalPane>,
     /// 4_36 "Syntax highlighting" (`None` = the global setting).
@@ -493,6 +495,7 @@ impl Tab {
             gateway_tunnel: None,
             syntax: None,
             local_pane: None,
+            open_in_editor: Vec::new(),
             detached_maximized: false,
             wants_fullscreen: false,
             lock_title: true,
@@ -1821,7 +1824,12 @@ impl Tab {
                 if let Some((local, how)) = self.edits.downloaded(id) {
                     use crate::remote_edit::OpenWith;
                     let opened = match how {
-                        OpenWith::TextEditor => crate::external::open_in_text_editor(&local),
+                        // The built-in editor (the app opens it).
+                        OpenWith::TextEditor => {
+                            let remote = self.edits.remote_of(&local).unwrap_or_default();
+                            self.open_in_editor.push((local.clone(), remote));
+                            Ok(String::new())
+                        }
                         OpenWith::DefaultProgram => {
                             crate::external::open_path(&local.display().to_string())
                         }

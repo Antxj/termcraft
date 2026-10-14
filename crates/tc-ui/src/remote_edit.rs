@@ -115,6 +115,14 @@ impl RemoteEdits {
         Some((e.local.clone(), e.how))
     }
 
+    /// The remote path of a local copy.
+    pub fn remote_of(&self, local: &Path) -> Option<String> {
+        self.edits
+            .iter()
+            .find(|e| e.local == local)
+            .map(|e| e.remote.clone())
+    }
+
     /// A download failed: forget it.
     pub fn failed(&mut self, id: u64) {
         self.edits.retain(|e| e.download != Some(id));

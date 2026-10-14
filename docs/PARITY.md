@@ -186,7 +186,7 @@ refined against it.
 
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
-| P2 | [ ] | Text editor with syntax highlighting (remote edit) | `tc-editor` |
+| P2 | [~] | Built-in text editor (Tools › Text editor, and "Open with default text editor" in the SSH-browser): tabs, New / Open / Save (Ctrl+S) / Save as, syntax colors from the terminal highlighter (by extension or chosen), word wrap, line / column; saving a remote copy asks to upload it. Text files up to 10 MB (others go to the system editor). Find / replace and line numbers pending | `tc-ui` |
 | P3 | [ ] | File diff / folder diff | `tc-tools` |
 | P3 | [ ] | Image viewer | `tc-tools` |
 

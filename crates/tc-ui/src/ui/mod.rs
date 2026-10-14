@@ -23,6 +23,7 @@ pub mod sftp_browser;
 pub mod sidebar;
 pub mod syntax_window;
 pub mod tabbar;
+pub mod text_editor;
 pub mod toolbar;
 pub mod tunnels_window;
 
@@ -51,6 +52,8 @@ pub enum Action {
     ExpertTerminal,
     /// "Servers": the network services window.
     Servers,
+    /// Tools › "Text editor".
+    TextEditor,
     Configuration,
     Tunnels,
     CheckUpdates,

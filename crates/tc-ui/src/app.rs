@@ -232,6 +232,8 @@ pub struct TermCraftApp {
     syntax_window: Option<crate::ui::syntax_window::SyntaxWindow>,
     /// Configuration › Terminal › "Expert settings".
     show_expert: bool,
+    /// Built-in text editor.
+    text_editor: crate::ui::text_editor::TextEditor,
     /// "Servers management" window and its page.
     show_servers: bool,
     servers_page: crate::ui::servers_window::Page,
@@ -336,6 +338,7 @@ impl TermCraftApp {
             keygen: Default::default(),
             syntax_window: None,
             show_expert: false,
+            text_editor: Default::default(),
             show_servers: false,
             servers_page: Default::default(),
             shortcut_dialog: None,
@@ -452,6 +455,10 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::TextEditor => {
+                self.text_editor.open = true;
+                return;
+            }
             Action::Servers => {
                 self.show_servers = true;
                 return;
@@ -955,6 +962,22 @@ impl TermCraftApp {
         self.upload_edited_dialog(ctx);
         self.keygen.show(ctx);
         self.shortcut_options_dialog(ctx);
+        // Remote files opened with the text editor; too big or binary ones
+        // go to the system editor instead.
+        let opens: Vec<(std::path::PathBuf, String)> = self
+            .core
+            .tabs
+            .iter_mut()
+            .flat_map(|t| std::mem::take(&mut t.open_in_editor))
+            .collect();
+        for (local, remote) in opens {
+            if let Err(e) = self.text_editor.open_file(&local, Some(&remote))
+                && let Err(e2) = crate::external::open_in_text_editor(&local)
+            {
+                self.status = format!("{e}; {e2}");
+            }
+        }
+        self.text_editor.show(ctx);
         for note in self.core.servers.pump(&self.core.settings.servers) {
             self.status = note;
         }
@@ -1910,6 +1933,7 @@ impl eframe::App for TermCraftApp {
                 Some("known_hosts") => self.known_hosts.open(),
                 Some("jump_hosts") => self.editor = Some(SessionEditor::jump_hosts_preview()),
                 Some("expert") => self.show_expert = true,
+                Some("editor") => self.text_editor.preview(),
                 Some("servers") => {
                     self.show_servers = true;
                     self.servers_page = crate::ui::servers_window::Page::Http;
