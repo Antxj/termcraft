@@ -395,6 +395,13 @@ impl Tab {
                 tab.external_result("VNC", &host, port, result);
             }
             Some(SessionKind::Rsh { host, user }) => tab.open_rlogin(host, user),
+            Some(SessionKind::Sftp {
+                user: Some(user), ..
+            }) => tab.connect_sftp(user),
+            Some(SessionKind::Sftp { user: None, .. }) => {
+                tab.term.feed(b"login as: ");
+                tab.line = Some(LineInput::Login(String::new()));
+            }
             Some(SessionKind::Mosh {
                 user: Some(user), ..
             }) => tab.connect_mosh(user),
@@ -410,13 +417,6 @@ impl Tab {
             Some(SessionKind::Browser { url }) => {
                 let result = crate::external::open_url(&url);
                 tab.opened_externally("Browser", &url, result);
-            }
-            Some(other) => {
-                tab.message(&format!(
-                    "\x1b[33m{} sessions are not implemented yet - see docs/PARITY.md\x1b[0m",
-                    other.label()
-                ));
-                tab.status = Some("unsupported session type".into());
             }
         }
         tab
@@ -537,6 +537,7 @@ impl Tab {
             detect_login_shell: false,
             remote_monitoring: false,
             agent: agent_config(&self.ssh_settings),
+            shell: true,
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -568,6 +569,50 @@ impl Tab {
             self.backend = Backend::None;
             self.spawn_command(&command);
         }
+    }
+
+    /// SFTP session: SSH with only the file browser (no terminal); the
+    /// tab shows the connection status.
+    fn connect_sftp(&mut self, user: String) {
+        let Some(Session {
+            kind: SessionKind::Sftp { host, port, .. },
+            ..
+        }) = &self.session
+        else {
+            return;
+        };
+        let (host, port) = (host.clone(), *port);
+        self.credentials.reset();
+        let (user, credential_error) = self.credentials.use_named(&user, &host, port);
+        if let Some(e) = credential_error {
+            self.message(&format!("\x1b[33m{e}\x1b[0m"));
+        }
+        self.message(&format!(
+            "\x1b[90mConnecting to {user}@{host}:{port} (SFTP) …\x1b[0m"
+        ));
+        let (rows, cols) = self.term.size();
+        let params = ConnectParams {
+            host,
+            port,
+            user,
+            private_key: None,
+            gateway: None,
+            known_hosts: self.known_hosts.clone(),
+            compression: false,
+            command: None,
+            term: "xterm-256color".into(),
+            cols,
+            rows,
+            sftp: true,
+            keepalive: (self.ssh_settings.keepalive_secs > 0)
+                .then(|| std::time::Duration::from_secs(self.ssh_settings.keepalive_secs)),
+            detect_login_shell: false,
+            remote_monitoring: false,
+            agent: agent_config(&self.ssh_settings),
+            shell: false,
+        };
+        self.sftp = SftpStatus::Connecting;
+        self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
     }
 
     /// "Rsh" session over rlogin (TCP 513).
@@ -769,6 +814,7 @@ impl Tab {
             } else {
                 tc_ssh::AgentConfig::default()
             },
+            shell: true,
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());
@@ -1175,6 +1221,16 @@ impl Tab {
     fn on_sftp(&mut self, event: SftpEvent) {
         match event {
             SftpEvent::Ready { home } => {
+                if matches!(
+                    self.session.as_ref().map(|s| &s.kind),
+                    Some(SessionKind::Sftp { .. })
+                ) && self.sftp_reopen_cwd.is_none()
+                {
+                    self.message(&format!(
+                        "\x1b[32mConnected. Browse files in the side panel ({home}).\x1b[0m"
+                    ));
+                    self.status = None;
+                }
                 // 3_18 "Try to follow SSH path in browser" (default on).
                 let follow = self
                     .session
@@ -1394,13 +1450,10 @@ impl Tab {
                     self.term.feed(b"\r\n");
                     match self.line.take() {
                         Some(LineInput::Login(user)) if !user.is_empty() => {
-                            if matches!(
-                                self.session.as_ref().map(|s| &s.kind),
-                                Some(SessionKind::Mosh { .. })
-                            ) {
-                                self.connect_mosh(user)
-                            } else {
-                                self.connect_ssh(user)
+                            match self.session.as_ref().map(|s| &s.kind) {
+                                Some(SessionKind::Mosh { .. }) => self.connect_mosh(user),
+                                Some(SessionKind::Sftp { .. }) => self.connect_sftp(user),
+                                _ => self.connect_ssh(user),
                             }
                         }
                         Some(LineInput::Login(_)) => {

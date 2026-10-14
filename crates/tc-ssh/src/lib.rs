@@ -64,6 +64,9 @@ pub struct ConnectParams {
     pub remote_monitoring: bool,
     /// SSH agents to try for public-key login.
     pub agent: AgentConfig,
+    /// Open a terminal (shell or command). `false` = SFTP session: only
+    /// the file browser.
+    pub shell: bool,
 }
 
 impl ConnectParams {
@@ -622,27 +625,32 @@ async fn run_shell(
     let session = &conn.handle;
     events.send(SshEvent::Connected);
 
-    let mut channel = session
-        .channel_open_session()
-        .await
-        .map_err(|e| format!("cannot open session channel: {e}"))?;
-    channel
-        .request_pty(
-            false,
-            &params.term,
-            u32::from(params.cols),
-            u32::from(params.rows),
-            0,
-            0,
-            &[],
-        )
-        .await
-        .map_err(|e| format!("pty request failed: {e}"))?;
-    match &params.command {
-        Some(cmd) => channel.exec(true, cmd.as_str()).await,
-        None => channel.request_shell(true).await,
-    }
-    .map_err(|e| format!("cannot start shell: {e}"))?;
+    let mut channel = if params.shell {
+        let channel = session
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("cannot open session channel: {e}"))?;
+        channel
+            .request_pty(
+                false,
+                &params.term,
+                u32::from(params.cols),
+                u32::from(params.rows),
+                0,
+                0,
+                &[],
+            )
+            .await
+            .map_err(|e| format!("pty request failed: {e}"))?;
+        match &params.command {
+            Some(cmd) => channel.exec(true, cmd.as_str()).await,
+            None => channel.request_shell(true).await,
+        }
+        .map_err(|e| format!("cannot start shell: {e}"))?;
+        Some(channel)
+    } else {
+        None
+    };
 
     let open_sftp = async {
         if !params.sftp {
@@ -666,6 +674,13 @@ async fn run_shell(
         }
     };
     let (mut sftp, ()) = tokio::join!(open_sftp, probe);
+    if channel.is_none() && sftp.is_none() {
+        // An SFTP session without SFTP has nothing to show.
+        let _ = session
+            .disconnect(Disconnect::ByApplication, "", "en")
+            .await;
+        return Ok(None);
+    }
     // A sudo switch in progress; the old browser keeps working meanwhile.
     type Reopen<'a> = std::pin::Pin<
         Box<dyn std::future::Future<Output = Result<SftpOpened, sftp::SudoError>> + Send + 'a>,
@@ -680,7 +695,7 @@ async fn run_shell(
     let mut exit_status = None;
     loop {
         tokio::select! {
-            msg = channel.wait() => match msg {
+            msg = async { channel.as_mut().expect("guarded").wait().await }, if channel.is_some() => match msg {
                 Some(ChannelMsg::Data { data }) | Some(ChannelMsg::ExtendedData { data, .. }) => {
                     events.send(SshEvent::Output(data.to_vec()));
                 }
@@ -690,12 +705,16 @@ async fn run_shell(
             },
             cmd = input.recv() => match cmd {
                 Some(Input::Data(bytes)) => {
-                    if channel.data(&bytes[..]).await.is_err() {
+                    if let Some(channel) = &channel
+                        && channel.data(&bytes[..]).await.is_err()
+                    {
                         break;
                     }
                 }
                 Some(Input::Resize(cols, rows)) => {
-                    let _ = channel.window_change(u32::from(cols), u32::from(rows), 0, 0).await;
+                    if let Some(channel) = &channel {
+                        let _ = channel.window_change(u32::from(cols), u32::from(rows), 0, 0).await;
+                    }
                 }
                 Some(Input::Sftp(id, request)) => match &sftp {
                     Some(s) => {

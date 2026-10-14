@@ -43,6 +43,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         remote_monitoring: false,
         // Tests must not pick up the developer's agent keys.
         agent: Default::default(),
+        shell: true,
     }
 }
 
@@ -325,6 +326,41 @@ fn remote_monitoring_reports_samples() {
         unreachable!()
     };
     assert!(second.cpu_percent.is_some(), "{second:?}");
+    s.close();
+}
+
+/// SFTP session: no terminal at all, only the browser.
+#[test]
+fn sftp_session_without_a_shell() {
+    use tc_ssh::{SftpEvent, SftpRequest};
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("only.txt"), b"x").unwrap();
+    let server = start(DevConfig {
+        sftp_root: root.path().to_path_buf(),
+        ..DevConfig::default()
+    });
+    let local = tempfile::tempdir().unwrap();
+    let mut p = params(server.port, &local.path().join("known_hosts"), "");
+    p.command = None;
+    p.sftp = true;
+    p.shell = false;
+    let s = SshSession::connect(p, noop());
+    wait_for(&s, |e| matches!(e, SshEvent::Sftp(SftpEvent::Ready { .. })));
+    let id = s.sftp(SftpRequest::List("/".into()));
+    let listing = wait_for(
+        &s,
+        |e| matches!(e, SshEvent::Sftp(SftpEvent::Listing { id: got, .. }) if *got == id),
+    );
+    let SshEvent::Sftp(SftpEvent::Listing { entries, .. }) = listing else {
+        unreachable!()
+    };
+    assert_eq!(entries[0].name, "only.txt");
+    // No shell was started, so no terminal output arrives.
+    assert!(
+        s.events()
+            .try_iter()
+            .all(|e| !matches!(e, SshEvent::Output(_)))
+    );
     s.close();
 }
 
