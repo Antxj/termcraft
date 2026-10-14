@@ -352,6 +352,7 @@ impl TermCraftApp {
             Action::Tunnels => return self.show_tunnels = true,
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
+            Action::ExportSessions(one) => return self.export_sessions(one),
             Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
             Action::EditSession(id) => {
                 self.editor = self.core.store.get(id).map(SessionEditor::edit);
@@ -441,6 +442,35 @@ impl TermCraftApp {
 
     fn live_sessions(&self) -> usize {
         self.core.tabs.iter().filter(|t| t.is_alive()).count() + self.core.running.len()
+    }
+
+    /// Ask where to save, then export through the command (one session, or
+    /// all of them).
+    fn export_sessions(&mut self, one: Option<SessionId>) {
+        let name = one
+            .and_then(|id| self.core.store.get(id))
+            .map_or_else(|| "MobaXterm sessions".to_string(), |s| s.name.clone());
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(format!("{name}.mxtsessions"))
+            .add_filter("MobaXterm sessions", &["mxtsessions"])
+            .save_file()
+        else {
+            return;
+        };
+        let command = Command::SessionExportMobaxterm {
+            path: path.display().to_string(),
+            sessions: one.map(|id| vec![id.to_string()]),
+            // The save dialog already asked before replacing a file.
+            overwrite: true,
+        };
+        self.status = match tc_commands::execute(&mut self.core, command) {
+            Ok(v) => format!(
+                "Exported {} session(s) to {}",
+                v["exported"],
+                path.display()
+            ),
+            Err(e) => format!("export failed: {e}"),
+        };
     }
 
     /// "Remote-monitoring" on or off in every SSH tab.

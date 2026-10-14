@@ -39,6 +39,8 @@ pub enum Action {
     Tunnels,
     CheckUpdates,
     ImportDialog,
+    /// "Export MobaXterm sessions" (all) / "Save session to file" (one).
+    ExportSessions(Option<SessionId>),
     NewSession,
     EditSession(SessionId),
     RenameTab(u64),

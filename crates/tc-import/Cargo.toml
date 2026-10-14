@@ -1,6 +1,6 @@
 [package]
 name = "tc-import"
-description = "Importers for third-party session files (MobaXterm, later PuTTY and ssh_config)"
+description = "Session importers (MobaXterm, PuTTY, OpenSSH config, WSL) and the MobaXterm exporter"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

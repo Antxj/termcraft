@@ -1,8 +1,12 @@
-//! Interoperability importers. Formats are derived from files users export
+//! Interoperability importers (MobaXterm, PuTTY, OpenSSH config, WSL) and
+//! the MobaXterm exporter. Formats are derived from files users export
 //! from their own installations (see docs/CLEAN_ROOM.md). Importers are
 //! tolerant: anything not understood is reported, never guessed.
 
 pub mod mobaxterm;
+pub mod putty;
+pub mod ssh_config;
+pub mod wsl;
 
 use std::path::Path;
 

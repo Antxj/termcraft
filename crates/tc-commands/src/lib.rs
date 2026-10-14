@@ -26,6 +26,25 @@ pub enum Command {
     SessionImportMobaxterm {
         path: String,
     },
+    /// "Import PuTTY sessions" (registry on Windows, ~/.putty on Unix).
+    SessionImportPutty {},
+    /// "Import WSL sessions": one session per installed distribution.
+    SessionImportWsl {},
+    /// OpenSSH client config; `path` defaults to ~/.ssh/config.
+    SessionImportSshConfig {
+        #[serde(default)]
+        path: Option<String>,
+    },
+    /// "Export MobaXterm sessions" / "Save session to file".
+    SessionExportMobaxterm {
+        path: String,
+        /// Session names or ids; omitted = all sessions.
+        #[serde(default)]
+        sessions: Option<Vec<String>>,
+        /// Replace an existing file.
+        #[serde(default)]
+        overwrite: bool,
+    },
     SessionRename {
         id: SessionId,
         name: String,
@@ -136,6 +155,10 @@ impl Command {
             Self::SessionAdd { .. } => "session_add",
             Self::SessionRemove { .. } => "session_remove",
             Self::SessionImportMobaxterm { .. } => "session_import_mobaxterm",
+            Self::SessionImportPutty {} => "session_import_putty",
+            Self::SessionImportWsl {} => "session_import_wsl",
+            Self::SessionImportSshConfig { .. } => "session_import_ssh_config",
+            Self::SessionExportMobaxterm { .. } => "session_export_mobaxterm",
             Self::SessionRename { .. } => "session_rename",
             Self::SessionDuplicate { .. } => "session_duplicate",
             Self::SessionUpdate { .. } => "session_update",
@@ -269,23 +292,54 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         Command::SessionImportMobaxterm { path } => {
             let text = tc_import::read_text_lossy(std::path::Path::new(&path))
                 .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
-            let report = tc_import::mobaxterm::parse(&text);
-            let mut imported = 0usize;
-            let mut skipped_existing = 0usize;
-            for session in report.sessions {
-                if host.store().find_by_name(&session.name).is_some() {
-                    skipped_existing += 1;
-                } else {
-                    host.store().add(session);
-                    imported += 1;
-                }
+            merge_import(host, tc_import::mobaxterm::parse(&text))
+        }
+        Command::SessionImportPutty {} => {
+            let report = tc_import::putty::load().map_err(CommandError::Failed)?;
+            merge_import(host, report)
+        }
+        Command::SessionImportWsl {} => {
+            let distros = tc_import::wsl::distributions();
+            if distros.is_empty() {
+                return Err(CommandError::Failed(
+                    "no WSL distribution is installed".into(),
+                ));
             }
-            host.persist()?;
-            Ok(json!({
-                "imported": imported,
-                "skipped_existing": skipped_existing,
-                "unsupported": report.unsupported,
-            }))
+            merge_import(host, tc_import::wsl::sessions(distros))
+        }
+        Command::SessionImportSshConfig { path } => {
+            let path = match path {
+                Some(p) => std::path::PathBuf::from(p),
+                None => tc_import::ssh_config::default_path()
+                    .ok_or_else(|| CommandError::Failed("no home folder".into()))?,
+            };
+            let text = tc_import::read_text_lossy(&path)
+                .map_err(|e| CommandError::Failed(format!("{}: {e}", path.display())))?;
+            merge_import(host, tc_import::ssh_config::parse(&text))
+        }
+        Command::SessionExportMobaxterm {
+            path,
+            sessions,
+            overwrite,
+        } => {
+            let store = host.store();
+            let chosen: Vec<Session> = match &sessions {
+                None => store.sessions.clone(),
+                Some(keys) => keys
+                    .iter()
+                    .map(|k| resolve_session(store, k))
+                    .collect::<Result<_, _>>()?,
+            };
+            let path = std::path::Path::new(&path);
+            if path.exists() && !overwrite {
+                return Err(CommandError::InvalidArgs(format!(
+                    "{} exists (pass overwrite to replace it)",
+                    path.display()
+                )));
+            }
+            std::fs::write(path, tc_import::mobaxterm::export(&chosen))
+                .map_err(|e| CommandError::Failed(format!("{}: {e}", path.display())))?;
+            Ok(json!({ "exported": chosen.len() }))
         }
         Command::SessionRename { id, name } => {
             let name = name.trim().to_string();
@@ -528,6 +582,29 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         }
         Command::UpdateCheck {} => host.update_check(),
     }
+}
+
+/// Add imported sessions, skipping names that already exist.
+fn merge_import(
+    host: &mut dyn Host,
+    report: tc_import::mobaxterm::ImportReport,
+) -> Result<Value, CommandError> {
+    let mut imported = 0usize;
+    let mut skipped_existing = 0usize;
+    for session in report.sessions {
+        if host.store().find_by_name(&session.name).is_some() {
+            skipped_existing += 1;
+        } else {
+            host.store().add(session);
+            imported += 1;
+        }
+    }
+    host.persist()?;
+    Ok(json!({
+        "imported": imported,
+        "skipped_existing": skipped_existing,
+        "unsupported": report.unsupported,
+    }))
 }
 
 fn resolve_session(store: &SessionStore, key: &str) -> Result<Session, CommandError> {

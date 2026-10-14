@@ -81,14 +81,14 @@ impl<'a> Bookmark<'a> {
         Some(Self { parts })
     }
 
-    /// Field `A_B` (both 1-based); empty strings become `None`.
+    /// Field `A_B` (both 1-based), still escaped; empty becomes `None`.
     fn get(&self, a: usize, b: usize) -> Option<&'a str> {
         let v = self.parts.get(a - 1)?.get(b - 1)?.trim();
         (!v.is_empty()).then_some(v)
     }
 
     fn string(&self, a: usize, b: usize) -> Option<String> {
-        self.get(a, b).map(String::from)
+        self.get(a, b).map(unescape)
     }
 
     fn port(&self, a: usize, b: usize, default: u16) -> u16 {
@@ -234,14 +234,174 @@ fn copy_options(b: &Bookmark<'_>, type_index: usize, session: &mut Session) {
             continue;
         };
         if let Some(value) = b.get(part, field) {
-            session.set_option(param, value.to_string());
+            session.set_option(param, unescape(value));
         }
     }
+}
+
+/// Characters that separate fields in a bookmark, as MobaXterm writes
+/// them inside values.
+const ESCAPES: [(&str, &str); 3] = [
+    ("#", "__DIEZE__"),
+    ("%", "__PERCENT__"),
+    (";", "__PTVIRG__"),
+];
+
+fn escape(value: &str) -> String {
+    let mut v = value.replace(['\r', '\n'], " ");
+    for (raw, esc) in ESCAPES {
+        v = v.replace(raw, esc);
+    }
+    v
+}
+
+fn unescape(value: &str) -> String {
+    let mut v = value.to_string();
+    for (raw, esc) in ESCAPES {
+        v = v.replace(esc, raw);
+    }
+    v
+}
+
+/// Bookmark icon used for exported sessions, by type (any valid index works).
+fn export_icon(type_index: usize) -> u32 {
+    match type_index {
+        1 => 98,
+        4 => 91,
+        8 => 131,
+        12 => 145,
+        _ => 109,
+    }
+}
+
+/// One bookmark value (`#icon#3_1%3_2%…#4_1%…#…`) for a session.
+pub fn bookmark_value(session: &Session) -> String {
+    use tc_core::schema;
+    let t = session.kind.type_index();
+    let mut fields: std::collections::BTreeMap<(usize, usize), String> = Default::default();
+    let params = schema::type_params(t)
+        .iter()
+        .chain(schema::network_params(t))
+        .chain(schema::terminal_params())
+        .chain(schema::bookmark_params());
+    for param in params {
+        let Some((a, b)) = param.id.split_once('_') else {
+            continue;
+        };
+        let (Ok(a), Ok(b)) = (a.parse::<usize>(), b.parse::<usize>()) else {
+            continue;
+        };
+        let value = session
+            .kind
+            .typed_get(param.id)
+            .unwrap_or_else(|| session.option(param).to_string());
+        fields.insert((a, b), value);
+    }
+    fields.insert((3, 1), t.to_string());
+    let icon = fields.entry((2, 1)).or_default();
+    if matches!(icon.trim(), "" | "0") {
+        *icon = export_icon(t).to_string();
+    }
+    let last_part = fields.keys().map(|(a, _)| *a).max().unwrap_or(3);
+    let mut out = String::new();
+    for part in 2..=last_part {
+        let width = fields
+            .keys()
+            .filter(|(a, _)| *a == part)
+            .map(|(_, b)| *b)
+            .max()
+            .unwrap_or(1);
+        let values: Vec<String> = (1..=width)
+            .map(|b| {
+                fields
+                    .get(&(part, b))
+                    .map(|v| escape(v))
+                    .unwrap_or_default()
+            })
+            .collect();
+        out.push('#');
+        out.push_str(&values.join("%"));
+    }
+    out
+}
+
+/// A `.mxtsessions` file ("Export MobaXterm sessions" / "Save session to
+/// file"): one `[Bookmarks…]` section per folder.
+pub fn export(sessions: &[Session]) -> String {
+    let mut folders: std::collections::BTreeMap<&str, Vec<&Session>> = Default::default();
+    for s in sessions {
+        folders.entry(s.folder.as_str()).or_default().push(s);
+    }
+    folders.entry("").or_default();
+    let mut out = String::new();
+    for (i, (folder, list)) in folders.iter().enumerate() {
+        if i == 0 {
+            out.push_str("[Bookmarks]\r\n");
+        } else {
+            out.push_str(&format!("[Bookmarks_{i}]\r\n"));
+        }
+        out.push_str(&format!(
+            "SubRep={}\r\nImgNum={}\r\n",
+            folder.replace('/', "\\"),
+            if folder.is_empty() { 42 } else { 41 }
+        ));
+        for s in list {
+            let name = s.name.replace(['=', '\r', '\n', '[', ']'], " ");
+            out.push_str(&format!("{}={}\r\n", name.trim(), bookmark_value(s)));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_then_import_gives_the_same_sessions() {
+        let original = parse(SAMPLE).sessions;
+        let mut tricky = Session::new(
+            "odd chars",
+            SessionKind::Ssh {
+                host: "h".into(),
+                port: 22,
+                user: Some("u".into()),
+                private_key: None,
+                x11_forwarding: false,
+            },
+        );
+        tricky
+            .options
+            .insert("3_8".into(), "echo 50%; ls #now".into());
+        tricky.folder = "A/B".into();
+        let mut all = original.clone();
+        all.push(tricky);
+        let text = export(&all);
+        let back = parse(&text);
+        assert!(back.unsupported.is_empty(), "{:?}", back.unsupported);
+        assert_eq!(back.sessions.len(), all.len());
+        for s in &all {
+            let b = back
+                .sessions
+                .iter()
+                .find(|b| b.name == s.name)
+                .unwrap_or_else(|| panic!("{} missing", s.name));
+            assert_eq!(b.kind, s.kind, "{}", s.name);
+            assert_eq!(b.folder, s.folder, "{}", s.name);
+            // The icon number becomes explicit; everything else is equal.
+            let without_icon = |o: &std::collections::BTreeMap<String, String>| {
+                let mut o = o.clone();
+                o.remove("2_1");
+                o
+            };
+            assert_eq!(
+                without_icon(&b.options),
+                without_icon(&s.options),
+                "{}",
+                s.name
+            );
+        }
+    }
 
     const SAMPLE: &str = "\
 [Misc]

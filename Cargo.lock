@@ -5003,6 +5003,7 @@ dependencies = [
  "tc-commands",
  "tc-core",
  "tc-devserver",
+ "tc-import",
  "tc-net",
  "tc-pty",
  "tc-ssh",

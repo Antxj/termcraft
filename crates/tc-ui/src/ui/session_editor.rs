@@ -391,7 +391,12 @@ impl SessionEditor {
                         Tab::Network => schema::network_params(t).iter().collect(),
                         Tab::Bookmark => {
                             self.bookmark_header(ui);
-                            schema::bookmark_params().iter().collect()
+                            // 2_1 is the reference icon number; the
+                            // "Bookmark icon" chooser above replaces it.
+                            schema::bookmark_params()
+                                .iter()
+                                .filter(|p| p.id != "2_1")
+                                .collect()
                         }
                     };
                     if params.is_empty() {
@@ -470,7 +475,7 @@ impl SessionEditor {
                 .selected_text(value.as_str())
                 .width(170.0)
                 .show_ui(ui, |ui| {
-                    let installed = tc_pty::shells::wsl_distributions();
+                    let installed = tc_import::wsl::distributions();
                     for name in
                         std::iter::once("Default").chain(installed.iter().map(String::as_str))
                     {

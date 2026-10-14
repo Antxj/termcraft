@@ -238,7 +238,12 @@ fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
         Some(Action::Run(Command::SessionDuplicate { id: s.id })),
         out,
     );
-    item(ui, "Save session to file", None, out);
+    item(
+        ui,
+        "Save session to file",
+        Some(Action::ExportSessions(Some(s.id))),
+        out,
+    );
     item(ui, "Create a desktop shortcut", None, out);
     ui.separator();
     root_menu(ui, out);
@@ -251,18 +256,33 @@ fn root_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
         Some(Action::ImportDialog),
         out,
     );
-    item(ui, "Export MobaXterm sessions", None, out);
+    item(
+        ui,
+        "Export MobaXterm sessions",
+        Some(Action::ExportSessions(None)),
+        out,
+    );
     ui.menu_button("Import sessions from third-party programs", |ui| {
-        for p in [
-            "WSL",
-            "PuTTY",
-            "SuperPuTTY",
-            "MRemote",
-            "SecureCRT",
-            "a CSV file",
-        ] {
+        let wsl = cfg!(windows).then_some(Action::Run(Command::SessionImportWsl {}));
+        item(ui, "Import WSL sessions", wsl, out);
+        item(ui, "Import External Bash sessions", None, out);
+        item(
+            ui,
+            "Import PuTTY sessions",
+            Some(Action::Run(Command::SessionImportPutty {})),
+            out,
+        );
+        for p in ["PuTTYCM", "SuperPuTTY", "MRemote", "Exceed", "SCRT", "RDM"] {
             item(ui, &format!("Import {p} sessions"), None, out);
         }
+        item(ui, "Import sessions from a CSV file", None, out);
+        ui.separator();
+        item(
+            ui,
+            "Import OpenSSH sessions (~/.ssh/config)",
+            Some(Action::Run(Command::SessionImportSshConfig { path: None })),
+            out,
+        );
     });
 }
 

@@ -116,9 +116,9 @@ refined against it.
 | P0 | [~] | Import MobaXterm sessions: SSH, Telnet, RDP, VNC, FTP, SFTP, Serial, Shell; lossless (every non-default parameter kept in `options`) | `tc-import` |
 | P1 | [~] | Folders tree, rename / duplicate / delete from context menu (drag and drop pending) | `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
-| P1 | [ ] | Import `~/.ssh/config` | `tc-import` |
-| P1 | [ ] | Import PuTTY sessions (Windows registry) | `tc-import` |
-| P1 | [ ] | Export sessions | `tc-import` |
+| P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |
+| P1 | [x] | Import PuTTY sessions (Windows registry, `~/.putty/sessions` on Unix: SSH, Telnet, rlogin, serial) and WSL sessions | `tc-import` |
+| P1 | [x] | "Export MobaXterm sessions" / "Save session to file" (.mxtsessions, folders kept, reserved characters escaped; round-trip tested). PuTTYCM / SuperPuTTY / mRemote / Exceed / SCRT / RDM / CSV importers pending | `tc-import` |
 | P2 | [ ] | Desktop shortcut for a session | `tc-cli` |
 | P2 | [ ] | URL protocol handler (`termcraft://`) | `tc-cli` |
 | P2 | [ ] | Shared sessions (folder / HTTPS / SFTP backend) | `tc-core` |
