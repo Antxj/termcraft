@@ -3,6 +3,15 @@
 [advisories]
 # RustSec advisories fail the build; yanked crates too.
 yanked = "deny"
+ignore = [
+    # rsa (through russh / ssh-key): no fixed release exists. The attack
+    # needs precise timings of many private-key operations; TermCraft only
+    # signs with RSA keys, once per SSH login, and never decrypts.
+    { id = "RUSTSEC-2023-0071", reason = "no fixed rsa release; client-side signing only" },
+    # ttf-parser comes in through winit's Wayland window decorations
+    # (sctk-adwaita); TermCraft itself reads fonts with skrifa.
+    { id = "RUSTSEC-2026-0192", reason = "transitive (winit Wayland decorations); no replacement upstream yet" },
+]
 
 [licenses]
 # Everything we ship must be compatible with MIT OR Apache-2.0 distribution.

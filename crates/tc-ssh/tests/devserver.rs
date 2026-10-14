@@ -218,6 +218,7 @@ fn agent_login() {
         system: true,
         pageant: false,
         socket: Some(sock),
+        keys: Vec::new(),
     };
     let s = SshSession::connect(p, noop());
     let out = drive(&s, accept_and_login);

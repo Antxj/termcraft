@@ -1,8 +1,13 @@
 //! `cargo xtask icons`: SVG copies of the icons TermCraft shows (Phosphor,
-//! MIT licensed), for the README. Each SVG is the glyph's outline.
+//! MIT licensed), for the README. Each SVG is the glyph's outline (read with
+//! skrifa, the font reader egui uses).
 
 use anyhow::{Context, Result};
 use egui_phosphor::regular as icon;
+use skrifa::instance::{LocationRef, Size};
+use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::raw::TableProvider as _;
+use skrifa::{FontRef, MetadataProvider as _};
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -50,7 +55,7 @@ pub const ICONS: &[(&str, &str)] = &[
 
 struct Path2(String);
 
-impl ttf_parser::OutlineBuilder for Path2 {
+impl OutlinePen for Path2 {
     fn move_to(&mut self, x: f32, y: f32) {
         let _ = write!(self.0, "M{x} {y}");
     }
@@ -69,28 +74,36 @@ impl ttf_parser::OutlineBuilder for Path2 {
 }
 
 /// The SVG of one glyph (`color` fill).
-pub fn svg(face: &ttf_parser::Face<'_>, glyph: &str, color: &str) -> Option<String> {
+pub fn svg(font: &FontRef<'_>, glyph: &str, color: &str) -> Option<String> {
     let c = glyph.chars().next()?;
-    let id = face.glyph_index(c)?;
+    let id = font.charmap().map(c)?;
+    let outline = font.outline_glyphs().get(id)?;
     let mut path = Path2(String::new());
-    face.outline_glyph(id, &mut path)?;
-    let em = f32::from(face.units_per_em());
-    let ascender = f32::from(face.ascender());
+    outline
+        .draw(
+            DrawSettings::unhinted(Size::unscaled(), LocationRef::default()),
+            &mut path,
+        )
+        .ok()?;
+    let em = f32::from(font.head().ok()?.units_per_em());
+    let ascender = font
+        .metrics(Size::unscaled(), LocationRef::default())
+        .ascent;
     // Font units grow upwards: flip around the baseline.
     Some(format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {em} {em}\" width=\"32\" height=\"32\">\
-         <path transform=\"translate(0 {ascender}) scale(1 -1)\" fill=\"{color}\" d=\"{}\"/></svg>\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {em} {em}\" width=\"32\" height=\"32\">         <path transform=\"translate(0 {ascender}) scale(1 -1)\" fill=\"{color}\" d=\"{}\"/></svg>
+",
         path.0
     ))
 }
 
 pub fn write_all(out: &Path) -> Result<usize> {
     let bytes = egui_phosphor::Variant::Regular.font_bytes();
-    let face = ttf_parser::Face::parse(bytes, 0).context("Phosphor font")?;
+    let font = FontRef::new(bytes).context("Phosphor font")?;
     std::fs::create_dir_all(out)?;
     let mut n = 0;
     for (name, glyph) in ICONS {
-        let s = svg(&face, glyph, "#3d93f0").with_context(|| format!("glyph for {name}"))?;
+        let s = svg(&font, glyph, "#3d93f0").with_context(|| format!("glyph for {name}"))?;
         std::fs::write(out.join(format!("{name}.svg")), s)?;
         n += 1;
     }
@@ -103,10 +116,9 @@ mod tests {
 
     #[test]
     fn every_icon_has_an_outline() {
-        let face =
-            ttf_parser::Face::parse(egui_phosphor::Variant::Regular.font_bytes(), 0).unwrap();
+        let font = FontRef::new(egui_phosphor::Variant::Regular.font_bytes()).unwrap();
         for (name, glyph) in ICONS {
-            let s = svg(&face, glyph, "#000").unwrap_or_else(|| panic!("{name}"));
+            let s = svg(&font, glyph, "#000").unwrap_or_else(|| panic!("{name}"));
             assert!(s.starts_with("<svg") && s.contains(" d=\"M"), "{name}");
         }
     }
