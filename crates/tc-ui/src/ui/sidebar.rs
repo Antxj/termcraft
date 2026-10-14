@@ -338,6 +338,11 @@ fn draw_folder(
                 row
             })
             .inner;
+        // Bookmark "Comments" (6_1) as the row's tooltip.
+        let row = match comment(s) {
+            Some(text) => row.on_hover_text(text),
+            None => row,
+        };
         if row.double_clicked() {
             out.push(open(s));
         }
@@ -573,5 +578,27 @@ fn tools(ui: &mut egui::Ui, out: &mut Vec<Action>) {
                     item(ui, t, menus::tool_action(t), out);
                 }
             });
+    }
+}
+
+/// The session's "Comments" (6_1), if any ("-1" is the empty default).
+fn comment(s: &Session) -> Option<String> {
+    let text = s.options.get("6_1")?.trim();
+    (!text.is_empty() && text != "-1").then(|| text.chars().take(500).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comments_tooltip() {
+        let mut s = Session::new("a", tc_core::SessionKind::default_for(0).unwrap());
+        assert_eq!(comment(&s), None);
+        s.options.insert("6_1".into(), "-1".into());
+        assert_eq!(comment(&s), None, "the reference's empty default");
+        s.options
+            .insert("6_1".into(), "  prod database, ask Ana  ".into());
+        assert_eq!(comment(&s).as_deref(), Some("prod database, ask Ana"));
     }
 }
