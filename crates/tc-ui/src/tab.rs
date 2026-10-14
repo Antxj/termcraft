@@ -278,6 +278,8 @@ pub struct Tab {
     pub multiexec_on: bool,
     /// Output arrived while another tab was shown.
     pub activity: bool,
+    /// "Detach tab": shown in its own window.
+    pub detached: bool,
     /// The session stopped: keys choose what happens to the tab.
     ended: bool,
     /// What the user chose after the session stopped (the app applies it).
@@ -362,6 +364,7 @@ impl Tab {
             pinned: false,
             multiexec_on: true,
             activity: false,
+            detached: false,
             ended: false,
             ended_action: None,
             paste_queue: Default::default(),

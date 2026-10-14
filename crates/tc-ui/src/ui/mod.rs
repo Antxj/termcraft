@@ -65,6 +65,8 @@ pub enum Action {
     /// Close several tabs (the "Close all …" family).
     CloseTabs(Vec<u64>),
     SetTabColor(u64, Option<[u8; 3]>),
+    /// "Detach tab" / "Re-attach tab".
+    DetachTab(u64, bool),
     TogglePin(u64),
     SelectTab(u64),
     /// Next (+1) / previous (-1) tab.

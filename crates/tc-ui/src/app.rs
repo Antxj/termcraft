@@ -475,6 +475,12 @@ impl TermCraftApp {
             Action::KeyboardShortcuts => return self.show_hotkeys = true,
             Action::KeyGenerator => return self.keygen.open = true,
             Action::KnownHosts => return self.known_hosts.open(),
+            Action::DetachTab(id, on) => {
+                if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
+                    tab.detached = on;
+                }
+                return;
+            }
             Action::SetTabColor(id, color) => {
                 if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.id == id) {
                     tab.color = color;
@@ -610,6 +616,32 @@ impl TermCraftApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             let _ = msg.reply.send(response);
+        }
+    }
+
+    /// "Detach tab": each detached tab in its own native window; closing
+    /// the window puts the tab back.
+    fn detached_windows(&mut self, ctx: &egui::Context) {
+        let font_size = self.core.settings.terminal.font_size;
+        let opts = self.core.settings.terminal.clone();
+        for tab in self.core.tabs.iter_mut().filter(|t| t.detached) {
+            let viewport = egui::ViewportId::from_hash_of(("detached-tab", tab.id));
+            let builder = egui::ViewportBuilder::default()
+                .with_title(format!("{} - TermCraft", tab.title))
+                .with_inner_size([900.0, 600.0]);
+            let close = ctx.show_viewport_immediate(viewport, builder, |ui, _class| {
+                let output = term_view::show(ui, tab, font_size, true, &opts);
+                if let Some(text) = output.paste {
+                    tab.paste(&text);
+                }
+                for bytes in output.input {
+                    tab.send(&bytes);
+                }
+                ui.ctx().input(|i| i.viewport().close_requested())
+            });
+            if close {
+                tab.detached = false;
+            }
         }
     }
 
@@ -1446,6 +1478,17 @@ fn terminals(
             .get(i)
             .and_then(|id| core.tabs.iter_mut().find(|t| t.id == *id))
         {
+            Some(tab) if tab.detached => {
+                pane.centered_and_justified(|ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(ui.available_height() / 3.0);
+                        ui.label(format!("\"{}\" is shown in its own window.", tab.title));
+                        if ui.button("Re-attach tab").clicked() {
+                            tab.detached = false;
+                        }
+                    });
+                });
+            }
             Some(tab) => {
                 let is_active = Some(tab.id) == active;
                 let id = tab.id;
@@ -1692,6 +1735,7 @@ impl eframe::App for TermCraftApp {
                 color: t.color,
                 pinned: t.pinned,
                 activity: t.activity,
+                detached: t.detached,
             })
             .collect();
         let font_size = self.core.settings.terminal.font_size;
@@ -1750,6 +1794,7 @@ impl eframe::App for TermCraftApp {
                 }
             });
 
+        self.detached_windows(&ctx);
         self.dialogs(&ctx, &mut out);
         for action in out {
             self.apply(&ctx, action);

@@ -17,6 +17,8 @@ pub struct TabView {
     pub pinned: bool,
     /// New output while the tab was in the background.
     pub activity: bool,
+    /// Shown in its own window.
+    pub detached: bool,
 }
 
 /// Colours offered by "Set tab color".
@@ -142,6 +144,9 @@ fn chrome_tab(
     title.push_str(&tab.title);
     if !tab.alive {
         title.push_str(" (closed)");
+    }
+    if tab.detached {
+        title.push_str(" (detached)");
     }
     let font = egui::TextStyle::Body.resolve(ui.style());
     let text_color = if selected {
@@ -345,7 +350,16 @@ fn tab_menu(
     );
     item(ui, "Close all tabs", some(ids(&|_, _| true)), out);
     ui.separator();
-    item(ui, "Detach tab", None, out);
+    if tab.detached {
+        item(
+            ui,
+            "Re-attach tab",
+            Some(Action::DetachTab(tab.id, false)),
+            out,
+        );
+    } else {
+        item(ui, "Detach tab", Some(Action::DetachTab(tab.id, true)), out);
+    }
     item(ui, "Fullscreen", Some(Action::ToggleFullscreen), out);
     item(
         ui,

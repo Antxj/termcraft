@@ -29,7 +29,7 @@ refined against it.
 | P0 | [~] | Auto-update (signed manifest, portable-safe) | `tc-update` |
 | P1 | [x] | Split view: 2 terminals (vertical / horizontal); click a pane to make it active | `tc-ui` |
 | P1 | [x] | Split view: 4 terminals (grid) | `tc-ui` |
-| P1 | [ ] | Detachable tabs (tab → own window) | `tc-ui` |
+| P1 | [x] | Detachable tabs (tab → own window): "Detach tab" / "Re-attach tab" in the tab menu; closing the window re-attaches | `tc-ui` |
 | P1 | [x] | Fullscreen from tab menu and View menu | `tc-ui` |
 | P1 | [x] | Tab context menu: rename, set tab color (also session 7_1), duplicate, close / close left / right / others / all, pin / unpin (pinned tabs stay), save / print output, font size | `tc-ui` |
 | P1 | [x] | "Session stopped" prompt: Return closes the tab, R restarts the session, S saves the terminal output | `tc-ui` |
@@ -114,7 +114,7 @@ refined against it.
 | P0 | [x] | Session model (host, port, user, kind, folder) | `tc-core` |
 | P0 | [x] | Save / load sessions (TOML) | `tc-core` |
 | P0 | [~] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (13 types editable; Xdmcp and Aws S3 pending) | `tc-ui` |
-| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, RDP, VNC, FTP, SFTP, Serial, Shell; lossless (every non-default parameter kept in `options`) | `tc-import` |
+| P0 | [~] | Import MobaXterm sessions: SSH, Telnet, Rsh, RDP, VNC, FTP, SFTP, Serial, Shell, File, Browser, Mosh, WSL (Xdmcp and S3 not yet); lossless (every non-default parameter kept in `options`) | `tc-import` |
 | P1 | [x] | Folders tree, rename / duplicate / delete from context menu, drag a session onto a folder (or another session) to move it, New folder / Rename folder / Delete folder (empty folders kept); session_folder_add / _rename / _remove commands | `tc-core` + `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |
