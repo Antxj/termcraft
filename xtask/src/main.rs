@@ -5,9 +5,11 @@
 //! `inventory` — generate parity inventories into `docs/inventory/`.
 //! `brand`     — a ready-made portable folder with default settings and
 //!               sessions for a team.
+//! `app-icon`  — the program icon (PNG, .ico, .icns).
 //! `package`   — release packages (portable zip, .deb, macOS .app) from
 //!               built binaries.
 
+mod app_icon;
 mod brand;
 mod dfm;
 mod icons;
@@ -41,6 +43,8 @@ enum Cmd {
     Schema { input: Option<PathBuf> },
     /// SVG icons for the README (docs/icons/).
     Icons,
+    /// The program icon: PNG, .ico and .icns (crates/tc-ui/assets/).
+    AppIcon,
     /// A portable TermCraft with default settings and sessions for a team.
     Brand {
         /// Folder with termcraft and termcraft-cli (default: target/release).
@@ -133,6 +137,11 @@ fn main() -> Result<()> {
             let out = root().join("docs/icons");
             let n = icons::write_all(&out)?;
             println!("wrote {n} icons to {}", out.display());
+            Ok(())
+        }
+        Cmd::AppIcon => {
+            app_icon::write_all(&root())?;
+            println!("wrote the program icon to crates/tc-ui/assets/");
             Ok(())
         }
         Cmd::Brand {

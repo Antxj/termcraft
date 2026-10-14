@@ -172,11 +172,16 @@ impl Popup {
                 self.tab = None;
             }
         } else {
-            if self.tab.as_ref().is_none_or(|t| !t.is_alive()) {
-                self.tab = Some(Tab::open(POPUP_TAB_ID, None, &env()));
-            }
-            self.visible = true;
+            self.open(env);
         }
+    }
+
+    /// Show the popup terminal (tray menu "Show popup terminal").
+    pub fn open(&mut self, env: impl FnOnce() -> TabEnv) {
+        if self.tab.as_ref().is_none_or(|t| !t.is_alive()) {
+            self.tab = Some(Tab::open(POPUP_TAB_ID, None, &env()));
+        }
+        self.visible = true;
     }
 
     /// Draw the popup window when visible.

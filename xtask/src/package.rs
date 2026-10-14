@@ -20,7 +20,11 @@ pub struct Package<'a> {
 
 const DESKTOP_ENTRY: &str = "[Desktop Entry]\nType=Application\nName=TermCraft\n\
 GenericName=Terminal and remote sessions\nComment=SSH, SFTP, RDP, VNC, serial and more\n\
-Exec=termcraft\nIcon=utilities-terminal\nTerminal=false\nCategories=Network;System;TerminalEmulator;\n";
+Exec=termcraft\nIcon=termcraft\nTerminal=false\nCategories=Network;System;TerminalEmulator;\n";
+
+/// The program icon (`cargo xtask app-icon`).
+const ICON_PNG: &[u8] = include_bytes!("../../crates/tc-ui/assets/icon-256.png");
+const ICON_ICNS: &[u8] = include_bytes!("../../crates/tc-ui/assets/termcraft.icns");
 
 fn exe(platform: &str, name: &str) -> String {
     if platform.starts_with("windows") {
@@ -140,6 +144,15 @@ fn deb(p: &Package<'_>, gui: &Path, cli: &Path) -> Result<PathBuf> {
         ("./usr/bin/", b"", 0o755),
         ("./usr/share/", b"", 0o755),
         ("./usr/share/applications/", b"", 0o755),
+        ("./usr/share/icons/", b"", 0o755),
+        ("./usr/share/icons/hicolor/", b"", 0o755),
+        ("./usr/share/icons/hicolor/256x256/", b"", 0o755),
+        ("./usr/share/icons/hicolor/256x256/apps/", b"", 0o755),
+        (
+            "./usr/share/icons/hicolor/256x256/apps/termcraft.png",
+            ICON_PNG,
+            0o644,
+        ),
         ("./usr/bin/termcraft", &gui_bytes, 0o755),
         ("./usr/bin/termcraft-cli", &cli_bytes, 0o755),
         (
@@ -169,6 +182,7 @@ pub fn info_plist(version: &str) -> String {
   <key>CFBundleVersion</key><string>{version}</string>
   <key>CFBundleShortVersionString</key><string>{version}</string>
   <key>CFBundleExecutable</key><string>termcraft</string>
+  <key>CFBundleIconFile</key><string>termcraft</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -192,6 +206,11 @@ fn app_bundle(p: &Package<'_>, gui: &Path, cli: &Path) -> Result<PathBuf> {
     let mut zip = zip::ZipWriter::new(std::fs::File::create(&path)?);
     zip.start_file("TermCraft.app/Contents/Info.plist", zip_options(0o644))?;
     zip.write_all(info_plist(p.version).as_bytes())?;
+    zip.start_file(
+        "TermCraft.app/Contents/Resources/termcraft.icns",
+        zip_options(0o644),
+    )?;
+    zip.write_all(ICON_ICNS)?;
     for (f, name) in [(gui, "termcraft"), (cli, "termcraft-cli")] {
         zip.start_file(
             format!("TermCraft.app/Contents/MacOS/{name}"),
@@ -264,6 +283,11 @@ mod tests {
             names
                 .iter()
                 .any(|n| n == "TermCraft.app/Contents/Info.plist")
+        );
+        assert!(
+            names
+                .iter()
+                .any(|n| n == "TermCraft.app/Contents/Resources/termcraft.icns")
         );
         assert!(
             run(&Package {

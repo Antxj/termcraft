@@ -15,6 +15,9 @@
 //!   capture the host key dialog)
 //! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start
 //!   every saved tunnel (prompts are answered like for the session)
+//! - `TERMCRAFT_SNAPSHOT_TRAY=1` — add the tray icon, "Iconify" after one
+//!   second and "Show Terminal" (as from the tray menu) after 2.5 s: the
+//!   snapshot is only taken if the window came back
 
 use crate::tab::Tab;
 use crate::tunnels::RunningTunnel;
@@ -23,6 +26,12 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tc_commands::Command;
 use tc_core::TunnelId;
+
+/// A step of the `TERMCRAFT_SNAPSHOT_TRAY` script.
+pub enum TrayStep {
+    Iconify,
+    Show,
+}
 
 enum Phase {
     Start,
@@ -38,6 +47,8 @@ pub struct Snapshot {
     typed: Option<String>,
     delay: Duration,
     pub tunnels: bool,
+    /// `TERMCRAFT_SNAPSHOT_TRAY`: steps of the tray script done so far.
+    pub tray: Option<u8>,
     /// Window to open on the first frame (taken once).
     pub window: Option<String>,
     started: Instant,
@@ -58,10 +69,24 @@ impl Snapshot {
             typed: std::env::var("TERMCRAFT_SNAPSHOT_TYPE").ok(),
             delay: Duration::from_millis(delay),
             tunnels: std::env::var_os("TERMCRAFT_SNAPSHOT_TUNNELS").is_some(),
+            tray: std::env::var_os("TERMCRAFT_SNAPSHOT_TRAY").map(|_| 0),
             window: std::env::var("TERMCRAFT_SNAPSHOT_WINDOW").ok(),
             started: Instant::now(),
             phase: Phase::Start,
         })
+    }
+
+    /// The next step of the tray script, when it is due.
+    pub fn tray_step(&mut self) -> Option<TrayStep> {
+        let done = self.tray.as_mut()?;
+        let t = self.started.elapsed();
+        let step = match *done {
+            0 if t >= Duration::from_millis(1000) => TrayStep::Iconify,
+            1 if t >= Duration::from_millis(2500) => TrayStep::Show,
+            _ => return None,
+        };
+        *done += 1;
+        Some(step)
     }
 
     /// Advance the script by one frame. Returns a command to run, if any.

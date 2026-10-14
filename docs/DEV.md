@@ -49,7 +49,8 @@ cargo run -p tc-ui
 ```
 
 Other switches (see `crates/tc-ui/src/snapshot.rs`): `TERMCRAFT_SNAPSHOT_LOCAL_TABS`,
-`TERMCRAFT_SNAPSHOT_WINDOW`, `TERMCRAFT_SNAPSHOT_TUNNELS`, `TERMCRAFT_SNAPSHOT_HOSTKEY`.
+`TERMCRAFT_SNAPSHOT_WINDOW`, `TERMCRAFT_SNAPSHOT_TUNNELS`, `TERMCRAFT_SNAPSHOT_HOSTKEY`,
+`TERMCRAFT_SNAPSHOT_TRAY` (adds the tray icon, iconifies and shows the window again).
 The snapshot window stays below other windows and lets mouse clicks
 pass through, so it cannot catch a click meant for another window.
 

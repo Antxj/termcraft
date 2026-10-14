@@ -29,6 +29,7 @@ allow = [
     "OFL-1.1",
     "Ubuntu-font-1.0",
     "MPL-2.0",
+    "Unlicense",
 ]
 confidence-threshold = 0.9
 

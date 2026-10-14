@@ -110,6 +110,9 @@ pub struct TermCraftApp {
     text_editor: crate::ui::text_editor::TextEditor,
     /// Popup ("quake") terminal and its system-wide hotkey.
     popup: crate::popup::Popup,
+    /// The icon in the system tray (`None` without a tray, and in
+    /// snapshot runs).
+    tray: Option<crate::tray::Tray>,
     /// Shared sessions (read-only) and their management window.
     shared: crate::shared::SharedSessions,
     shared_window: Option<crate::ui::shared_window::SharedWindow>,
@@ -226,6 +229,7 @@ impl TermCraftApp {
             show_expert: false,
             text_editor: Default::default(),
             popup: crate::popup::Popup::new(&cc.egui_ctx),
+            tray: None,
             shared: Default::default(),
             shared_window: None,
             connect_as: None,
@@ -260,6 +264,9 @@ impl TermCraftApp {
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
         };
+        if app.snapshot.as_ref().is_none_or(|s| s.tray.is_some()) {
+            app.tray = crate::tray::Tray::new(&cc.egui_ctx, &app.core.store.sessions);
+        }
         app.control = crate::control_server::ControlServer::start(
             app.core.paths.control_file(),
             app.core.repaint.clone(),
@@ -342,6 +349,10 @@ impl TermCraftApp {
             Action::Run(cmd) => return self.run(cmd),
             Action::Quit => return self.request_exit(ctx),
             Action::Configuration => return self.show_config = true,
+            // "Iconify TermCraft": into the tray when there is one.
+            Action::Minimize if self.tray.is_some() => {
+                return ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            }
             Action::Minimize => {
                 return ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
             }
@@ -651,6 +662,51 @@ impl TermCraftApp {
         }
     }
 
+    /// Requests from the tray icon and its menu.
+    fn serve_tray(&mut self, ctx: &egui::Context) {
+        let requests = match &mut self.tray {
+            Some(tray) => {
+                tray.sync_sessions(&self.core.store.sessions);
+                tray.take()
+            }
+            None => Vec::new(),
+        };
+        for request in requests {
+            self.tray_request(ctx, request);
+        }
+        if let Some(step) = self.snapshot.as_mut().and_then(|s| s.tray_step()) {
+            use crate::snapshot::TrayStep;
+            match step {
+                TrayStep::Iconify => {
+                    let into = if self.tray.is_some() {
+                        "the tray"
+                    } else {
+                        "the taskbar (no tray)"
+                    };
+                    eprintln!("snapshot: iconify into {into}");
+                    self.apply(ctx, Action::Minimize);
+                }
+                TrayStep::Show => self.tray_request(ctx, crate::tray::Request::Show),
+            }
+        }
+    }
+
+    fn tray_request(&mut self, ctx: &egui::Context, request: crate::tray::Request) {
+        let focus = self.snapshot.is_none();
+        match request {
+            crate::tray::Request::PopupTerminal => {
+                let core = &self.core;
+                self.popup.open(|| core.tab_env());
+            }
+            crate::tray::Request::Show => show_window(ctx, focus),
+            crate::tray::Request::Then(action) => {
+                // Its dialogs (or the exit prompt) need the window.
+                show_window(ctx, focus);
+                self.apply(ctx, action);
+            }
+        }
+    }
+
     /// "Detach tab": each detached tab in its own native window; closing
     /// the window puts the tab back.
     fn detached_windows(&mut self, ctx: &egui::Context) {
@@ -833,6 +889,16 @@ fn print_text(text: &str, tab_id: u64) -> Result<(), String> {
 
 /// Skin and "Graphical interface elements size"; both are no-ops when
 /// nothing changed.
+/// Bring the main window back from the tray or the taskbar, in front
+/// (`focus`; snapshot runs stay behind the user's windows).
+fn show_window(ctx: &egui::Context, focus: bool) {
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+    if focus {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+}
+
 fn apply_view(ctx: &egui::Context, view: &tc_core::settings::ViewSettings) {
     crate::skin::apply(ctx, view.theme, view.saturation);
     let zoom = view.ui_size.zoom();
@@ -877,6 +943,7 @@ impl eframe::App for TermCraftApp {
             self.run(cmd);
         }
         self.serve_control(&ctx);
+        self.serve_tray(&ctx);
         // Shortcuts first, so the terminal never sees their keys.
         let shortcuts = crate::ui::hotkeys_window::take_shortcuts(
             &ctx,

@@ -1,0 +1,2 @@
+// The program icon in termcraft.exe (Explorer, shortcuts, taskbar pins).
+1 ICON "termcraft.ico"

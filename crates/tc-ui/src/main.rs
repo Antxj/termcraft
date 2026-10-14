@@ -16,6 +16,7 @@ mod tab;
 mod term_log;
 mod term_settings;
 mod term_view;
+mod tray;
 mod tunnels;
 mod ui;
 mod updates;
@@ -50,6 +51,7 @@ fn main() -> eframe::Result<()> {
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("TermCraft")
+        .with_icon(std::sync::Arc::new(app_icon()))
         .with_inner_size([1100.0, 700.0])
         .with_min_inner_size([480.0, 320.0]);
     let settings = tc_core::Settings::load(&paths.settings_file()).unwrap_or_default();
@@ -73,6 +75,12 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(app::TermCraftApp::new(cc, startup)))),
     )
+}
+
+/// The program icon (`cargo xtask app-icon`), for the window and taskbar.
+pub(crate) fn app_icon() -> egui::IconData {
+    eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon-256.png"))
+        .expect("the bundled icon is a valid PNG")
 }
 
 /// Send the commands to an already running window. False when none runs.

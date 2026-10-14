@@ -1,4 +1,4 @@
-# TermCraft
+# <img src="docs/icons/app.png" width="40" align="top"> TermCraft
 
 **One window for all your terminals and remote connections.** TermCraft
 gives you tabbed local terminals, SSH with a built-in file browser, Telnet,
@@ -84,7 +84,7 @@ Already use MobaXterm? Export your sessions there
 | <img src="docs/icons/lock.svg" width="24"> | **Passwords** | Save passwords and named credentials in the system keychain, or in an encrypted file protected by a master password. |
 | <img src="docs/icons/shield.svg" width="24"> | **Known hosts** | See and remove the servers whose identity you accepted. |
 | <img src="docs/icons/shared.svg" width="24"> | **Shared sessions** | Read your team's session list from a shared folder or a web address. |
-| <img src="docs/icons/settings.svg" width="24"> | **Look and feel** | Light, dim and dark skins, color saturation, transparency, compact mode, keyboard shortcuts. |
+| <img src="docs/icons/settings.svg" width="24"> | **Look and feel** | Light, dim and dark skins, color saturation, transparency, compact mode, keyboard shortcuts. *View › Iconify TermCraft* hides the window in the system tray; click the tray icon to bring it back. |
 | <img src="docs/icons/update.svg" width="24"> | **Automatic updates** | TermCraft checks for new versions and installs them when you agree. Every update is signed and verified. |
 | <img src="docs/icons/portable.svg" width="24"> | **Portable mode** | Put an empty file named `termcraft.portable` next to the program: all settings then stay in its folder. |
 
@@ -132,6 +132,9 @@ Right-click a session for more: *Connect as…*, *SFTP session*,
 - **RDP** uses FreeRDP (`xfreerdp`) or Remmina; **VNC** uses TigerVNC,
   `vncviewer` or Remmina; **Xdmcp** uses Xephyr — install them from your
   distribution.
+- **Tray icon:** shown on KDE, XFCE, Cinnamon and other desktops with a
+  system tray; GNOME needs the *AppIndicator* extension. Without a tray,
+  *Iconify* just minimizes the window.
 - **Popup terminal** shortcut: works on X11. Under Wayland it depends on the
   desktop (XWayland apps only).
 - **Servers** on ports below 1024 (TFTP 69, HTTP 80) need administrator

@@ -54,6 +54,7 @@ cargo build --release -p tc-ui -p tc-cli
 cargo xtask package          # portable zip (+ .deb on Linux, .app on macOS)
 cargo xtask brand --settings defaults.toml --sessions team.mxtsessions
 cargo xtask icons            # README icons (docs/icons)
+cargo xtask app-icon         # program icon (crates/tc-ui/assets)
 ```
 
 Releases are built by `.github/workflows/release.yml` when a `v*` tag is

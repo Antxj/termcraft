@@ -31,6 +31,8 @@ directories.workspace = true
 ureq.workspace = true
 tempfile.workspace = true
 global-hotkey = "0.8"
+# System tray: native on Windows / macOS, StatusNotifierItem on Linux (no GTK).
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
 egui-phosphor = "0.14"
 rfd = "0.17"
 zeroize = "1"
@@ -45,3 +47,6 @@ workspace = true
 tc-devserver.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread"] }
 tempfile.workspace = true
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
