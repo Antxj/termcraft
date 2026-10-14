@@ -520,11 +520,14 @@ fn row(ui: &mut egui::Ui, view: &mut SftpView, e: &RemoteEntry, out: &mut Vec<Br
         if e.is_dir {
             out.push(BrowserAction::Cd(join(&view.cwd, &e.name)));
         } else {
-            // Like the reference: a file opens in the text editor.
-            out.push(BrowserAction::Edit(
-                join(&view.cwd, &e.name),
-                OpenWith::TextEditor,
-            ));
+            // Like the reference: a file opens in the text editor, an
+            // image in the viewer.
+            let how = if super::image_viewer::is_image(&e.name) {
+                OpenWith::Image
+            } else {
+                OpenWith::TextEditor
+            };
+            out.push(BrowserAction::Edit(join(&view.cwd, &e.name), how));
         }
     }
     if r.middle_clicked() {

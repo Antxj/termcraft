@@ -10,6 +10,7 @@ pub mod expert_window;
 pub mod home;
 pub mod host_key_dialog;
 pub mod hotkeys_window;
+pub mod image_viewer;
 pub mod jump_hosts_dialog;
 pub mod keygen_window;
 pub mod known_hosts_window;

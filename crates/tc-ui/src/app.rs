@@ -240,6 +240,7 @@ pub struct TermCraftApp {
     /// "Connect as...": the session and the user being typed.
     connect_as: Option<(Box<tc_core::Session>, String)>,
     diff_tool: crate::ui::diff_window::DiffWindow,
+    image_viewer: crate::ui::image_viewer::ImageViewer,
     ascii_table: crate::ui::diff_window::AsciiTable,
     /// "Servers management" window and its page.
     show_servers: bool,
@@ -350,6 +351,7 @@ impl TermCraftApp {
             shared_window: None,
             connect_as: None,
             diff_tool: Default::default(),
+            image_viewer: Default::default(),
             ascii_table: Default::default(),
             show_servers: false,
             servers_page: Default::default(),
@@ -1111,6 +1113,17 @@ impl TermCraftApp {
         if let Some(file) = compares.last() {
             self.diff_tool.compare_with(file);
         }
+        let images: Vec<(std::path::PathBuf, String)> = self
+            .core
+            .tabs
+            .iter_mut()
+            .flat_map(|t| std::mem::take(&mut t.open_in_viewer))
+            .collect();
+        if let Some((local, remote)) = images.last() {
+            let title = remote.rsplit('/').next().unwrap_or(remote);
+            self.image_viewer.open(ctx, local, title);
+        }
+        self.image_viewer.show(ctx);
         self.connect_as_dialog(ctx);
         self.shared.poll();
         if let Some(window) = &mut self.shared_window {

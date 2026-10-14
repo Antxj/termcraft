@@ -17,6 +17,8 @@ pub enum OpenWith {
     Compare,
     /// "Open with...": a program the user chose.
     Program(PathBuf),
+    /// The built-in image viewer.
+    Image,
 }
 
 struct Edit {

@@ -400,6 +400,8 @@ pub struct Tab {
     pub open_in_editor: Vec<(PathBuf, String)>,
     /// Remote copies to compare in the Diff tool.
     pub open_in_diff: Vec<PathBuf>,
+    /// Remote images to show in the viewer: (local, remote).
+    pub open_in_viewer: Vec<(PathBuf, String)>,
     /// Local side of the SFTP / FTP session view.
     pub local_pane: Option<crate::ui::local_pane::LocalPane>,
     /// 4_36 "Syntax highlighting" (`None` = the global setting).
@@ -499,6 +501,7 @@ impl Tab {
             local_pane: None,
             open_in_editor: Vec::new(),
             open_in_diff: Vec::new(),
+            open_in_viewer: Vec::new(),
             detached_maximized: false,
             wants_fullscreen: false,
             lock_title: true,
@@ -1838,6 +1841,11 @@ impl Tab {
                         }
                         OpenWith::Compare => {
                             self.open_in_diff.push(local.clone());
+                            Ok(String::new())
+                        }
+                        OpenWith::Image => {
+                            let remote = self.edits.remote_of(&local).unwrap_or_default();
+                            self.open_in_viewer.push((local.clone(), remote));
                             Ok(String::new())
                         }
                         OpenWith::Program(program) => crate::external::open_with(&program, &local),
