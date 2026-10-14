@@ -3,7 +3,7 @@
 //! live; the rest are shown disabled so the layout matches.
 
 use super::{Action, NOT_YET};
-use tc_core::settings::{LocalShell, Theme, ToolbarStyle, UiSize, UpdateChannel};
+use tc_core::settings::{HomeLocation, LocalShell, Theme, ToolbarStyle, UiSize, UpdateChannel};
 use tc_core::{Paths, Settings};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -87,6 +87,41 @@ fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths) {
             } else {
                 "Installed (per-user data folders)"
             });
+            ui.end_row();
+        });
+    ui.add_space(8.0);
+    egui::Grid::new("cfg-home")
+        .num_columns(2)
+        .spacing([12.0, 6.0])
+        .show(ui, |ui| {
+            let g = &mut s.general;
+            ui.label("Home directory location:");
+            egui::ComboBox::from_id_salt("cfg-home-location")
+                .selected_text(g.home_location.label())
+                .width(337.0)
+                .show_ui(ui, |ui| {
+                    for loc in HomeLocation::ALL {
+                        ui.selectable_value(&mut g.home_location, loc, loc.label());
+                    }
+                })
+                .response
+                .on_hover_text("HOME of the local Bash / Zsh terminals (kept between runs unless <Temp directory>)");
+            ui.end_row();
+            if g.home_location == HomeLocation::Custom {
+                ui.label("Terminal home directory:");
+                ui.horizontal(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut g.home_dir).desired_width(289.0));
+                    if ui.button("…").clicked()
+                        && let Some(dir) = rfd::FileDialog::new().pick_folder()
+                    {
+                        g.home_dir = dir.display().to_string();
+                    }
+                });
+                ui.end_row();
+            }
+            ui.label("Root (/) directory location:");
+            ui.add_enabled(false, egui::Button::new("<Default>"))
+                .on_disabled_hover_text("TermCraft uses the shells installed on this computer (Git Bash, MSYS2, WSL…), which keep their own root.");
             ui.end_row();
         });
     ui.add_space(8.0);

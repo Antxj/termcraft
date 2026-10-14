@@ -42,6 +42,8 @@ pub struct TabEnv {
     pub log_dir: Option<PathBuf>,
     /// "Use Windows PATH" in the local Bash / Zsh.
     pub use_windows_path: bool,
+    /// "Home directory location": `HOME` of the local Bash / Zsh.
+    pub home: Option<PathBuf>,
 }
 
 /// Keys of the "Session stopped" prompt.
@@ -532,7 +534,7 @@ impl Tab {
             }
         }
         match tab.session.as_ref().map(|s| s.kind.clone()) {
-            None => tab.spawn_local(None, env.local_shell, env.use_windows_path),
+            None => tab.spawn_local(None, env.local_shell, env),
             Some(SessionKind::LocalShell { program }) => {
                 // 3_2 "Terminal shell": 0 = the configured default.
                 let shell = tab
@@ -541,7 +543,7 @@ impl Tab {
                     .and_then(|s| s.options.get("3_2"))
                     .and_then(|v| LocalShell::from_option(v))
                     .unwrap_or(env.local_shell);
-                tab.spawn_local(program.as_deref(), shell, env.use_windows_path)
+                tab.spawn_local(program.as_deref(), shell, env)
             }
             Some(SessionKind::Ssh {
                 user: Some(user), ..
@@ -916,7 +918,8 @@ impl Tab {
         self.term.feed(format!("{text}\r\n").as_bytes());
     }
 
-    fn spawn_local(&mut self, program: Option<&str>, shell: LocalShell, windows_path: bool) {
+    fn spawn_local(&mut self, program: Option<&str>, shell: LocalShell, env: &TabEnv) {
+        let windows_path = env.use_windows_path;
         let command = match program {
             Some(p) => tc_pty::ShellCommand {
                 program: p.to_string(),
@@ -949,6 +952,15 @@ impl Tab {
         {
             let kind = if windows_path { "inherit" } else { "minimal" };
             command.env.push(("MSYS2_PATH_TYPE".into(), kind.into()));
+        }
+        // "Home directory location" (Bash / Zsh read HOME).
+        if program.is_none()
+            && matches!(shell, LocalShell::Bash | LocalShell::Zsh)
+            && let Some(home) = &env.home
+        {
+            command
+                .env
+                .push(("HOME".into(), home.display().to_string()));
         }
         self.spawn_command(&command);
     }
@@ -2273,6 +2285,7 @@ mod tests {
             save_key_passphrases: false,
             log_dir: None,
             use_windows_path: true,
+            home: None,
         };
         let session = Session::new(
             "t",
@@ -2313,6 +2326,7 @@ mod tests {
             save_key_passphrases: false,
             log_dir: None,
             use_windows_path: true,
+            home: None,
         };
         let mut session = Session::new(
             "t",
@@ -2366,6 +2380,7 @@ mod tests {
             save_key_passphrases: false,
             log_dir: None,
             use_windows_path: true,
+            home: None,
         };
         let mut session = Session::new(
             "t",
@@ -2426,6 +2441,7 @@ mod tests {
             save_key_passphrases: false,
             log_dir: None,
             use_windows_path: true,
+            home: None,
         };
         let mut session = dev_session(addr.port());
         session.options.remove("3_8");
@@ -2467,6 +2483,7 @@ mod tests {
             save_key_passphrases: false,
             log_dir: None,
             use_windows_path: true,
+            home: None,
         };
 
         // 1st connection: no saved password -> prompt in the terminal.

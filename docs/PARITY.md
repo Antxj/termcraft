@@ -179,7 +179,7 @@ refined against it.
 | Pri | Status | Feature | Crate |
 |-----|--------|---------|-------|
 | P2 | [~] | "Local terminal environment" (Configuration › Terminal) and Shell session "Terminal shell": Bash (default; Git for Windows or MSYS2), Zsh, Cmd, PowerShell, WSL. Falls back to the system shell with a notice. BusyBox-w32 download pending | `tc-pty` + `tc-ui` |
-| P3 | [ ] | Persistent home directory in portable mode | `tc-core` |
+| P3 | [x] | "Home directory location" (Configuration › General): <Default> / <Temp directory> / <Same as application> (portable) / <Custom> "Terminal home directory", used as HOME by the local Bash / Zsh; the "Root (/)" location does not apply (TermCraft uses the installed shells) | `tc-core` + `tc-ui` |
 | P3 | [ ] | Plugin / package system for extra tools | — |
 
 ## 11. Embedded tools

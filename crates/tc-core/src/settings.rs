@@ -104,11 +104,72 @@ impl Default for TftpServerSettings {
 pub struct GeneralSettings {
     /// "Automatically backup TermCraft configuration file".
     pub auto_backup: bool,
+    /// "Home directory location" of the local Bash / Zsh terminals.
+    pub home_location: HomeLocation,
+    /// "Terminal home directory" when the location is "<Custom>".
+    pub home_dir: String,
 }
 
 impl Default for GeneralSettings {
     fn default() -> Self {
-        Self { auto_backup: true }
+        Self {
+            auto_backup: true,
+            home_location: HomeLocation::default(),
+            home_dir: String::new(),
+        }
+    }
+}
+
+/// "Home directory location": where `HOME` of local terminals points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HomeLocation {
+    /// The user's own home (unchanged).
+    #[default]
+    Default,
+    /// A fresh folder in the temporary directory.
+    Temp,
+    /// `home` next to the program (portable installs).
+    SameAsApplication,
+    Custom,
+}
+
+impl HomeLocation {
+    pub const ALL: [HomeLocation; 4] = [
+        Self::Default,
+        Self::Temp,
+        Self::SameAsApplication,
+        Self::Custom,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Default => "<Default>",
+            Self::Temp => "<Temp directory>",
+            Self::SameAsApplication => "<Same as application>",
+            Self::Custom => "<Custom>",
+        }
+    }
+}
+
+impl GeneralSettings {
+    /// The `HOME` for local terminals, created if needed (`None` = keep
+    /// the user's own).
+    pub fn terminal_home(&self) -> Option<std::path::PathBuf> {
+        let dir = match self.home_location {
+            HomeLocation::Default => return None,
+            HomeLocation::Temp => std::env::temp_dir().join("termcraft-home"),
+            HomeLocation::SameAsApplication => std::env::current_exe().ok()?.parent()?.join("home"),
+            HomeLocation::Custom => {
+                let d = self.home_dir.trim();
+                if d.is_empty() {
+                    return None;
+                }
+                std::path::PathBuf::from(d)
+            }
+        };
+        std::fs::create_dir_all(&dir).ok()?;
+        Some(dir)
     }
 }
 
@@ -654,6 +715,24 @@ impl Default for UpdateSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_home_locations() {
+        let mut g = GeneralSettings::default();
+        assert_eq!(g.terminal_home(), None, "the user's own home");
+        let dir = tempfile::tempdir().unwrap();
+        g.home_location = HomeLocation::Custom;
+        g.home_dir = dir.path().join("h").display().to_string();
+        assert_eq!(g.terminal_home(), Some(dir.path().join("h")));
+        assert!(dir.path().join("h").is_dir(), "created");
+        g.home_dir = "  ".into();
+        assert_eq!(g.terminal_home(), None);
+        g.home_location = HomeLocation::Temp;
+        assert!(
+            g.terminal_home()
+                .is_some_and(|p| p.ends_with("termcraft-home"))
+        );
+    }
 
     #[test]
     fn local_shell_option_round_trip() {

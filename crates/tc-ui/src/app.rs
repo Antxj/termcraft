@@ -46,6 +46,7 @@ impl Core {
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
             use_windows_path: self.settings.terminal.use_windows_path,
+            home: self.settings.general.terminal_home(),
         }
     }
 
