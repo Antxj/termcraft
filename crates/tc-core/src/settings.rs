@@ -592,6 +592,14 @@ pub struct ExpertTerminal {
     /// "Force application cursor keys mode on / off" (`None` = the
     /// program decides).
     pub app_cursor: Option<bool>,
+    /// "Enable switching to the alternate screen".
+    pub alt_screen: bool,
+    /// "Enable scrollback clearing".
+    pub scrollback_clearing: bool,
+    /// "Enable destructive backspace".
+    pub destructive_backspace: bool,
+    /// "Enable character set configuration".
+    pub charset_config: bool,
     /// "Answerback to ^E".
     pub answerback: String,
     /// "Bell Type".
@@ -620,6 +628,10 @@ impl Default for ExpertTerminal {
             mouse_reporting: true,
             bracketed_paste: true,
             app_cursor: None,
+            alt_screen: true,
+            scrollback_clearing: true,
+            destructive_backspace: false,
+            charset_config: true,
             answerback: "xterm-256color".into(),
             bell: BellType::default(),
             exit_key: ANY_OTHER_KEY.into(),

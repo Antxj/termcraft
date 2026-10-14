@@ -231,6 +231,10 @@ fn term_options(opts: &TerminalSettings) -> tc_term::TermOptions {
         mouse_reporting: e.mouse_reporting,
         bracketed_paste: e.bracketed_paste,
         app_cursor: e.app_cursor,
+        alt_screen: e.alt_screen,
+        scrollback_clearing: e.scrollback_clearing,
+        destructive_backspace: e.destructive_backspace,
+        charset_config: e.charset_config,
         answerback: e.answerback.clone(),
         delimiters: tc_term::Delimiters::new(
             &opts.word_delimiters,

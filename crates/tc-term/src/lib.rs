@@ -5,6 +5,7 @@
 //! `alacritty_terminal` later without touching renderers.
 
 pub mod charset;
+mod filter;
 pub mod highlight;
 mod input;
 mod mouse;
@@ -66,6 +67,14 @@ pub struct TermOptions {
     pub bracketed_paste: bool,
     /// Force application cursor keys on / off (`None` = the program).
     pub app_cursor: Option<bool>,
+    /// "Enable switching to the alternate screen".
+    pub alt_screen: bool,
+    /// "Enable scrollback clearing" (`CSI 3 J`).
+    pub scrollback_clearing: bool,
+    /// "Enable destructive backspace".
+    pub destructive_backspace: bool,
+    /// "Enable character set configuration" (`ESC ( 0`, SO / SI …).
+    pub charset_config: bool,
     /// "Answerback to ^E" (empty = no answer).
     pub answerback: String,
     /// Double-click word delimiters.
@@ -80,8 +89,25 @@ impl Default for TermOptions {
             mouse_reporting: true,
             bracketed_paste: true,
             app_cursor: None,
+            alt_screen: true,
+            scrollback_clearing: true,
+            destructive_backspace: false,
+            charset_config: true,
             answerback: String::new(),
             delimiters: Delimiters::default(),
+        }
+    }
+}
+
+impl TermOptions {
+    fn filter_rules(&self) -> filter::Rules {
+        filter::Rules {
+            implicit_cr_in_lf: self.implicit_cr_in_lf,
+            implicit_lf_in_cr: self.implicit_lf_in_cr,
+            no_alt_screen: !self.alt_screen,
+            no_scrollback_clear: !self.scrollback_clearing,
+            no_charsets: !self.charset_config,
+            destructive_backspace: self.destructive_backspace,
         }
     }
 }
@@ -102,6 +128,8 @@ pub struct Terminal {
     pub theme: Theme,
     selection: Option<Selection>,
     pub options: TermOptions,
+    /// Rewrites output for the options (state kept between reads).
+    filter: filter::Filter,
     /// Syntax highlighting of default-colored output.
     pub highlighter: Highlighter,
 }
@@ -155,6 +183,7 @@ impl Terminal {
             theme: Theme::default(),
             selection: None,
             options: TermOptions::default(),
+            filter: filter::Filter::default(),
             highlighter: Highlighter::default(),
         }
     }
@@ -162,19 +191,9 @@ impl Terminal {
     /// Feed bytes from the PTY/connection. Returns bytes that must be written
     /// back (answers to terminal queries such as cursor-position reports).
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<u8> {
-        let o = &self.options;
-        if o.implicit_cr_in_lf || o.implicit_lf_in_cr {
-            let mut fixed = Vec::with_capacity(bytes.len() + bytes.len() / 8);
-            for &b in bytes {
-                match b {
-                    b'\n' if o.implicit_cr_in_lf => fixed.extend_from_slice(b"\r\n"),
-                    b'\r' if o.implicit_lf_in_cr => fixed.extend_from_slice(b"\r\n"),
-                    _ => fixed.push(b),
-                }
-            }
-            self.parser.process(&fixed);
-        } else {
-            self.parser.process(bytes);
+        match self.filter.apply(&self.options.filter_rules(), bytes) {
+            Some(fixed) => self.parser.process(&fixed),
+            None => self.parser.process(bytes),
         }
         if let Some(dir) = self.osc7.scan(bytes) {
             self.cwd_report = Some(dir);
@@ -648,6 +667,27 @@ mod tests {
         t.set_scrollback(1);
         assert_eq!(t.history_len(), 3);
         assert_eq!(t.scrollback(), 1, "the view does not move");
+    }
+
+    #[test]
+    fn alternate_screen_and_destructive_backspace_switches() {
+        let mut t = Terminal::new(4, 20, 0);
+        t.feed(b"main\x1b[?1049halt");
+        assert!(t.contents().starts_with("alt"), "{:?}", t.contents());
+        t.feed(b"\x1b[?1049l");
+        assert!(t.contents().starts_with("main"), "{:?}", t.contents());
+
+        let mut t = Terminal::new(4, 20, 0);
+        t.options.alt_screen = false;
+        t.feed(b"main\x1b[?1049h alt");
+        assert!(t.contents().starts_with("main alt"), "{:?}", t.contents());
+
+        let mut t = Terminal::new(4, 20, 0);
+        t.feed(b"abc\x08");
+        assert!(t.contents().starts_with("abc"), "{:?}", t.contents());
+        t.options.destructive_backspace = true;
+        t.feed(b"\x08");
+        assert!(t.contents().starts_with("a c"), "{:?}", t.contents());
     }
 
     #[test]
