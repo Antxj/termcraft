@@ -6539,7 +6539,10 @@ dependencies = [
  "flate2",
  "lzma-rs",
  "tar",
+ "tc-core",
+ "tc-import",
  "tempfile",
+ "toml",
  "zip",
 ]
 

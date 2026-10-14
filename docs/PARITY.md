@@ -43,7 +43,7 @@ refined against it.
 | P2 | [ ] | Minimize to system tray (eframe does not run a hidden window again without platform code; pending) | `tc-ui` |
 | P2 | [x] | Popup ("quake") terminal: system-wide hotkey (Keyboard shortcuts, default Ctrl + Alt + F12) shows / hides a local terminal at the left / top / right / bottom edge or floating, above other windows; Configuration › Misc "Popup terminal" transparency, size, sizeable, hide instead of close | `tc-ui` |
 | P2 | [~] | "Graphical interface elements size" (Autodetect … HighDPI big); `--dpi` command-line pending | `tc-ui` |
-| P3 | [ ] | Branding customizer (logo / default settings) | `xtask` |
+| P3 | [~] | Customizer: `cargo xtask brand --settings defaults.toml --sessions team.mxtsessions` builds a ready-made portable folder (programs, default settings checked, sessions imported). Custom logo pending | `xtask` |
 
 ## 2. Terminal
 

@@ -3,9 +3,12 @@
 //! `extract`   — static extraction of the reference app into `reference/extracted/`
 //!               (nothing is executed; see docs/CLEAN_ROOM.md).
 //! `inventory` — generate parity inventories into `docs/inventory/`.
+//! `brand`     — a ready-made portable folder with default settings and
+//!               sessions for a team.
 //! `package`   — release packages (portable zip, .deb, macOS .app) from
 //!               built binaries.
 
+mod brand;
 mod dfm;
 mod inventory;
 mod package;
@@ -35,6 +38,21 @@ enum Cmd {
     Inventory { input: Option<PathBuf> },
     /// Generate crates/tc-core/src/schema_gen.rs (session parameter schema).
     Schema { input: Option<PathBuf> },
+    /// A portable TermCraft with default settings and sessions for a team.
+    Brand {
+        /// Folder with termcraft and termcraft-cli (default: target/release).
+        #[arg(long)]
+        bin_dir: Option<PathBuf>,
+        /// TermCraft settings.toml with the defaults.
+        #[arg(long)]
+        settings: Option<PathBuf>,
+        /// MobaXterm sessions export or TermCraft sessions.toml.
+        #[arg(long)]
+        sessions: Option<PathBuf>,
+        /// Output folder (default: dist/brand).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
     /// Build release packages from binaries (`cargo build --release`).
     Package {
         /// Folder with termcraft and termcraft-cli (default: target/release).
@@ -106,6 +124,23 @@ fn main() -> Result<()> {
             let out = root().join("docs/inventory");
             inventory::write_all(&reference, &out)?;
             println!("wrote {}", out.display());
+            Ok(())
+        }
+        Cmd::Brand {
+            bin_dir,
+            settings,
+            sessions,
+            out,
+        } => {
+            let bin_dir = bin_dir.unwrap_or_else(|| root().join("target/release"));
+            let out = out.unwrap_or_else(|| root().join("dist/brand"));
+            let folder = brand::run(&brand::Brand {
+                bin_dir: &bin_dir,
+                out: &out,
+                settings: settings.as_deref(),
+                sessions: sessions.as_deref(),
+            })?;
+            println!("wrote {}", folder.display());
             Ok(())
         }
         Cmd::Package {
