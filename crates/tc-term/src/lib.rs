@@ -4,6 +4,7 @@
 //! The VT parser is currently `vt100`; it is wrapped so it can be swapped for
 //! `alacritty_terminal` later without touching renderers.
 
+pub mod charset;
 mod input;
 mod mouse;
 mod osc7;
@@ -11,6 +12,7 @@ mod palette;
 mod selection;
 mod strip;
 
+pub use charset::TermCharset;
 pub use input::{Key, Modifiers, encode_key};
 pub use mouse::{MouseAction, MouseButton, MouseEvent};
 pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};

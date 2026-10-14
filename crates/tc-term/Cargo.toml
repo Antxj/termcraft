@@ -8,6 +8,8 @@ license.workspace = true
 
 [dependencies]
 vt100.workspace = true
+encoding_rs.workspace = true
+oem_cp.workspace = true
 
 [lints]
 workspace = true

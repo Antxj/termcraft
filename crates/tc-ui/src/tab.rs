@@ -140,6 +140,15 @@ fn paste_delay(session: Option<&Session>) -> std::time::Duration {
     std::time::Duration::from_millis(ms)
 }
 
+/// 4_6 "Term charset" (default UTF-8).
+fn term_charset(session: Option<&Session>) -> tc_term::TermCharset {
+    let index = session
+        .and_then(|s| s.options.get("4_6"))
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(tc_term::charset::UTF8);
+    tc_term::TermCharset::from_index(index)
+}
+
 /// Session 4_12 "Log terminal output" (4_13 folder, `<>` = the global
 /// one), else the global log folder.
 fn log_folder(session: Option<&Session>, global: Option<&std::path::Path>) -> Option<PathBuf> {
@@ -288,6 +297,8 @@ pub struct Tab {
     paste_queue: std::collections::VecDeque<Vec<u8>>,
     paste_delay: std::time::Duration,
     next_paste: Instant,
+    /// 4_6 "Term charset": remote bytes ↔ the emulator's UTF-8.
+    charset: tc_term::TermCharset,
     /// "Log terminal output".
     log: Option<crate::term_log::TermLog>,
     /// "Find in terminal".
@@ -369,6 +380,7 @@ impl Tab {
             ended_action: None,
             paste_queue: Default::default(),
             paste_delay: std::time::Duration::ZERO,
+            charset: tc_term::TermCharset::default(),
             next_paste: Instant::now(),
             log: None,
             find: None,
@@ -392,6 +404,7 @@ impl Tab {
         };
         tab.term_type = settings.term_type;
         tab.paste_delay = paste_delay(tab.session.as_ref());
+        tab.charset = term_charset(tab.session.as_ref());
         tab.color = tab
             .session
             .as_ref()
@@ -705,8 +718,11 @@ impl Tab {
         }
     }
 
-    /// Output from the program: logged, then shown.
+    /// Output from the program: decoded from the session charset,
+    /// logged, then shown.
     fn output(&mut self, bytes: &[u8]) -> Vec<u8> {
+        let decoded = self.charset.decode(bytes);
+        let bytes: &[u8] = &decoded;
         if let Some(log) = &mut self.log
             && let Err(e) = log.write(bytes)
         {
@@ -1608,6 +1624,7 @@ impl Tab {
         if let Some(hook) = &mut self.folder_hook {
             hook.on_user_input();
         }
+        let bytes: &[u8] = &self.charset.encode(bytes);
         match &mut self.backend {
             Backend::None => {}
             Backend::Pty(pty) => {
@@ -1745,6 +1762,30 @@ mod tests {
             .insert("3_8".into(), "echo saved-password-test".into());
         s.options.insert("3_26".into(), "0".into());
         s
+    }
+
+    #[test]
+    fn term_charset_choices_match_the_schema() {
+        let param = schema::terminal_params()
+            .iter()
+            .find(|p| p.id == "4_6")
+            .expect("4_6");
+        let schema::Widget::Choice(choices) = param.widget else {
+            panic!("4_6 is a choice");
+        };
+        assert_eq!(choices, tc_term::charset::NAMES);
+        assert_eq!(param.default, tc_term::charset::UTF8.to_string());
+
+        let mut s = Session::new(
+            "x",
+            SessionKind::Telnet {
+                host: "h".into(),
+                port: 23,
+            },
+        );
+        assert!(term_charset(Some(&s)).is_utf8());
+        s.options.insert("4_6".into(), "0".into());
+        assert!(!term_charset(Some(&s)).is_utf8());
     }
 
     #[test]

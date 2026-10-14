@@ -53,7 +53,7 @@ refined against it.
 | P0 | [~] | Scrollback (Shift+PgUp/PgDn/Home/End) | `tc-term` |
 | P0 | [x] | Mouse selection (drag, double-click word, triple-click line, Ctrl+Alt block), "Copy on select", right-click paste, Ctrl+Insert / Shift+Insert, Ctrl+Shift+C / V (Cmd on macOS); Ctrl+C / X / V reach the program as ^C / ^X / ^V | `tc-term` + `tc-ui` |
 | P1 | [x] | Per-session font size (pt), colors (fg / bg / cursor / 16 ANSI), cursor shape & blink, bold-as-bright; global font size | `tc-term` + `tc-ui` |
-| P1 | [ ] | Charset selection (UTF-8, ISO-8859-x…) | `tc-term` |
+| P1 | [x] | Charset selection (4_6 "Term charset", all 41 choices): output decoded to UTF-8, typed / pasted text encoded back (`?` when unmappable); ISO-8859-x, KOI8, GBK, Big5, SJIS, EUC-KR, Windows-125x, CP437/850/852, HP-Roman8, DEC-MCS. CP620 (Mazovia) and VSCII fall back to ISO-8859-1 | `tc-term` |
 | P1 | [x] | Backspace behavior (^H / ^?) and terminal type (TERM) per session | `tc-ui` |
 | P1 | [x] | Find in terminal / Find next (F3): upwards through the history, match case, the match is selected and scrolled into view | `tc-term` + `tc-ui` |
 | P1 | [x] | Output logging to file: global folder (Configuration › Terminal) or per session (4_12 / 4_13); plain text, escape sequences removed | `tc-term` + `tc-ui` |
