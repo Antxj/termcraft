@@ -26,7 +26,7 @@ refined against it.
 | P0 | [x] | Sidebar: icon strip (pin/Sessions/Tools/Macros/Sftp), Quick connect, session tree with folders | `tc-ui` |
 | P0 | [x] | Single command registry shared by GUI / CLI / MCP | `tc-commands` |
 | P0 | [x] | Portable mode (config next to the executable) | `tc-core` |
-| P0 | [x] | Auto-update: signed manifest (ed25519) from GitHub Releases, verified size and SHA-256, no downgrades, stable / beta channels, check at start-up, install now or automatically, "Restart now"; macOS replaces the program inside TermCraft.app; Linux package installs are left to the package manager. End-to-end tested against a local server | `tc-update` |
+| P0 | [x] | Auto-update: signed manifest (ed25519) from GitHub Releases, verified size and SHA-256, no downgrades, stable / beta channels, check at start-up, install now or automatically, "Restart now"; `termcraft` and `termcraft-cli` are updated together (also from `termcraft-cli update install`, even while the window runs); macOS replaces the programs inside TermCraft.app; Linux package installs are left to the package manager. End-to-end tested against a local server | `tc-update` |
 | P1 | [x] | Split view: 2 terminals (vertical / horizontal); click a pane to make it active | `tc-ui` |
 | P1 | [x] | Split view: 4 terminals (grid) | `tc-ui` |
 | P1 | [x] | Detachable tabs (tab → own window): "Detach tab" / "Re-attach tab" in the tab menu; closing the window re-attaches | `tc-ui` |

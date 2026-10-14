@@ -2,23 +2,25 @@
 //!
 //! Release CI publishes, per channel, `update-<channel>.json` plus a detached
 //! ed25519 signature `update-<channel>.json.sig` (base64). The manifest lists
-//! one asset per platform with its SHA-256. The client:
+//! the programs of each platform with their SHA-256: `termcraft` as
+//! `<os>-<arch>` and `termcraft-cli` as `<os>-<arch>-cli`. The client:
 //!
 //! 1. downloads manifest + signature and verifies the signature against a
 //!    public key compiled into the binary (`TERMCRAFT_UPDATE_PUBKEY`);
 //! 2. rejects manifests for another channel and versions that are not newer;
-//! 3. downloads the asset for this platform, checking size and SHA-256;
-//! 4. swaps the running executable in place (`self-replace`), which works the
-//!    same for the portable zip and for installed copies.
-//!
-//! macOS `.app` bundles must be replaced as a whole and are not handled yet.
+//! 3. downloads the programs for this platform, checking size and SHA-256,
+//!    before changing anything;
+//! 4. replaces `termcraft` and, when it is there, `termcraft-cli` in the
+//!    folder of the running program (the running one in place, with
+//!    `self-replace`). This works the same for the portable zip, for other
+//!    copies and for the programs inside `TermCraft.app`.
 
 use base64::Engine as _;
 use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Base64 ed25519 public key(s), comma-separated, injected at build time by
 /// the release pipeline. Unset in dev builds → updates disabled.
@@ -77,7 +79,11 @@ pub struct Asset {
 pub struct Available {
     pub version: String,
     pub notes: String,
+    /// `termcraft`.
     pub asset: Asset,
+    /// `termcraft-cli`, when the release has it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cli: Option<Asset>,
 }
 
 pub struct Updater {
@@ -88,6 +94,27 @@ pub struct Updater {
 
 pub fn current_platform() -> String {
     format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// The manifest platform of `termcraft-cli` for `platform`.
+pub fn cli_platform(platform: &str) -> String {
+    format!("{platform}-cli")
+}
+
+/// The programs an update replaces, from the running one: `termcraft` and
+/// `termcraft-cli` side by side. A renamed program counts as `termcraft`.
+pub fn programs(running: &Path) -> (PathBuf, PathBuf) {
+    let dir = running.parent().unwrap_or(Path::new("."));
+    let named = |name: &str| dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    let is_cli = running
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("termcraft-cli"));
+    if is_cli {
+        (named("termcraft"), running.to_path_buf())
+    } else {
+        (running.to_path_buf(), named("termcraft-cli"))
+    }
 }
 
 pub fn parse_keys(list: &str) -> Result<Vec<VerifyingKey>, UpdateError> {
@@ -157,10 +184,12 @@ pub fn select_update(
         .iter()
         .find(|a| a.platform == platform)
         .ok_or_else(|| UpdateError::NoAsset(platform.into()))?;
+    let cli = cli_platform(platform);
     Ok(Some(Available {
         version: manifest.version.clone(),
         notes: manifest.notes.clone(),
         asset: asset.clone(),
+        cli: manifest.assets.iter().find(|a| a.platform == cli).cloned(),
     }))
 }
 
@@ -188,23 +217,74 @@ impl Updater {
         select_update(&manifest, current_version, &current_platform())
     }
 
-    /// Download, verify, and replace the running executable.
-    /// The new version takes effect on next start.
+    /// Download and verify the programs, then replace `termcraft` and
+    /// `termcraft-cli` next to the running one (see [`programs`]). The new
+    /// version takes effect on next start.
     pub fn install(&self, update: &Available) -> Result<(), UpdateError> {
+        let exe = std::env::current_exe()?;
         // A copy installed by the system package manager (.deb …) is
         // updated by it, not replaced behind its back.
-        if let Ok(exe) = std::env::current_exe()
-            && managed_by_system(&exe)
-        {
+        if managed_by_system(&exe) {
             return Err(UpdateError::Unsupported(
                 "installed by the system package manager: update it with the package manager",
             ));
         }
-        // macOS: the program inside TermCraft.app is replaced in place.
-        let file = download_verified(&update.asset)?;
-        self_replace::self_replace(file.path())?;
+        let (gui, cli) = programs(&exe);
+        if !gui.exists() {
+            return Err(UpdateError::Unsupported(
+                "termcraft is not in the folder of termcraft-cli",
+            ));
+        }
+        // Everything is downloaded and checked before anything changes.
+        let dir = gui.parent().unwrap_or(Path::new("."));
+        let new_gui = download_verified(&update.asset, dir)?;
+        let new_cli = match &update.cli {
+            Some(asset) if cli.exists() => Some(download_verified(asset, dir)?),
+            _ => None,
+        };
+        put(new_gui, &gui, &exe)?;
+        if let Some(file) = new_cli {
+            put(file, &cli, &exe)?;
+        }
         Ok(())
     }
+}
+
+/// Install `file` as `target`: the running program in place, another one by
+/// renaming over it.
+fn put(file: tempfile::NamedTempFile, target: &Path, running: &Path) -> Result<(), UpdateError> {
+    if target == running {
+        self_replace::self_replace(file.path())?;
+        Ok(())
+    } else {
+        replace_file(file, target)
+    }
+}
+
+/// Replace a program that is not the running one. Windows does not let a
+/// running program be overwritten (the window, while `termcraft-cli`
+/// updates), but lets it be renamed: it is moved aside first.
+fn replace_file(file: tempfile::NamedTempFile, target: &Path) -> Result<(), UpdateError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(file.path(), std::fs::Permissions::from_mode(0o755))?;
+    }
+    let file = match file.persist(target) {
+        Ok(_) => return Ok(()),
+        Err(e) if cfg!(windows) => e.file,
+        Err(e) => return Err(e.error.into()),
+    };
+    let aside = target.with_extension("old");
+    let _ = std::fs::remove_file(&aside);
+    std::fs::rename(target, &aside)?;
+    if let Err(e) = file.persist(target) {
+        let _ = std::fs::rename(&aside, target);
+        return Err(e.error.into());
+    }
+    // Still running: removed by the next update.
+    let _ = std::fs::remove_file(&aside);
+    Ok(())
 }
 
 /// Programs under `/usr` (Linux packages) belong to the package manager.
@@ -227,12 +307,16 @@ fn fetch_small(url: &str) -> Result<Vec<u8>, UpdateError> {
     Ok(out)
 }
 
-fn download_verified(asset: &Asset) -> Result<tempfile::NamedTempFile, UpdateError> {
+/// Download `asset` into a temporary file in `dir` (the folder of the
+/// program it replaces, so it can be renamed into place).
+fn download_verified(asset: &Asset, dir: &Path) -> Result<tempfile::NamedTempFile, UpdateError> {
     let mut resp = ureq::get(&asset.url)
         .call()
         .map_err(|e| UpdateError::Network(format!("{}: {e}", asset.url)))?;
     let mut reader = resp.body_mut().as_reader().take(asset.size + 1);
-    let mut file = tempfile::NamedTempFile::new()?;
+    let mut file = tempfile::Builder::new()
+        .prefix(".termcraft-update-")
+        .tempfile_in(dir)?;
     copy_and_verify(&mut reader, file.as_file_mut(), asset)?;
     Ok(file)
 }
@@ -523,7 +607,9 @@ mod tests {
         let updater = Updater::new(&base, "stable", keys.clone());
         let update = updater.check("1.0.0").unwrap().expect("a newer version");
         assert_eq!(update.version, "99.0.0");
-        let file = download_verified(&update.asset).unwrap();
+        assert!(update.cli.is_none(), "this release has no termcraft-cli");
+        let file = download_verified(&update.asset, dir.path()).unwrap();
+        assert_eq!(file.path().parent(), Some(dir.path()));
         assert_eq!(std::fs::read(file.path()).unwrap(), b"the new release");
         assert!(
             updater.check("99.0.0").unwrap().is_none(),
@@ -536,6 +622,88 @@ mod tests {
                 .is_err()
         );
         assert!(managed_by_system(Path::new("/usr/bin/termcraft")) == cfg!(target_os = "linux"));
+    }
+
+    #[test]
+    fn the_cli_is_updated_with_the_window() {
+        let mut m: Manifest = serde_json::from_slice(&manifest("0.2.0", "stable")).unwrap();
+        let mut cli = m.assets[0].clone();
+        cli.platform = cli_platform("windows-x86_64");
+        cli.url = "https://example.invalid/termcraft-cli.exe".into();
+        m.assets.push(cli.clone());
+        let update = select_update(&m, "0.1.0", "windows-x86_64")
+            .unwrap()
+            .unwrap();
+        assert_eq!(update.asset, m.assets[0]);
+        assert_eq!(update.cli, Some(cli));
+    }
+
+    #[test]
+    fn programs_beside_the_running_one() {
+        let x = std::env::consts::EXE_SUFFIX;
+        let dir = Path::new("/opt/tc");
+        let gui = dir.join(format!("termcraft{x}"));
+        let cli = dir.join(format!("termcraft-cli{x}"));
+        assert_eq!(programs(&gui), (gui.clone(), cli.clone()));
+        // From the command line, the window's program is replaced too
+        // (not the command-line program with the window's).
+        assert_eq!(programs(&cli), (gui.clone(), cli.clone()));
+        let renamed = dir.join(format!("TermCraft-portable{x}"));
+        assert_eq!(programs(&renamed), (renamed.clone(), cli));
+    }
+
+    #[test]
+    fn replace_a_program_that_is_not_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("termcraft-cli");
+        std::fs::write(&target, b"old").unwrap();
+        let mut new = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+        new.write_all(b"new").unwrap();
+        replace_file(new, &target).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&target).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o755);
+        }
+    }
+
+    /// The window's program is running while `termcraft-cli` updates it.
+    #[cfg(windows)]
+    #[test]
+    fn replace_a_running_program() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("termcraft.exe");
+        // A copy of this test program, running `wait_for_input` below.
+        std::fs::copy(std::env::current_exe().unwrap(), &target).unwrap();
+        let mut running = std::process::Command::new(&target)
+            .args(["--exact", "tests::wait_for_input", "--ignored"])
+            .env("TC_UPDATE_WAIT", "1")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(running.try_wait().unwrap().is_none(), "still running");
+        let mut new = tempfile::NamedTempFile::new_in(dir.path()).unwrap();
+        new.write_all(b"new").unwrap();
+        let result = replace_file(new, &target);
+        drop(running.stdin.take());
+        let _ = running.wait();
+        result.unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"new");
+    }
+
+    /// Helper process for `replace_a_running_program`.
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "helper process, started by replace_a_running_program"]
+    fn wait_for_input() {
+        if std::env::var_os("TC_UPDATE_WAIT").is_some() {
+            let _ = std::io::stdin().read_to_end(&mut Vec::new());
+        }
     }
 
     #[test]

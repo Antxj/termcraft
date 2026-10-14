@@ -96,9 +96,13 @@ jobs:
           "$cli" update manifest --version "$version" --channel stable --base-url "$base" \
             --out dist/update-stable.json \
             windows-x86_64=dist/termcraft-windows-x86_64.exe \
+            windows-x86_64-cli=dist/termcraft-cli-windows-x86_64.exe \
             linux-x86_64=dist/termcraft-linux-x86_64 \
+            linux-x86_64-cli=dist/termcraft-cli-linux-x86_64 \
             macos-aarch64=dist/termcraft-macos-aarch64 \
-            macos-x86_64=dist/termcraft-macos-x86_64
+            macos-aarch64-cli=dist/termcraft-cli-macos-aarch64 \
+            macos-x86_64=dist/termcraft-macos-x86_64 \
+            macos-x86_64-cli=dist/termcraft-cli-macos-x86_64
           "$cli" update sign dist/update-stable.json
       - name: Publish release
         env:
