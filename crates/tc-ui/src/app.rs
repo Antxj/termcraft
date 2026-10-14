@@ -702,6 +702,7 @@ impl TermCraftApp {
             let builder = egui::ViewportBuilder::default()
                 .with_title(format!("{} - TermCraft", tab.title))
                 .with_inner_size([900.0, 600.0])
+                .with_maximized(tab.detached_maximized)
                 .with_transparent(transparency > 0);
             let close = ctx.show_viewport_immediate(viewport, builder, |ui, _class| {
                 if transparency > 0 {
@@ -1873,6 +1874,12 @@ impl eframe::App for TermCraftApp {
             }
         }
         self.ended_actions();
+        // Bookmark 5_1 "Fullscreen": the tab asks once it is open.
+        if let Some(tab) = self.core.tabs.iter_mut().find(|t| t.wants_fullscreen) {
+            tab.wants_fullscreen = false;
+            self.core.active = Some(tab.id);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+        }
         self.exit_when_done(&ctx);
         if std::mem::take(&mut self.start_minimized) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));

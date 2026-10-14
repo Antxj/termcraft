@@ -366,6 +366,13 @@ pub struct Tab {
     pub expert: ExpertTerminal,
     /// "Visual" bell: flash the terminal until then.
     pub bell_flash: Option<Instant>,
+    /// Bookmark 5_1 "Maximized/detached/fullscreen tab": open maximized
+    /// when detached, or ask the app for fullscreen (taken once).
+    pub detached_maximized: bool,
+    pub wants_fullscreen: bool,
+    /// Bookmark 4_15 "Lock terminal title" (default on): titles set by
+    /// programs are ignored.
+    lock_title: bool,
     /// Local side of the SFTP / FTP session view.
     pub local_pane: Option<crate::ui::local_pane::LocalPane>,
     /// 4_36 "Syntax highlighting" (`None` = the global setting).
@@ -462,6 +469,9 @@ impl Tab {
             gateway_tunnel: None,
             syntax: None,
             local_pane: None,
+            detached_maximized: false,
+            wants_fullscreen: false,
+            lock_title: true,
             expert: ExpertTerminal::default(),
             bell_flash: None,
             next_paste: Instant::now(),
@@ -489,6 +499,20 @@ impl Tab {
         tab.paste_delay = paste_delay(tab.session.as_ref());
         tab.charset = term_charset(tab.session.as_ref());
         tab.syntax = session_syntax(tab.session.as_ref());
+        let bookmark = |id: &str| {
+            tab.session
+                .as_ref()
+                .and_then(|s| s.options.get(id))
+                .cloned()
+        };
+        // 5_1: 0 normal, 1 detached, 2 maximized detached, 3 fullscreen.
+        match bookmark("5_1").as_deref() {
+            Some("1") => tab.detached = true,
+            Some("2") => (tab.detached, tab.detached_maximized) = (true, true),
+            Some("3") => tab.wants_fullscreen = true,
+            _ => {}
+        }
+        tab.lock_title = bookmark("4_15").is_none_or(|v| schema::is_true(&v));
         tab.color = tab
             .session
             .as_ref()
@@ -871,6 +895,15 @@ impl Tab {
             self.message(&line);
         }
         self.ended = true;
+        // 1_1 "Reconnection message at session end" off: just close.
+        let message = self
+            .session
+            .as_ref()
+            .and_then(|s| s.options.get("1_1"))
+            .is_none_or(|v| schema::is_true(v));
+        if !message {
+            self.ended_action = Some(EndedAction::Close);
+        }
     }
 
     fn message(&mut self, text: &str) {
@@ -1020,6 +1053,12 @@ impl Tab {
     /// Drain backend events into the emulator. Returns true if anything changed.
     pub fn pump(&mut self) -> bool {
         self.pump_paste();
+        if let Some(title) = self.term.take_title()
+            && !self.lock_title
+            && !title.is_empty()
+        {
+            self.title = title;
+        }
         self.upload_prompts.extend(self.edits.changed());
         match &mut self.backend {
             Backend::None => false,
@@ -2152,6 +2191,48 @@ mod tests {
         pump_until(&mut tab, |t| {
             t.term.contents().contains("connection closed")
         });
+    }
+
+    /// Bookmark 1_1 off: no "Session stopped" prompt, the tab closes.
+    #[test]
+    fn no_reconnection_message_closes_the_tab() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || drop(listener.accept()));
+        let dir = tempfile::tempdir().unwrap();
+        let env = TabEnv {
+            scrollback: 100,
+            known_hosts: dir.path().join("kh"),
+            repaint: Arc::new(|| {}),
+            vault: Arc::new(Vault::open(
+                dir.path().join("i.toml"),
+                Box::new(tc_vault::MemoryStore::default()),
+            )),
+            save_passwords: SavePasswords::Ask,
+            ssh: Default::default(),
+            backspace_ctrl_h: false,
+            paste_right_click: true,
+            local_shell: Default::default(),
+            save_key_passphrases: false,
+            log_dir: None,
+            use_windows_path: true,
+        };
+        let mut session = Session::new(
+            "t",
+            SessionKind::Telnet {
+                host: "127.0.0.1".into(),
+                port,
+            },
+        );
+        session.options.insert("1_1".into(), "0".into());
+        session.options.insert("5_1".into(), "2".into());
+        let mut tab = Tab::open(1, Some(session), &env);
+        assert!(
+            tab.detached && tab.detached_maximized,
+            "5_1 maximized detached"
+        );
+        pump_until(&mut tab, |t| t.ended_action.is_some());
+        assert_eq!(tab.ended_action, Some(EndedAction::Close));
     }
 
     /// End to end: a Telnet session whose jump host has no login asks for

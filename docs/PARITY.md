@@ -38,6 +38,7 @@ refined against it.
 | P2 | [x] | View options: menu/buttons bars, button sizes, sidebar left/right, tab numbers, close buttons, rounded tabs, open-session dots, compact mode (tabs and terminals only; exit from the tab list or Ctrl+Shift+F11), colour saturation of the skin, window transparency and detached / fullscreen transparency (up to 80 %; turning it on from 0 applies after a restart, the window is only created transparent when needed) | `tc-ui` |
 | P1 | [x] | Skins: Light (default, like the reference), Dim, Dark, Follow system; own palettes, contrast checked by a test | `tc-ui` |
 | P1 | [x] | Chrome-style tab strip: rounded tabs, accent on the active tab, close button, middle-click closes, session icon | `tc-ui` |
+| P1 | [x] | Bookmark settings behaviour: 5_1 Normal / Detached / Maximized detached / Fullscreen tab, 1_1 "Reconnection message at session end" (off = the tab closes), 4_15 "Lock terminal title" (unlocked = OSC 0 / 2 titles rename the tab, printable and bounded) | `tc-term` + `tc-ui` |
 | P1 | [x] | Bookmark icon chooser: built-in icons by group (sessions, servers, systems, network, cloud, symbols), tint, custom PNG stored in the session (≤ 64 KiB, ≤ 256 px) | `tc-core` + `tc-ui` |
 | P2 | [ ] | Minimize to system tray | `tc-ui` |
 | P2 | [ ] | Popup ("quake") terminal shortcut | `tc-ui` |

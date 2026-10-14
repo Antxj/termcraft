@@ -25,6 +25,8 @@ pub use strip::AnsiStripper;
 #[derive(Default)]
 struct Events {
     bells: u32,
+    /// Latest window title the program set (OSC 0 / 2), not yet taken.
+    title: Option<String>,
     /// ^E (ENQ) inquiries waiting for the answerback.
     enquiries: u32,
 }
@@ -32,6 +34,16 @@ struct Events {
 impl vt100::Callbacks for Events {
     fn audible_bell(&mut self, _: &mut vt100::Screen) {
         self.bells = self.bells.saturating_add(1);
+    }
+
+    fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
+        // Shown in the tab: printable characters only, bounded.
+        let text: String = String::from_utf8_lossy(title)
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(120)
+            .collect();
+        self.title = Some(text.trim().to_string());
     }
 
     fn unhandled_control(&mut self, _: &mut vt100::Screen, b: u8) {
@@ -176,6 +188,11 @@ impl Terminal {
             }
         }
         replies
+    }
+
+    /// Window title set by the program (OSC 0 / 2) since the last call.
+    pub fn take_title(&mut self) -> Option<String> {
+        self.parser.callbacks_mut().title.take()
     }
 
     /// Bells (^G) received since the last call.
@@ -645,8 +662,10 @@ mod tests {
         t.feed(b"\x07\x07");
         assert_eq!(t.take_bells(), 2);
         assert_eq!(t.take_bells(), 0);
-        t.feed(b"\x1b]0;title\x07");
+        t.feed(b"\x1b]0;my\x01 title\x07");
         assert_eq!(t.take_bells(), 0, "an OSC terminator is not a bell");
+        assert_eq!(t.take_title().as_deref(), Some("my title"));
+        assert_eq!(t.take_title(), None);
         t.feed(b"\x1b[?1h\x1b[?2004h\x1b[?1000h");
         assert!(t.application_cursor() && t.bracketed_paste() && t.mouse_reporting());
         t.options.app_cursor = Some(false);
