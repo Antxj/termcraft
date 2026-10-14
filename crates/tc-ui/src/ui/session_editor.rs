@@ -70,6 +70,8 @@ pub struct SessionEditor {
     jump_hosts: Option<JumpHostsDialog>,
     /// Named credentials offered next to "Username" (set by the app).
     pub credentials: Vec<String>,
+    /// "Syntax highlighting" choices, built-in and user (set by the app).
+    pub syntaxes: Vec<(usize, String)>,
     manage_credentials: bool,
 }
 
@@ -125,6 +127,7 @@ impl SessionEditor {
             chooser: None,
             jump_hosts: None,
             credentials: Vec::new(),
+            syntaxes: Vec::new(),
             manage_credentials: false,
         };
         editor.load_values();
@@ -573,6 +576,26 @@ impl SessionEditor {
                     {
                         if ui.selectable_label(value == name, name).clicked() {
                             *value = name.to_string();
+                        }
+                    }
+                });
+            return;
+        }
+        // Built-in syntaxes, then the user ones (Customize).
+        if p.id == "4_36" && !self.syntaxes.is_empty() {
+            let current = value.parse::<usize>().unwrap_or(1);
+            let selected = self
+                .syntaxes
+                .iter()
+                .find(|(i, _)| *i == current)
+                .map_or("", |(_, label)| label.as_str());
+            egui::ComboBox::from_id_salt(("choice", p.id))
+                .selected_text(selected)
+                .width(170.0)
+                .show_ui(ui, |ui| {
+                    for (i, label) in &self.syntaxes {
+                        if ui.selectable_label(current == *i, label).clicked() {
+                            *value = i.to_string();
                         }
                     }
                 });

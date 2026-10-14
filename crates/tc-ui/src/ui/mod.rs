@@ -18,6 +18,7 @@ pub mod session_editor;
 pub mod session_icons;
 pub mod sftp_browser;
 pub mod sidebar;
+pub mod syntax_window;
 pub mod tabbar;
 pub mod toolbar;
 pub mod tunnels_window;
@@ -41,6 +42,8 @@ pub enum Action {
     PasswordsSettings,
     /// Passwords settings on the Credentials tab.
     ManageCredentials,
+    /// "Customize syntax highlighting".
+    CustomizeSyntax,
     Configuration,
     Tunnels,
     CheckUpdates,

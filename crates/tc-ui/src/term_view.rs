@@ -89,9 +89,11 @@ fn show_inner(
     });
 
     tab.term.word_delimiters.clone_from(&opts.word_delimiters);
-    tab.term.syntax = tab
-        .syntax
-        .unwrap_or_else(|| tc_term::Syntax::from_index(opts.syntax_highlighting));
+    tab.term.highlighter = crate::ui::syntax_window::highlighter(
+        ui.ctx(),
+        tab.syntax.unwrap_or(opts.syntax_highlighting),
+        &opts.custom_syntaxes,
+    );
     let cell_at = |pos: Pos2| -> (u16, u16) {
         let row = ((pos.y - rect.top()) / cell_h)
             .floor()
@@ -293,19 +295,21 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
     for row in 0..rows {
         let y = rect.top() + f32::from(row) * cell.y;
         let highlight = tab.term.highlight_row(row);
-        let fg_at = |col: u16, c: &tc_term::CellView| {
-            highlight
-                .get(usize::from(col))
-                .copied()
-                .flatten()
-                .unwrap_or(c.fg)
+        let mark_at = |col: u16| highlight.get(usize::from(col)).copied().flatten();
+        let fg_at =
+            |col: u16, c: &tc_term::CellView| mark_at(col).and_then(|m| m.fg).unwrap_or(c.fg);
+        let underline_at = |col: u16, c: &tc_term::CellView| {
+            c.underline || mark_at(col).is_some_and(|m| m.underline)
         };
+        let blink_at = |col: u16| mark_at(col).is_some_and(|m| m.blink);
         let mut col = 0;
         while col < cols {
             let Some(first) = tab.term.cell(row, col) else {
                 break;
             };
             let first_fg = fg_at(col, &first);
+            let first_underline = underline_at(col, &first);
+            let first_blink = blink_at(col);
             // Collect a run of cells sharing the same style.
             let start = col;
             let selected = tab.term.is_selected(row, col);
@@ -317,7 +321,8 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
                 if fg_at(col, &c) != first_fg
                     || c.bg != first.bg
                     || c.bold != first.bold
-                    || c.underline != first.underline
+                    || underline_at(col, &c) != first_underline
+                    || blink_at(col) != first_blink
                     || tab.term.is_selected(row, col) != selected
                 {
                     break;
@@ -335,14 +340,20 @@ fn paint(ui: &egui::Ui, rect: Rect, tab: &Tab, font: &FontId, cell: Vec2, focuse
             } else if first.bg != background {
                 painter.rect_filled(run_rect, 0.0, color(first.bg));
             }
-            if !run.trim().is_empty() {
+            // "Blinking" (user syntaxes): hidden every other half second.
+            let hidden = first_blink && {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500));
+                (ui.input(|i| i.time) * 2.0) as i64 % 2 == 1
+            };
+            if !run.trim().is_empty() && !hidden {
                 let fg = if selected {
                     SELECTION_FG
                 } else {
                     color(first_fg)
                 };
                 painter.text(pos2(x, y), egui::Align2::LEFT_TOP, &run, font.clone(), fg);
-                if first.underline {
+                if first_underline {
                     let uy = y + cell.y - 1.0;
                     painter.line_segment([pos2(x, uy), pos2(x + width, uy)], Stroke::new(1.0, fg));
                 }

@@ -286,6 +286,8 @@ pub struct TerminalSettings {
     /// "Syntax highlighting", as the session 4_36 index (1 = standard
     /// keywords); sessions may choose their own.
     pub syntax_highlighting: usize,
+    /// "Customize": the 8 user syntax definitions.
+    pub custom_syntaxes: [crate::syntax::CustomSyntax; crate::syntax::SLOTS],
 }
 
 /// "Local terminal environment" (Configuration › Terminal) and the Shell
@@ -360,6 +362,7 @@ impl Default for TerminalSettings {
             log_dir: String::new(),
             use_windows_path: true,
             syntax_highlighting: 1,
+            custom_syntaxes: Default::default(),
         }
     }
 }

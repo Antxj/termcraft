@@ -177,12 +177,11 @@ fn paste_delay(session: Option<&Session>) -> std::time::Duration {
     std::time::Duration::from_millis(ms)
 }
 
-/// 4_36 "Syntax highlighting" of the session, when it sets one.
-fn session_syntax(session: Option<&Session>) -> Option<tc_term::Syntax> {
+/// 4_36 "Syntax highlighting" index of the session, when it sets one.
+fn session_syntax(session: Option<&Session>) -> Option<usize> {
     session
         .and_then(|s| s.options.get("4_36"))
         .and_then(|v| v.parse::<usize>().ok())
-        .map(tc_term::Syntax::from_index)
 }
 
 /// 4_6 "Term charset" (default UTF-8).
@@ -343,7 +342,7 @@ pub struct Tab {
     paste_delay: std::time::Duration,
     next_paste: Instant,
     /// 4_36 "Syntax highlighting" (`None` = the global setting).
-    pub syntax: Option<tc_term::Syntax>,
+    pub syntax: Option<usize>,
     /// Telnet / RDP / VNC waiting for its tunnel through the jump hosts.
     via_gateway: Option<ViaGateway>,
     /// That tunnel, kept open as long as the tab.

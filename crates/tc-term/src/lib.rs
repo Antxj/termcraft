@@ -14,7 +14,7 @@ mod selection;
 mod strip;
 
 pub use charset::TermCharset;
-pub use highlight::Syntax;
+pub use highlight::{CustomRules, Syntax};
 pub use input::{Key, Modifiers, encode_key};
 pub use mouse::{MouseAction, MouseButton, MouseEvent};
 pub use palette::{CursorShape, DEFAULT_BG, DEFAULT_FG, Rgb, Theme};
@@ -31,7 +31,28 @@ pub struct Terminal {
     /// Characters that end a word on double click (empty = the default set).
     pub word_delimiters: String,
     /// Syntax highlighting of default-colored output.
-    pub syntax: Syntax,
+    pub highlighter: Highlighter,
+}
+
+/// Built-in or user syntax highlighting.
+#[derive(Debug, Clone)]
+pub enum Highlighter {
+    Builtin(Syntax),
+    Custom(std::sync::Arc<CustomRules>),
+}
+
+impl Default for Highlighter {
+    fn default() -> Self {
+        Self::Builtin(Syntax::None)
+    }
+}
+
+/// How the renderer draws a highlighted cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Mark {
+    pub fg: Option<Rgb>,
+    pub underline: bool,
+    pub blink: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +78,7 @@ impl Terminal {
             theme: Theme::default(),
             selection: None,
             word_delimiters: String::new(),
-            syntax: Syntax::None,
+            highlighter: Highlighter::default(),
         }
     }
 
@@ -157,8 +178,9 @@ impl Terminal {
     /// Syntax highlighting colors of a view row, one per column (`None` =
     /// keep the cell's color). Empty when nothing is highlighted, and on
     /// the alternate screen (full-screen programs draw their own colors).
-    pub fn highlight_row(&self, row: u16) -> Vec<Option<Rgb>> {
-        if self.syntax == Syntax::None || self.alternate_screen() {
+    pub fn highlight_row(&self, row: u16) -> Vec<Option<Mark>> {
+        if matches!(self.highlighter, Highlighter::Builtin(Syntax::None)) || self.alternate_screen()
+        {
             return Vec::new();
         }
         let screen = self.parser.screen();
@@ -179,17 +201,29 @@ impl Terminal {
         if chars.iter().all(|c| c.is_whitespace()) {
             return Vec::new();
         }
-        let spans = highlight::spans(self.syntax, &chars);
+        let spans: Vec<(usize, usize, highlight::Style)> = match &self.highlighter {
+            Highlighter::Builtin(syntax) => highlight::spans(*syntax, &chars)
+                .into_iter()
+                .map(|s| (s.start, s.end, s.kind.style()))
+                .collect(),
+            Highlighter::Custom(rules) => rules.spans(&chars),
+        };
         if spans.is_empty() {
             return Vec::new();
         }
         let t = &self.theme;
         let mut out = vec![None; chars.len()];
-        for span in spans {
-            let rgb = t.resolve(vt100::Color::Idx(span.kind.ansi()), t.foreground, false);
-            for (col, slot) in out.iter_mut().enumerate().take(span.end).skip(span.start) {
+        for (start, end, style) in spans {
+            let mark = Mark {
+                fg: style
+                    .ansi
+                    .map(|i| t.resolve(vt100::Color::Idx(i), t.foreground, false)),
+                underline: style.underline,
+                blink: style.blink,
+            };
+            for (col, slot) in out.iter_mut().enumerate().take(end).skip(start) {
                 if plain[col] {
-                    *slot = Some(rgb);
+                    *slot = Some(mark);
                 }
             }
         }
@@ -496,8 +530,12 @@ mod tests {
         let mut t = Terminal::new(3, 60, 0);
         t.feed(b"warning: retry \x1b[34merror\x1b[0m failed");
         assert!(t.highlight_row(0).is_empty(), "off by default");
-        t.syntax = Syntax::Standard;
-        let row = t.highlight_row(0);
+        t.highlighter = Highlighter::Builtin(Syntax::Standard);
+        let row: Vec<Option<Rgb>> = t
+            .highlight_row(0)
+            .into_iter()
+            .map(|m| m.and_then(|m| m.fg))
+            .collect();
         let yellow = t
             .theme
             .resolve(vt100::Color::Idx(3), t.theme.foreground, false);

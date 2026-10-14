@@ -213,6 +213,8 @@ pub struct TermCraftApp {
     /// "Hotkeys edition" window.
     show_hotkeys: bool,
     keygen: crate::ui::keygen_window::KeygenWindow,
+    /// "Customize syntax highlighting".
+    syntax_window: Option<crate::ui::syntax_window::SyntaxWindow>,
     known_hosts: crate::ui::known_hosts_window::KnownHostsWindow,
     /// Loopback control channel (other processes send commands).
     control: Option<crate::control_server::ControlServer>,
@@ -299,6 +301,7 @@ impl TermCraftApp {
             passwords: Default::default(),
             show_hotkeys: false,
             keygen: Default::default(),
+            syntax_window: None,
             known_hosts: Default::default(),
             control: None,
             startup,
@@ -402,6 +405,12 @@ impl TermCraftApp {
             Action::About => return self.show_about = true,
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::CustomizeSyntax => {
+                self.syntax_window = Some(crate::ui::syntax_window::SyntaxWindow::new(
+                    &self.core.settings.terminal.custom_syntaxes,
+                ));
+                return;
+            }
             Action::Tunnels => return self.show_tunnels = true,
             Action::CheckUpdates => return self.updates.check(ctx),
             Action::ImportDialog => return self.show_import = true,
@@ -816,6 +825,20 @@ impl TermCraftApp {
         self.paste_confirm_dialog(ctx);
         self.upload_edited_dialog(ctx);
         self.keygen.show(ctx);
+        if let Some(window) = &mut self.syntax_window {
+            use crate::ui::syntax_window::Outcome;
+            match window.show(ctx) {
+                Outcome::Pending => {}
+                Outcome::Cancel => self.syntax_window = None,
+                Outcome::Done(slots) => {
+                    self.core.settings.terminal.custom_syntaxes = *slots;
+                    self.syntax_window = None;
+                    if let Err(e) = self.core.save_settings() {
+                        self.status = format!("could not save settings: {e}");
+                    }
+                }
+            }
+        }
         let known_hosts_file = self.core.paths.known_hosts_file();
         self.known_hosts.show(ctx, &known_hosts_file, out);
         if self.show_hotkeys
@@ -839,6 +862,8 @@ impl TermCraftApp {
                 .into_iter()
                 .map(|(name, _)| name)
                 .collect();
+            editor.syntaxes =
+                crate::ui::syntax_window::choices(&self.core.settings.terminal.custom_syntaxes);
             if !editor.show(ctx, out) {
                 self.editor = None;
             }
@@ -1624,6 +1649,9 @@ impl eframe::App for TermCraftApp {
                 Some("keygen") => self.keygen.open = true,
                 Some("known_hosts") => self.known_hosts.open(),
                 Some("jump_hosts") => self.editor = Some(SessionEditor::jump_hosts_preview()),
+                Some("syntax") => {
+                    self.syntax_window = Some(crate::ui::syntax_window::SyntaxWindow::preview());
+                }
                 Some(w) if w.starts_with("new_session") => {
                     let index = w
                         .split(':')

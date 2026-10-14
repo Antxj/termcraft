@@ -5053,6 +5053,7 @@ version = "0.1.0"
 dependencies = [
  "encoding_rs",
  "oem_cp",
+ "regex",
  "vt100",
 ]
 

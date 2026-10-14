@@ -56,7 +56,7 @@ pub fn show(
                 ui.set_min_size(egui::vec2(600.0, 260.0));
                 match tab {
                     ConfigTab::General => general(ui, settings, paths),
-                    ConfigTab::Terminal => terminal(ui, settings),
+                    ConfigTab::Terminal => terminal(ui, settings, out),
                     ConfigTab::X11 => x11(ui),
                     ConfigTab::Ssh => ssh(ui, settings, out),
                     ConfigTab::Display => display(ui, settings),
@@ -102,7 +102,7 @@ fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths) {
     ui.weak("Tip: create an empty \"termcraft.portable\" file next to the executable for portable mode.");
 }
 
-fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
+fn terminal(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
     let t = &mut s.terminal;
     ui.horizontal(|ui| {
         ui.label("Local terminal environment:");
@@ -162,22 +162,20 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
         }
     });
     ui.horizontal(|ui| {
-        // Same choices as the session "Syntax highlighting" (4_36).
-        let choices = tc_core::schema::terminal_params()
+        // Same choices as the session "Syntax highlighting" (4_36), with
+        // the user syntaxes after the built-in ones.
+        let choices = super::syntax_window::choices(&t.custom_syntaxes);
+        let selected = choices
             .iter()
-            .find(|p| p.id == "4_36")
-            .and_then(|p| match p.widget {
-                tc_core::schema::Widget::Choice(items) => Some(items),
-                _ => None,
-            })
-            .unwrap_or(&[]);
+            .find(|(i, _)| *i == t.syntax_highlighting)
+            .map_or("", |(_, label)| label.as_str());
         ui.label("Syntax highlighting:");
         egui::ComboBox::from_id_salt("cfg-syntax")
-            .selected_text(choices.get(t.syntax_highlighting).copied().unwrap_or(""))
+            .selected_text(selected)
             .width(313.0)
             .show_ui(ui, |ui| {
-                for (i, label) in choices.iter().enumerate() {
-                    ui.selectable_value(&mut t.syntax_highlighting, i, *label);
+                for (i, label) in &choices {
+                    ui.selectable_value(&mut t.syntax_highlighting, *i, label);
                 }
             })
             .response
@@ -185,6 +183,13 @@ fn terminal(ui: &mut egui::Ui, s: &mut Settings) {
                 "Colors keywords in terminal output that the program did not color itself. \
                  Sessions can choose their own in \"Terminal settings\".",
             );
+        if ui
+            .button("Customize")
+            .on_hover_text("Create your own syntax coloration definition")
+            .clicked()
+        {
+            out.push(Action::CustomizeSyntax);
+        }
     });
     ui.checkbox(&mut t.use_windows_path, "Use Windows PATH")
         .on_hover_text("Local Bash / Zsh terminals also find the Windows programs");

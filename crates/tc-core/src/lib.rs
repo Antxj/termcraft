@@ -14,6 +14,7 @@ mod schema_gen;
 pub mod session;
 pub mod settings;
 pub mod store;
+pub mod syntax;
 pub mod tunnel;
 
 pub use macros::{Macro, MacroId, MacroStore};

@@ -424,6 +424,166 @@ pub fn spans(syntax: Syntax, chars: &[char]) -> Vec<Span> {
     out
 }
 
+/// How a highlighted cell is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Style {
+    /// ANSI palette index of the text color (`None` = unchanged).
+    pub ansi: Option<u8>,
+    pub underline: bool,
+    pub blink: bool,
+}
+
+impl Kind {
+    pub fn style(self) -> Style {
+        Style {
+            ansi: Some(self.ansi()),
+            ..Style::default()
+        }
+    }
+}
+
+/// Style of a user syntax attribute (Underline, Red … Cyan, Blinking).
+fn attribute_style(attribute: usize) -> Style {
+    match attribute {
+        0 => Style {
+            underline: true,
+            ..Style::default()
+        },
+        7 => Style {
+            blink: true,
+            ..Style::default()
+        },
+        // Red … Cyan are ANSI colors 1 … 6.
+        n => Style {
+            ansi: u8::try_from(n).ok(),
+            ..Style::default()
+        },
+    }
+}
+
+/// Split a pattern list on commas. In regex mode commas inside `{…}`,
+/// `[…]` and `(…)` belong to the expression; `\,` is a literal comma.
+fn split_patterns(list: &str, regex: bool) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0i32;
+    let mut chars = list.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let Some(next) = chars.next() {
+                    if next == ',' && !regex {
+                        current.push(',');
+                    } else {
+                        current.push('\\');
+                        current.push(next);
+                    }
+                }
+            }
+            '{' | '[' | '(' if regex => {
+                depth += 1;
+                current.push(c);
+            }
+            '}' | ']' | ')' if regex => {
+                depth -= 1;
+                current.push(c);
+            }
+            ',' if depth <= 0 => out.push(std::mem::take(&mut current)),
+            _ => current.push(c),
+        }
+    }
+    out.push(current);
+    out.into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+/// A compiled user syntax definition.
+#[derive(Debug, Clone)]
+pub struct CustomRules {
+    rules: Vec<(Style, regex::Regex)>,
+}
+
+impl CustomRules {
+    /// Compile one pattern list per attribute (Underline, Red, Green,
+    /// Yellow, Blue, Magenta, Cyan, Blinking). Plain patterns match as
+    /// text, whole words when they start / end with a letter or digit.
+    pub fn compile(lists: &[String], case_sensitive: bool, regex: bool) -> Result<Self, String> {
+        let mut rules = Vec::new();
+        for (attribute, list) in lists.iter().enumerate().take(8) {
+            let patterns = split_patterns(list, regex);
+            if patterns.is_empty() {
+                continue;
+            }
+            let alternatives: Vec<String> = patterns
+                .iter()
+                .map(|p| {
+                    if regex {
+                        format!("(?:{p})")
+                    } else {
+                        let edge = |c: Option<char>| c.is_some_and(is_word);
+                        format!(
+                            "{}{}{}",
+                            if edge(p.chars().next()) { r"\b" } else { "" },
+                            regex::escape(p),
+                            if edge(p.chars().last()) { r"\b" } else { "" }
+                        )
+                    }
+                })
+                .collect();
+            let re = regex::RegexBuilder::new(&alternatives.join("|"))
+                .case_insensitive(!case_sensitive)
+                .size_limit(1 << 20)
+                .dfa_size_limit(1 << 20)
+                .build()
+                .map_err(|e| format!("{}: {e}", ATTRIBUTE_NAMES[attribute]))?;
+            rules.push((attribute_style(attribute), re));
+        }
+        Ok(Self { rules })
+    }
+
+    /// Styled ranges of a line, in character positions. Earlier attributes
+    /// win where matches overlap.
+    pub fn spans(&self, chars: &[char]) -> Vec<(usize, usize, Style)> {
+        let text: String = chars.iter().collect();
+        // Byte offset → character position.
+        let mut char_at = vec![0usize; text.len() + 1];
+        let mut n = 0;
+        for (b, c) in text.char_indices() {
+            for slot in &mut char_at[b..b + c.len_utf8()] {
+                *slot = n;
+            }
+            n += 1;
+        }
+        char_at[text.len()] = n;
+        let mut taken = vec![false; n];
+        let mut out = Vec::new();
+        for (style, re) in &self.rules {
+            for m in re.find_iter(&text) {
+                let (a, b) = (char_at[m.start()], char_at[m.end()]);
+                if a == b || taken[a..b].iter().any(|t| *t) {
+                    continue;
+                }
+                taken[a..b].iter_mut().for_each(|t| *t = true);
+                out.push((a, b, *style));
+            }
+        }
+        out
+    }
+}
+
+const ATTRIBUTE_NAMES: [&str; 8] = [
+    "Underline",
+    "Red",
+    "Green",
+    "Yellow",
+    "Blue",
+    "Magenta",
+    "Cyan",
+    "Blinking",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -480,6 +640,34 @@ mod tests {
             ]
         );
         assert!(kinds(Syntax::Shell, "a#b").is_empty(), "# inside a word");
+    }
+
+    #[test]
+    fn custom_rules() {
+        let lists = |red: &str, green: &str| {
+            let mut v = vec![String::new(); 8];
+            v[1] = red.into();
+            v[2] = green.into();
+            v[0] = "IMPORTANT".into();
+            v
+        };
+        let chars: Vec<char> = "Important: build failed, retest ok; okay".chars().collect();
+        let rules = CustomRules::compile(&lists("failed,build f", "ok"), false, false).unwrap();
+        let spans = rules.spans(&chars);
+        let text = |(a, b, _): &(usize, usize, Style)| chars[*a..*b].iter().collect::<String>();
+        assert_eq!(
+            spans.iter().map(text).collect::<Vec<_>>(),
+            vec!["Important", "failed", "ok"],
+            "whole words; \"build f\" overlaps \"failed\" which came first"
+        );
+        assert!(spans[0].2.underline);
+        assert_eq!(spans[1].2.ansi, Some(1));
+
+        let rules = CustomRules::compile(&lists(r"\d{1,3}(\.\d{1,3}){3}", ""), true, true).unwrap();
+        let chars: Vec<char> = "via 10.0.0.1 é".chars().collect();
+        assert_eq!(rules.spans(&chars)[0].0..rules.spans(&chars)[0].1, 4..12);
+        assert!(CustomRules::compile(&lists("(", ""), true, true).is_err());
+        assert_eq!(split_patterns(r"a\,b, c", false), vec!["a,b", "c"]);
     }
 
     #[test]
