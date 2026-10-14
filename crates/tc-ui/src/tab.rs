@@ -13,6 +13,15 @@ use tc_ssh::{
 use tc_term::Terminal;
 use tc_vault::{Target, Vault};
 
+/// A Mosh session between "SSH started" and "mosh-client running".
+struct MoshStart {
+    /// Server output so far (holds the session key: never shown).
+    output: Vec<u8>,
+    ip: std::net::IpAddr,
+    client: PathBuf,
+    prediction: &'static str,
+}
+
 /// What every tab needs from the app.
 pub struct TabEnv {
     pub scrollback: usize,
@@ -159,6 +168,8 @@ pub struct Tab {
     /// The user toggled "Remote monitoring" here; the app applies it to
     /// every SSH tab and saves the setting.
     pub monitoring_request: Option<bool>,
+    /// Mosh: `mosh-server` being started over SSH.
+    mosh: Option<MoshStart>,
     /// The SSH-browser runs through sudo.
     sftp_sudo: bool,
     /// Folder to return to once the browser has been reopened (sudo switch).
@@ -213,6 +224,7 @@ impl Tab {
             folder_hook: None,
             monitor: None,
             monitoring_request: None,
+            mosh: None,
             sftp_sudo: false,
             sftp_reopen_cwd: None,
         };
@@ -256,6 +268,23 @@ impl Tab {
                 let result = crate::external::launch_vnc(&host, port);
                 tab.external_result("VNC", &host, port, result);
             }
+            Some(SessionKind::Rsh { host, user }) => tab.open_rlogin(host, user),
+            Some(SessionKind::Mosh {
+                user: Some(user), ..
+            }) => tab.connect_mosh(user),
+            Some(SessionKind::Mosh { user: None, .. }) => {
+                tab.term.feed(b"login as: ");
+                tab.line = Some(LineInput::Login(String::new()));
+            }
+            Some(SessionKind::Wsl { distro }) => tab.open_wsl(&distro),
+            Some(SessionKind::File { path }) => {
+                let result = crate::external::open_path(&path);
+                tab.opened_externally("File", &path, result);
+            }
+            Some(SessionKind::Browser { url }) => {
+                let result = crate::external::open_url(&url);
+                tab.opened_externally("Browser", &url, result);
+            }
             Some(other) => {
                 tab.message(&format!(
                     "\x1b[33m{} sessions are not implemented yet - see docs/PARITY.md\x1b[0m",
@@ -285,6 +314,173 @@ impl Tab {
             Err(e) => {
                 self.message(&format!("\x1b[31m{kind}: {e}\x1b[0m"));
                 self.status = Some(format!("{kind} unavailable"));
+            }
+        }
+    }
+
+    /// "File" / "Browser" sessions: the target opened in another program.
+    fn opened_externally(&mut self, kind: &str, target: &str, result: Result<String, String>) {
+        match result {
+            Ok(app) => {
+                self.message(&format!("\x1b[32m{target} opened in {app}.\x1b[0m"));
+                self.status = Some(format!("{kind} opened externally"));
+            }
+            Err(e) => {
+                self.message(&format!("\x1b[31m{kind}: {e}\x1b[0m"));
+                self.status = Some(format!("{kind} unavailable"));
+            }
+        }
+    }
+
+    /// Mosh: start `mosh-server` over SSH (3_4 SSH port, 3_9 key, 3_5 UDP
+    /// port, 3_6 charset, 3_7 prediction, 3_8 server path).
+    fn connect_mosh(&mut self, user: String) {
+        let Some(Session {
+            kind: SessionKind::Mosh { host, ssh_port, .. },
+            options,
+            ..
+        }) = &self.session
+        else {
+            return;
+        };
+        let (host, ssh_port) = (host.clone(), *ssh_port);
+        let opt = |id: &str| options.get(id).cloned().unwrap_or_default();
+        let locale = schema::type_params(12)
+            .iter()
+            .find(|p| p.id == "3_6")
+            .and_then(|p| match p.widget {
+                schema::Widget::Choice(items) => {
+                    items.get(opt("3_6").parse::<usize>().unwrap_or(0)).copied()
+                }
+                _ => None,
+            })
+            .unwrap_or("auto");
+        let server = crate::mosh::server_command(&opt("3_8"), &opt("3_5"), locale);
+        let key = Some(opt("3_9"))
+            .filter(|k| !k.trim().is_empty())
+            .map(PathBuf::from);
+        let prediction = crate::mosh::prediction(&opt("3_7"));
+        let Some(client) = crate::mosh::find_client() else {
+            self.message(
+                "\x1b[31mmosh-client was not found in PATH. Install Mosh (https://mosh.org) \
+                 to use Mosh sessions.\x1b[0m",
+            );
+            self.status = Some("Mosh unavailable".into());
+            return;
+        };
+        let server = match server {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                self.message(&format!("\x1b[31mMosh: {e}\x1b[0m"));
+                return;
+            }
+        };
+        use std::net::ToSocketAddrs;
+        let Some(ip) = (host.as_str(), ssh_port)
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut a| a.next())
+            .map(|a| a.ip())
+        else {
+            self.message(&format!("\x1b[31mMosh: cannot resolve {host}\x1b[0m"));
+            return;
+        };
+        self.message(&format!(
+            "\x1b[90mStarting mosh-server on {host} over SSH …\x1b[0m"
+        ));
+        let (rows, cols) = self.term.size();
+        self.credentials.reset();
+        let (user, credential_error) = self.credentials.use_named(&user, &host, ssh_port);
+        if let Some(e) = credential_error {
+            self.message(&format!("\x1b[33m{e}\x1b[0m"));
+        }
+        let params = ConnectParams {
+            host,
+            port: ssh_port,
+            user,
+            private_key: key,
+            gateway: None,
+            known_hosts: self.known_hosts.clone(),
+            compression: false,
+            command: Some(server),
+            term: "xterm-256color".into(),
+            cols,
+            rows,
+            sftp: false,
+            keepalive: None,
+            detect_login_shell: false,
+            remote_monitoring: false,
+            agent: agent_config(&self.ssh_settings),
+        };
+        self.mosh = Some(MoshStart {
+            output: Vec::new(),
+            ip,
+            client,
+            prediction,
+        });
+        self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
+    }
+
+    /// Mosh: collect the server's answer; once it has the session key,
+    /// leave SSH and run `mosh-client`.
+    fn mosh_output(&mut self, bytes: &[u8]) {
+        let Some(m) = &mut self.mosh else {
+            return;
+        };
+        m.output.extend_from_slice(bytes);
+        if m.output.len() > 64 * 1024 {
+            m.output.drain(..32 * 1024);
+        }
+        if let Some(connect) = crate::mosh::parse_connect(&m.output) {
+            let m = self.mosh.take().expect("checked");
+            let command = crate::mosh::client_command(&m.client, m.ip, &connect, m.prediction);
+            self.message(&format!(
+                "\x1b[90mmosh-server is listening on UDP {}; starting mosh-client …\x1b[0m",
+                connect.port
+            ));
+            // mosh-server keeps running on its own; SSH is no longer needed.
+            self.backend = Backend::None;
+            self.spawn_command(&command);
+        }
+    }
+
+    /// "Rsh" session over rlogin (TCP 513).
+    fn open_rlogin(&mut self, host: String, user: Option<String>) {
+        self.message(&format!(
+            "\x1b[90mConnecting to {host} (rlogin, not encrypted) …\x1b[0m"
+        ));
+        let (rows, cols) = self.term.size();
+        let term = self.term_type.clone().unwrap_or_else(|| "xterm".into());
+        let repaint = self.repaint.clone();
+        self.open_in_background(move || {
+            tc_net::rlogin::Rlogin::connect(
+                &host,
+                tc_net::rlogin::DEFAULT_PORT,
+                user.as_deref().unwrap_or(""),
+                &term,
+                rows,
+                cols,
+                repaint,
+            )
+            .map(|r| Box::new(r) as Box<dyn tc_net::Stream>)
+            .map_err(|e| format!("cannot connect to {host}: {e}"))
+        });
+    }
+
+    /// WSL session: 3_6 user, 3_3 startup directory.
+    fn open_wsl(&mut self, distro: &str) {
+        let opt = |id: &str| {
+            self.session
+                .as_ref()
+                .and_then(|s| s.options.get(id))
+                .cloned()
+        };
+        let (user, dir) = (opt("3_6"), opt("3_3"));
+        match tc_pty::shells::wsl_command(distro, user.as_deref(), dir.as_deref()) {
+            Some(command) => self.spawn_command(&command),
+            None => {
+                self.message("\x1b[31mWSL is not installed (wsl.exe not found).\x1b[0m");
+                self.status = Some("WSL unavailable".into());
             }
         }
     }
@@ -320,8 +516,11 @@ impl Tab {
                 }
             },
         };
-        match PtySession::spawn_command(&command, INITIAL_ROWS, INITIAL_COLS, self.repaint.clone())
-        {
+        self.spawn_command(&command);
+    }
+
+    fn spawn_command(&mut self, command: &tc_pty::ShellCommand) {
+        match PtySession::spawn_command(command, INITIAL_ROWS, INITIAL_COLS, self.repaint.clone()) {
             Ok(pty) => self.backend = Backend::Pty(pty),
             Err(e) => {
                 self.message(&format!("\x1b[31mfailed to start: {e:#}\x1b[0m"));
@@ -644,7 +843,13 @@ impl Tab {
         let events: Vec<SshEvent> = ssh.events().try_iter().collect();
         let changed = !events.is_empty();
         for event in events {
+            if !matches!(self.backend, Backend::Ssh(_)) {
+                break; // Mosh switched to mosh-client
+            }
             match event {
+                SshEvent::Output(bytes) if self.mosh.is_some() => {
+                    self.mosh_output(&bytes);
+                }
                 SshEvent::Output(bytes) => {
                     let bytes = match &mut self.folder_hook {
                         Some(hook) => hook.filter(&bytes, Instant::now()),
@@ -691,6 +896,17 @@ impl Tab {
                     }
                 }
                 SshEvent::Closed { exit_status } => {
+                    if let Some(m) = self.mosh.take() {
+                        let text = crate::mosh::without_key(&m.output);
+                        self.message(&format!(
+                            "\x1b[31mmosh-server did not start{}\x1b[0m",
+                            if text.trim().is_empty() {
+                                String::new()
+                            } else {
+                                format!(":\r\n{text}")
+                            }
+                        ));
+                    }
                     self.folder_hook = None;
                     self.monitor = None;
                     self.backend = Backend::None;
@@ -993,7 +1209,16 @@ impl Tab {
                 '\r' | '\n' => {
                     self.term.feed(b"\r\n");
                     match self.line.take() {
-                        Some(LineInput::Login(user)) if !user.is_empty() => self.connect_ssh(user),
+                        Some(LineInput::Login(user)) if !user.is_empty() => {
+                            if matches!(
+                                self.session.as_ref().map(|s| &s.kind),
+                                Some(SessionKind::Mosh { .. })
+                            ) {
+                                self.connect_mosh(user)
+                            } else {
+                                self.connect_ssh(user)
+                            }
+                        }
                         Some(LineInput::Login(_)) => {
                             self.term.feed(b"login as: ");
                             self.line = Some(LineInput::Login(String::new()));

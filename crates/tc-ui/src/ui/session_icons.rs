@@ -136,6 +136,11 @@ pub fn kind_glyph(kind: &SessionKind) -> &'static str {
         K::Serial { .. } => icon::USB,
         K::Rdp { .. } | K::Vnc { .. } => icon::DESKTOP,
         K::Sftp { .. } | K::Ftp { .. } => icon::FOLDER,
+        K::Rsh { .. } => icon::TERMINAL,
+        K::File { .. } => icon::FILE,
+        K::Browser { .. } => icon::BROWSER,
+        K::Mosh { .. } => icon::LIGHTNING,
+        K::Wsl { .. } => icon::LINUX_LOGO,
     }
 }
 

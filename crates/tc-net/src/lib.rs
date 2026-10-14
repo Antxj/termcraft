@@ -1,9 +1,11 @@
 //! Byte-stream terminal backends with the same shape as a local PTY:
 //! output arrives on a channel from a reader thread, input is written
 //! directly. [`telnet`] speaks the Telnet protocol (RFC 854) with the
-//! options a terminal needs; [`serial`] drives a COM / tty port.
+//! options a terminal needs; [`rlogin`] is the Rsh session protocol;
+//! [`serial`] drives a COM / tty port.
 
 pub mod ftp;
+pub mod rlogin;
 pub mod serial;
 pub mod telnet;
 

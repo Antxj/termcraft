@@ -4,6 +4,7 @@ mod app;
 mod credentials;
 mod external;
 mod folder_hook;
+mod mosh;
 mod skin;
 mod snapshot;
 mod tab;

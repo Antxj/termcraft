@@ -8,7 +8,7 @@
 //!   (use only with the local dev server credentials)
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
 //! - `TERMCRAFT_SNAPSHOT_LOCAL_TABS=3` — also open N local terminals
-//! - `TERMCRAFT_SNAPSHOT_WINDOW=config|passwords|credentials|master|master_settings` — open that window
+//! - `TERMCRAFT_SNAPSHOT_WINDOW=config|passwords|credentials|master|master_settings|new_session:<type>` — open that window
 //! - `TERMCRAFT_SNAPSHOT_HOSTKEY=1` — leave host key questions open (to
 //!   capture the host key dialog)
 //! - `TERMCRAFT_SNAPSHOT_TUNNELS=1` — open the SSH tunnels window and start

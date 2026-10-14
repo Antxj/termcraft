@@ -555,8 +555,14 @@ fn session_host(s: &Session) -> Option<&str> {
         | K::Rdp { host, .. }
         | K::Vnc { host, .. }
         | K::Sftp { host, .. }
-        | K::Ftp { host, .. } => Some(host),
-        K::LocalShell { .. } | K::Serial { .. } => None,
+        | K::Ftp { host, .. }
+        | K::Rsh { host, .. }
+        | K::Mosh { host, .. } => Some(host),
+        K::LocalShell { .. }
+        | K::Serial { .. }
+        | K::File { .. }
+        | K::Browser { .. }
+        | K::Wsl { .. } => None,
     }
 }
 

@@ -80,6 +80,33 @@ pub enum SessionKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         user: Option<String>,
     },
+    /// Remote login over rlogin (TCP 513). Plain text, like the reference.
+    Rsh {
+        host: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
+    },
+    /// A local file or folder opened with its default application.
+    File { path: String },
+    /// A web page opened in the browser.
+    Browser { url: String },
+    /// Mosh: `mosh-server` started over SSH, then the local `mosh-client`.
+    Mosh {
+        host: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        user: Option<String>,
+        #[serde(default = "default_ssh_port")]
+        ssh_port: u16,
+    },
+    /// Windows Subsystem for Linux; `distro` "Default" = the default one.
+    Wsl {
+        #[serde(default = "default_wsl_distro")]
+        distro: String,
+    },
+}
+
+fn default_wsl_distro() -> String {
+    "Default".into()
 }
 
 fn default_ssh_port() -> u16 {
@@ -112,6 +139,11 @@ impl SessionKind {
             Self::Vnc { .. } => "VNC",
             Self::Sftp { .. } => "SFTP",
             Self::Ftp { .. } => "FTP",
+            Self::Rsh { .. } => "Rsh",
+            Self::File { .. } => "File",
+            Self::Browser { .. } => "Browser",
+            Self::Mosh { .. } => "Mosh",
+            Self::Wsl { .. } => "WSL",
         }
     }
 
@@ -126,6 +158,11 @@ impl SessionKind {
             Self::Sftp { .. } => 7,
             Self::Serial { .. } => 8,
             Self::LocalShell { .. } => 10,
+            Self::Rsh { .. } => 2,
+            Self::File { .. } => 9,
+            Self::Browser { .. } => 11,
+            Self::Mosh { .. } => 12,
+            Self::Wsl { .. } => 14,
         }
     }
 
@@ -167,6 +204,22 @@ impl SessionKind {
                 baud: 115_200,
             },
             10 => Self::LocalShell { program: None },
+            2 => Self::Rsh {
+                host: String::new(),
+                user: None,
+            },
+            9 => Self::File {
+                path: String::new(),
+            },
+            11 => Self::Browser { url: String::new() },
+            12 => Self::Mosh {
+                host: String::new(),
+                user: None,
+                ssh_port: 22,
+            },
+            14 => Self::Wsl {
+                distro: default_wsl_distro(),
+            },
             _ => return None,
         })
     }
@@ -180,6 +233,9 @@ impl SessionKind {
             Self::Rdp { .. } | Self::Ftp { .. } | Self::Sftp { .. } => &["3_2", "3_3", "3_4"],
             Self::Serial { .. } => &["3_9", "3_3"],
             Self::LocalShell { .. } => &[],
+            Self::Rsh { .. } => &["3_2", "3_3"],
+            Self::File { .. } | Self::Browser { .. } | Self::Wsl { .. } => &["3_2"],
+            Self::Mosh { .. } => &["3_2", "3_3", "3_4"],
         }
     }
 
@@ -218,6 +274,12 @@ impl SessionKind {
             (Self::Ssh { private_key, .. }, "3_15") => opt(private_key),
             (Self::Serial { port_name, .. }, "3_9") => port_name.clone(),
             (Self::Serial { baud, .. }, "3_3") => baud.to_string(),
+            (Self::Rsh { host, .. } | Self::Mosh { host, .. }, "3_2") => host.clone(),
+            (Self::Rsh { user, .. } | Self::Mosh { user, .. }, "3_3") => opt(user),
+            (Self::Mosh { ssh_port, .. }, "3_4") => ssh_port.to_string(),
+            (Self::File { path }, "3_2") => path.clone(),
+            (Self::Browser { url }, "3_2") => url.clone(),
+            (Self::Wsl { distro }, "3_2") => distro.clone(),
             _ => return None,
         })
     }
@@ -271,6 +333,24 @@ impl SessionKind {
                     .filter(|&b| b > 0)
                     .ok_or_else(|| format!("invalid speed {value:?}"))?;
             }
+            (Self::Rsh { host, .. } | Self::Mosh { host, .. }, "3_2") => *host = value.to_string(),
+            (Self::Rsh { user, .. } | Self::Mosh { user, .. }, "3_3") => *user = opt(),
+            (Self::Mosh { ssh_port, .. }, "3_4") => {
+                *ssh_port = value
+                    .parse()
+                    .ok()
+                    .filter(|&p| p > 0)
+                    .ok_or_else(|| format!("invalid port {value:?}"))?;
+            }
+            (Self::File { path }, "3_2") => *path = value.to_string(),
+            (Self::Browser { url }, "3_2") => *url = value.to_string(),
+            (Self::Wsl { distro }, "3_2") => {
+                *distro = if value.is_empty() {
+                    default_wsl_distro()
+                } else {
+                    value.to_string()
+                };
+            }
             (_, other) => return Err(format!("{other} is not a typed field")),
         }
         Ok(())
@@ -286,7 +366,10 @@ impl SessionKind {
             | Self::Ftp { host, .. }
             | Self::Sftp { host, .. } => Some(host.as_str()),
             Self::Serial { port_name, .. } => Some(port_name.as_str()),
-            Self::LocalShell { .. } => None,
+            Self::Rsh { host, .. } | Self::Mosh { host, .. } => Some(host.as_str()),
+            Self::File { path } => Some(path.as_str()),
+            Self::Browser { url } => Some(url.as_str()),
+            Self::LocalShell { .. } | Self::Wsl { .. } => None,
         }
         .filter(|s| !s.is_empty())
     }

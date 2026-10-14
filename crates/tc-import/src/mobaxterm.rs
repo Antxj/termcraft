@@ -179,7 +179,21 @@ fn parse_bookmark(name: &str, value: &str, folder: &str, report: &mut ImportRepo
             }
         },
         (10, _) => SessionKind::LocalShell { program: None },
-        (0 | 1 | 4 | 5 | 6 | 7, None) => {
+        (2, Some(host)) => SessionKind::Rsh {
+            host,
+            user: b.string(3, 3),
+        },
+        (12, Some(host)) => SessionKind::Mosh {
+            host,
+            user: b.string(3, 3),
+            ssh_port: b.port(3, 4, 22),
+        },
+        (9, Some(path)) => SessionKind::File { path },
+        (11, Some(url)) => SessionKind::Browser { url },
+        (14, distro) => SessionKind::Wsl {
+            distro: distro.unwrap_or_else(|| "Default".into()),
+        },
+        (0 | 1 | 2 | 4 | 5 | 6 | 7 | 9 | 11 | 12, None) => {
             report
                 .unsupported
                 .push(unsupported(type_name, "bookmark without host"));
@@ -333,7 +347,15 @@ broken=not a bookmark
             .iter()
             .map(|u| (u.name.as_str(), u.session_type.as_str()))
             .collect();
-        assert_eq!(got, [("mosh box", "Mosh"), ("broken", "")]);
+        assert_eq!(got, [("broken", "")]);
+        assert_eq!(
+            by_name(&r, "mosh box").kind,
+            SessionKind::Mosh {
+                host: "h".into(),
+                user: Some("u".into()),
+                ssh_port: 22
+            }
+        );
     }
 
     #[test]

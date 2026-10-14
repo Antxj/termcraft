@@ -979,6 +979,14 @@ impl eframe::App for TermCraftApp {
                 Some("passwords") => self.passwords.open = true,
                 Some("master") => self.passwords.ask_unlock(),
                 Some("credentials") => self.passwords.open_credentials(),
+                Some(w) if w.starts_with("new_session") => {
+                    let index = w
+                        .split(':')
+                        .nth(1)
+                        .and_then(|i| i.parse().ok())
+                        .unwrap_or(0);
+                    self.editor = Some(SessionEditor::new_of_type(index));
+                }
                 Some("master_settings") => self
                     .passwords
                     .open_master_settings(self.core.settings.passwords.master_prompt),

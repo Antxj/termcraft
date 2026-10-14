@@ -123,6 +123,80 @@ pub fn locate(kind: ShellKind) -> Option<ShellCommand> {
     }
 }
 
+/// Installed WSL distributions (`wsl.exe -l -q`), read once per run.
+/// Empty when WSL is not installed or not on Windows.
+pub fn wsl_distributions() -> &'static [String] {
+    static LIST: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    LIST.get_or_init(|| {
+        if !cfg!(windows) {
+            return Vec::new();
+        }
+        let Some(wsl) = find_in_path("wsl.exe") else {
+            return Vec::new();
+        };
+        let mut cmd = std::process::Command::new(wsl);
+        cmd.args(["-l", "-q"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        match cmd.output() {
+            Ok(out) if out.status.success() => parse_wsl_list(&out.stdout),
+            _ => Vec::new(),
+        }
+    })
+}
+
+/// `wsl -l -q` prints UTF-16LE (sometimes with a BOM), one name per line.
+fn parse_wsl_list(bytes: &[u8]) -> Vec<String> {
+    let utf16 = bytes.starts_with(&[0xff, 0xfe])
+        || bytes.len() >= 2 && bytes.iter().skip(1).step_by(2).all(|&b| b == 0);
+    let text = if utf16 {
+        let units: Vec<u16> = bytes
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&c| u16::from_le_bytes(c))
+            .collect();
+        String::from_utf16_lossy(&units)
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
+    };
+    text.lines()
+        .map(|l| l.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}' || c == '\0'))
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// `wsl.exe` for a WSL session: distribution ("Default" = the default
+/// one), user and start folder.
+pub fn wsl_command(
+    distro: &str,
+    user: Option<&str>,
+    start_dir: Option<&str>,
+) -> Option<ShellCommand> {
+    let program = find_in_path("wsl.exe")?.display().to_string();
+    let mut args = Vec::new();
+    let distro = distro.trim();
+    if !distro.is_empty() && !distro.eq_ignore_ascii_case("default") {
+        args.extend(["-d".to_string(), distro.to_string()]);
+    }
+    if let Some(u) = user.map(str::trim).filter(|u| !u.is_empty()) {
+        args.extend(["-u".to_string(), u.to_string()]);
+    }
+    if let Some(d) = start_dir.map(str::trim).filter(|d| !d.is_empty()) {
+        args.extend(["--cd".to_string(), d.to_string()]);
+    }
+    Some(ShellCommand {
+        program,
+        args,
+        env: Vec::new(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +214,16 @@ mod tests {
             assert!(locate(ShellKind::Cmd).is_none());
             assert!(locate(ShellKind::Bash).is_some(), "CI images ship bash");
         }
+    }
+
+    #[test]
+    fn wsl_list_is_utf16() {
+        let utf16: Vec<u8> = "\u{feff}Ubuntu\r\nDebian\r\n"
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        assert_eq!(parse_wsl_list(&utf16), ["Ubuntu", "Debian"]);
+        assert_eq!(parse_wsl_list(b"Alpine\n"), ["Alpine"]);
     }
 
     #[test]

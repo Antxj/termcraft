@@ -75,6 +75,15 @@ impl SessionEditor {
         Self::from_session(Session::new(String::new(), kind), true)
     }
 
+    /// "New session" with another type preselected (snapshots, menus).
+    pub fn new_of_type(type_index: usize) -> Self {
+        let mut editor = Self::new_session();
+        if SessionKind::default_for(type_index).is_some() {
+            editor.set_type(type_index);
+        }
+        editor
+    }
+
     pub fn edit(session: &Session) -> Self {
         Self::from_session(session.clone(), false)
     }
@@ -455,6 +464,23 @@ impl SessionEditor {
             return;
         }
         ui.label(p.label);
+        // WSL "Distribution": the installed distributions, by name.
+        if p.label == "Distribution" {
+            egui::ComboBox::from_id_salt(("choice", p.id))
+                .selected_text(value.as_str())
+                .width(170.0)
+                .show_ui(ui, |ui| {
+                    let installed = tc_pty::shells::wsl_distributions();
+                    for name in
+                        std::iter::once("Default").chain(installed.iter().map(String::as_str))
+                    {
+                        if ui.selectable_label(value == name, name).clicked() {
+                            *value = name.to_string();
+                        }
+                    }
+                });
+            return;
+        }
         // The reference fills this combo at runtime, so the schema has no items.
         let widget = if p.label == "Terminal shell" {
             Widget::Choice(&SHELL_CHOICES)
@@ -507,7 +533,8 @@ impl SessionEditor {
                     *value = if shown.is_empty() { "-1".into() } else { shown };
                 }
             }
-            Widget::Text if p.label == "Username" => {
+            // WSL has no remote login, so no credentials there.
+            Widget::Text if p.label == "Username" && self.type_index != 14 => {
                 ui.horizontal(|ui| {
                     ui.add(egui::TextEdit::singleline(value).desired_width(140.0));
                     ui.menu_button(icon::KEY, |ui| {

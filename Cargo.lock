@@ -4946,6 +4946,7 @@ version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
  "serialport",
+ "socket2",
  "suppaftp",
  "tc-core",
  "tempfile",
