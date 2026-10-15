@@ -51,6 +51,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         refuse_trivial_auth: false,
         show_banner: false,
         preserve_dates: true,
+        algorithms: Default::default(),
     }
 }
 
@@ -1070,4 +1071,21 @@ fn trivial_authentication_is_refused_when_asked() {
         "{out:?}"
     );
     assert!(!out.output.contains("in\r\n"), "no command ran: {out:?}");
+}
+
+#[test]
+fn expert_algorithm_lists_are_negotiated() {
+    let server = start(DevConfig::default());
+    let dir = tempfile::tempdir().unwrap();
+    let known = dir.path().join("known_hosts");
+    let mut p = params(server.port, &known, "echo algorithms-ok");
+    p.algorithms = tc_ssh::algorithms::Algorithms {
+        kex: vec!["dh-group16-sha512".into()],
+        host_keys: vec!["Ed25519".into()],
+        ciphers: vec!["AESGCM".into()],
+    };
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert!(out.errors.is_empty(), "{out:?}");
+    assert!(out.output.contains("algorithms-ok"), "{out:?}");
 }

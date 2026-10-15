@@ -131,6 +131,7 @@ impl Tab {
             refuse_trivial_auth: false,
             show_banner: false,
             preserve_dates: false,
+            algorithms: Default::default(),
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -221,6 +222,7 @@ impl Tab {
             refuse_trivial_auth: false,
             show_banner: false,
             preserve_dates,
+            algorithms: Default::default(),
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -428,6 +430,16 @@ impl Tab {
             refuse_trivial_auth: opt("3_32").is_some_and(schema::is_true),
             show_banner: self.ssh_settings.show_banner,
             preserve_dates: self.ssh_settings.preserve_file_dates,
+            // Expert SSH settings: 3_29 key exchange, 3_30 host keys, 3_31 ciphers.
+            algorithms: {
+                use tc_ssh::algorithms as a;
+                let list = |id: &str, groups| a::parse_list(opt(id).unwrap_or(""), groups);
+                a::Algorithms {
+                    kex: list("3_29", a::KEX_GROUPS),
+                    host_keys: list("3_30", a::HOST_KEY_GROUPS),
+                    ciphers: list("3_31", a::CIPHER_GROUPS),
+                }
+            },
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());

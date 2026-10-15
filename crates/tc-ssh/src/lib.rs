@@ -11,6 +11,7 @@
 //! (jump hosts).
 
 pub mod agent;
+pub mod algorithms;
 pub mod keygen;
 pub mod proxy;
 pub mod scp;
@@ -89,6 +90,8 @@ pub struct ConnectParams {
     pub show_banner: bool,
     /// "Preserve files dates during SSH-browser transfers" (SFTP).
     pub preserve_dates: bool,
+    /// "Expert SSH settings" algorithm lists (target server only).
+    pub algorithms: algorithms::Algorithms,
 }
 
 impl ConnectParams {
@@ -639,11 +642,18 @@ pub(crate) struct ConnectOptions<'a> {
     pub refuse_trivial_auth: bool,
     /// Show the target server's banner before login.
     pub show_banner: bool,
+    /// See [`ConnectParams::algorithms`].
+    pub algorithms: algorithms::Algorithms,
 }
 
-fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
+fn client_config(
+    compression: bool,
+    keepalive: Option<std::time::Duration>,
+    algorithms: &algorithms::Algorithms,
+) -> Arc<client::Config> {
     let mut config = client::Config {
         keepalive_interval: keepalive,
+        preferred: algorithms::preferred(algorithms),
         ..client::Config::default()
     };
     if compression {
@@ -720,7 +730,7 @@ pub(crate) async fn establish(
         ..handler(e)
     };
     let target = opts.target;
-    let config = client_config(opts.compression, opts.keepalive);
+    let config = client_config(opts.compression, opts.keepalive, &opts.algorithms);
 
     // Each gateway is reached through the previous one (the first one
     // directly or through the proxy), then the target through the last.
@@ -753,7 +763,7 @@ pub(crate) async fn establish(
         let mut proxy_handle = open_hop(
             None,
             None,
-            client_config(false, opts.keepalive),
+            client_config(false, opts.keepalive, &Default::default()),
             &ep,
             handler(&ep),
             None,
@@ -790,7 +800,7 @@ pub(crate) async fn establish(
         let mut gw_handle = open_hop(
             chain.last(),
             via_command.take(),
-            client_config(false, opts.keepalive),
+            client_config(false, opts.keepalive, &Default::default()),
             gw,
             handler(gw),
             proxy,
@@ -935,6 +945,7 @@ async fn run_shell(
             x11: x11.clone(),
             refuse_trivial_auth: params.refuse_trivial_auth,
             show_banner: params.show_banner,
+            algorithms: params.algorithms.clone(),
         },
         &replies,
         &events,

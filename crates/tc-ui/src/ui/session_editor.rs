@@ -91,6 +91,48 @@ const IE_CONTROLS: &[&str] = &[
     "sComboBox33",
 ];
 
+/// "Expert SSH settings" algorithm lists: control, parameter, groups.
+const ALGORITHM_LISTS: [(&str, &str, &[&str]); 3] = [
+    ("sListBox1", "3_29", tc_ssh::algorithms::KEX_GROUPS),
+    ("sListBox2", "3_30", tc_ssh::algorithms::HOST_KEY_GROUPS),
+    ("sListBox3", "3_31", tc_ssh::algorithms::CIPHER_GROUPS),
+];
+
+/// Their ▲ / ▼ buttons: (button, list, up).
+const ALGORITHM_MOVES: [(&str, &str, bool); 6] = [
+    ("sSpeedButton2", "sListBox1", true),
+    ("sSpeedButton3", "sListBox1", false),
+    ("sSpeedButton5", "sListBox2", true),
+    ("sSpeedButton4", "sListBox2", false),
+    ("sSpeedButton7", "sListBox3", true),
+    ("sSpeedButton6", "sListBox3", false),
+];
+
+/// A stored algorithm list in full: its known groups in order, then the
+/// missing ones (below the warn line); empty = the default order.
+fn algorithm_order(value: &str, groups: &[&'static str]) -> Vec<&'static str> {
+    let mut order: Vec<&'static str> = value
+        .split(',')
+        .filter_map(|n| groups.iter().find(|g| **g == n.trim()).copied())
+        .collect();
+    let mut seen = Vec::new();
+    order.retain(|g| {
+        !seen.contains(g) && {
+            seen.push(*g);
+            true
+        }
+    });
+    if order.is_empty() {
+        return groups.to_vec();
+    }
+    for g in groups {
+        if !order.contains(g) {
+            order.push(g);
+        }
+    }
+    order
+}
+
 /// The multi-line "Execute the following commands at startup" fields.
 const STARTUP_MEMOS: &[&str] = &["Memo1", "WslScript"];
 
@@ -132,6 +174,11 @@ enum Press {
     RestoreDefaults(&'static str),
     /// Serial "Reset defaults": the advanced settings (not port and speed).
     SerialDefaults,
+    /// Move the selected entry of an Expert SSH algorithm list.
+    MoveAlgorithm {
+        list: &'static str,
+        up: bool,
+    },
     JumpHosts,
     Icon,
     Shortcut,
@@ -175,6 +222,8 @@ pub struct SessionEditor {
     preset_mode: bool,
     /// The presets new sessions start from (set by the app).
     presets: Vec<Session>,
+    /// Selected entry of each Expert SSH algorithm list.
+    algorithm_selection: BTreeMap<&'static str, usize>,
 }
 
 impl SessionEditor {
@@ -296,6 +345,7 @@ impl SessionEditor {
             manage_credentials: false,
             preset_mode: false,
             presets: Vec::new(),
+            algorithm_selection: BTreeMap::new(),
         };
         editor.load_values();
         editor.startup = editor
@@ -674,6 +724,27 @@ impl SessionEditor {
                     }
                 }
             }
+            Press::MoveAlgorithm { list, up } => {
+                let Some((_, id, groups)) = ALGORITHM_LISTS.iter().find(|(c, ..)| *c == list)
+                else {
+                    return;
+                };
+                let mut order =
+                    algorithm_order(self.values.get(id).map_or("", String::as_str), groups);
+                let Some(&i) = self.algorithm_selection.get(list) else {
+                    return;
+                };
+                let j = if up {
+                    i.checked_sub(1)
+                } else {
+                    Some(i + 1).filter(|j| *j < order.len())
+                };
+                if let Some(j) = j.filter(|_| i < order.len()) {
+                    order.swap(i, j);
+                    self.algorithm_selection.insert(list, j);
+                    self.values.insert(id, order.join(","));
+                }
+            }
             Press::SerialDefaults => {
                 for id in ["3_8", "3_4", "3_5", "3_6", "3_7"] {
                     if let Some(p) = self.param(id) {
@@ -808,6 +879,10 @@ impl SessionEditor {
                     self.button(ui, c, rect, sub, presses);
                     continue;
                 }
+                Kind::List if sub == "FormExpertSSH" && self.type_index == 0 => {
+                    self.algorithm_list(ui, rect, c);
+                    continue;
+                }
                 Kind::List => {
                     list(ui, rect, c);
                     continue;
@@ -816,6 +891,56 @@ impl SessionEditor {
             }
             self.control(ui, c, rect, sub);
         }
+    }
+
+    /// An Expert SSH algorithm list: click selects, ▲ / ▼ move; what is
+    /// below "=Warn below=" is not offered.
+    fn algorithm_list(&mut self, ui: &mut egui::Ui, rect: Rect, c: &'static Ctl) {
+        let Some((_, id, groups)) = ALGORITHM_LISTS.iter().find(|(n, ..)| *n == c.name) else {
+            return list(ui, rect, c);
+        };
+        let order = algorithm_order(self.values.get(id).map_or("", String::as_str), groups);
+        let v = ui.visuals().clone();
+        ui.painter().text(
+            rect.left_top() - vec2(0.0, 4.0),
+            egui::Align2::LEFT_BOTTOM,
+            c.caption.trim(),
+            egui::TextStyle::Body.resolve(ui.style()),
+            v.text_color(),
+        );
+        ui.painter().rect(
+            rect,
+            2.0,
+            v.extreme_bg_color,
+            egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color),
+            egui::StrokeKind::Inside,
+        );
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(3.0)));
+        child.spacing_mut().item_spacing.y = 0.0;
+        let selected = self.algorithm_selection.get(c.name).copied();
+        let mut below = false;
+        egui::ScrollArea::vertical()
+            .id_salt(("algorithms", c.name))
+            .max_height(rect.height() - 6.0)
+            .show(&mut child, |ui| {
+                ui.set_width(rect.width() - 8.0);
+                for (i, name) in order.iter().enumerate() {
+                    let warn = *name == tc_ssh::algorithms::WARN_BELOW;
+                    let mut text = egui::RichText::new(if warn {
+                        "— not offered below —"
+                    } else {
+                        name
+                    })
+                    .small();
+                    if warn || below {
+                        text = text.weak();
+                    }
+                    below |= warn;
+                    if ui.selectable_label(selected == Some(i), text).clicked() {
+                        self.algorithm_selection.insert(c.name, i);
+                    }
+                }
+            });
     }
 
     /// Controls the reference shows or hides depending on another choice.
@@ -887,6 +1012,14 @@ impl SessionEditor {
                 folder: false,
             }),
             ("FormExpertSSH", "sBitBtn2") => Some(Press::RestoreDefaults("FormExpertSSH")),
+            ("FormExpertSSH", name)
+                if self.type_index == 0 && ALGORITHM_MOVES.iter().any(|(b, ..)| *b == name) =>
+            {
+                ALGORITHM_MOVES
+                    .iter()
+                    .find(|(b, ..)| *b == name)
+                    .map(|(_, list, up)| Press::MoveAlgorithm { list, up: *up })
+            }
             ("", "sBitBtn2") if self.type_index == 8 => Some(Press::SerialDefaults),
             (s, "sBitBtn1") if !s.is_empty() => Some(Press::CloseSubDialog),
             _ => None,
@@ -903,6 +1036,10 @@ impl SessionEditor {
                 format!("{}  {}", session_icons::glyph(&preview), c.caption)
             }
             "sSpeedButton15" => icon::FOLDER_OPEN.to_string(),
+            name if sub == "FormExpertSSH" && ALGORITHM_MOVES.iter().any(|(b, ..)| *b == name) => {
+                let up = ALGORITHM_MOVES.iter().any(|(b, _, up)| *b == name && *up);
+                if up { icon::ARROW_UP } else { icon::ARROW_DOWN }.to_string()
+            }
             "sSpeedButton16" => icon::FILE.to_string(),
             "BtnJumpHost" => format!("{}  {}", icon::ARROWS_SPLIT, c.caption),
             _ => c.caption.to_string(),
@@ -1321,9 +1458,6 @@ const NOT_APPLIED: &[(Option<usize>, &str)] = &[
     // SSH: protocol version, algorithm lists, certificates, locales.
     (Some(0), "3_24"),
     (Some(0), "3_28"),
-    (Some(0), "3_29"),
-    (Some(0), "3_30"),
-    (Some(0), "3_31"),
     (Some(0), "3_33"),
     (Some(0), "3_36"),
     (Some(0), "3_37"),
@@ -1413,6 +1547,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn algorithm_lists_reorder() {
+        let groups = tc_ssh::algorithms::CIPHER_GROUPS;
+        assert_eq!(algorithm_order("", groups), groups.to_vec());
+        let order = algorithm_order("AESGCM,=Warn below=,bogus", groups);
+        assert_eq!(order[0], "AESGCM");
+        assert_eq!(order[1], tc_ssh::algorithms::WARN_BELOW);
+        assert_eq!(order.len(), groups.len(), "missing ones appended");
+
+        let mut editor = SessionEditor::new_session();
+        editor.algorithm_selection.insert("sListBox3", 2); // AESGCM
+        let mut out = Vec::new();
+        editor.press(
+            Press::MoveAlgorithm {
+                list: "sListBox3",
+                up: true,
+            },
+            &mut out,
+        );
+        editor.press(
+            Press::MoveAlgorithm {
+                list: "sListBox3",
+                up: true,
+            },
+            &mut out,
+        );
+        let value = editor.values.get("3_31").cloned().unwrap();
+        assert!(value.starts_with("AESGCM,AES,ChaCha20"), "{value}");
+        assert_eq!(
+            tc_ssh::algorithms::parse_list(&value, groups),
+            ["AESGCM", "AES", "ChaCha20", "3DES"]
+        );
+    }
+
+    #[test]
     fn presets_are_starting_values() {
         let mut preset = Session::new("", SessionKind::default_for(0).unwrap());
         preset.kind.typed_set("3_4", "ops").unwrap();
@@ -1447,7 +1615,7 @@ mod tests {
 
     #[test]
     fn unapplied_parameters_are_marked() {
-        assert!(!honoured(0, "3_31"), "SSH ciphers");
+        assert!(!honoured(0, "3_24"), "SSH locales");
         assert!(honoured(1, "3_31"), "same id, other type");
         assert!(!honoured(7, "4_44"), "every type");
         assert!(honoured(0, "3_32"), "trivial authentication is applied");

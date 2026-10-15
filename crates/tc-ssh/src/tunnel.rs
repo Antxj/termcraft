@@ -59,6 +59,7 @@ pub(crate) async fn run(
             x11: None,
             refuse_trivial_auth: false,
             show_banner: false,
+            algorithms: Default::default(),
         },
         &replies,
         &events,
