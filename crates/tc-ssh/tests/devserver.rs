@@ -1083,6 +1083,7 @@ fn expert_algorithm_lists_are_negotiated() {
         kex: vec!["dh-group16-sha512".into()],
         host_keys: vec!["Ed25519".into()],
         ciphers: vec!["AESGCM".into()],
+        prefer_known: true,
     };
     let s = SshSession::connect(p, noop());
     let out = drive(&s, accept_and_login);

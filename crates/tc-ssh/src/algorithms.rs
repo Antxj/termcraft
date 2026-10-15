@@ -37,6 +37,32 @@ pub struct Algorithms {
     pub kex: Vec<String>,
     pub host_keys: Vec<String>,
     pub ciphers: Vec<String>,
+    /// 3_33 "Prefer hostkey algorithms for which a hostkey is already
+    /// known": the key types saved in known_hosts for the server go first.
+    pub prefer_known: bool,
+}
+
+/// Same key family (RSA signatures differ only by hash).
+fn same_family(a: &Algorithm, b: &Algorithm) -> bool {
+    match (a, b) {
+        (Algorithm::Rsa { .. }, Algorithm::Rsa { .. }) => true,
+        _ => a == b,
+    }
+}
+
+/// Move the host key types of `known` keys to the front, keeping the
+/// order otherwise.
+pub fn prefer_known(p: &mut Preferred, known: &[Algorithm]) {
+    if known.is_empty() {
+        return;
+    }
+    let (mut first, rest): (Vec<Algorithm>, Vec<Algorithm>) = p
+        .key
+        .iter()
+        .cloned()
+        .partition(|a| known.iter().any(|k| same_family(a, k)));
+    first.extend(rest);
+    p.key = Cow::Owned(first);
 }
 
 /// A stored list (`ECDH,AES,…`): the groups above the warn line, in
@@ -147,6 +173,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn known_key_types_go_first() {
+        let mut p = Preferred::default();
+        prefer_known(&mut p, &[Algorithm::Rsa { hash: None }]);
+        assert!(matches!(p.key[0], Algorithm::Rsa { .. }));
+        assert!(p.key.contains(&Algorithm::Ed25519), "nothing removed");
+        let before = Preferred::default().key.len();
+        assert_eq!(p.key.len(), before);
+    }
+
+    #[test]
     fn lists_stop_at_the_warn_line() {
         let l = parse_list("AESGCM, AES,=Warn below=,3DES,bogus", CIPHER_GROUPS);
         assert_eq!(l, ["AESGCM", "AES"]);
@@ -165,6 +201,7 @@ mod tests {
             kex: vec!["dh-group16-sha512".into(), "ECDH".into()],
             host_keys: vec!["RSA".into(), "Ed25519".into()],
             ciphers: vec!["AESGCM".into()],
+            prefer_known: false,
         };
         let p = preferred(&a);
         assert_eq!(p.kex[0], kex::DH_G16_SHA512);

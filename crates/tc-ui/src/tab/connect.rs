@@ -438,6 +438,8 @@ impl Tab {
                     kex: list("3_29", a::KEX_GROUPS),
                     host_keys: list("3_30", a::HOST_KEY_GROUPS),
                     ciphers: list("3_31", a::CIPHER_GROUPS),
+                    // 3_33, on by default.
+                    prefer_known: opt("3_33").is_none_or(schema::is_true),
                 }
             },
         };

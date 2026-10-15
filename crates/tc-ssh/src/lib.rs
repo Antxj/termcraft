@@ -730,7 +730,18 @@ pub(crate) async fn establish(
         ..handler(e)
     };
     let target = opts.target;
-    let config = client_config(opts.compression, opts.keepalive, &opts.algorithms);
+    let mut config = client_config(opts.compression, opts.keepalive, &opts.algorithms);
+    if opts.algorithms.prefer_known {
+        let known: Vec<russh::keys::Algorithm> =
+            keys::known_hosts::known_host_keys_path(&target.host, target.port, opts.known_hosts)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(_, key)| key.algorithm())
+                .collect();
+        if let Some(c) = Arc::get_mut(&mut config) {
+            algorithms::prefer_known(&mut c.preferred, &known);
+        }
+    }
 
     // Each gateway is reached through the previous one (the first one
     // directly or through the proxy), then the target through the last.
