@@ -1308,15 +1308,23 @@ fn termcraft_tab(
 ) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(12.0)));
     let ui = &mut child;
+    ui.set_clip_rect(rect.shrink(12.0));
+    // A long path is cut at the page edge; the whole one is in the hint.
+    let path = |ui: &mut egui::Ui, p: std::path::PathBuf| {
+        let text = p.display().to_string();
+        ui.add(egui::Label::new(egui::RichText::new(&text).monospace()).truncate())
+            .on_hover_text(text);
+    };
     egui::Grid::new("cfg-termcraft")
         .num_columns(2)
         .spacing([12.0, 6.0])
+        .max_col_width(rect.width() - 150.0)
         .show(ui, |ui| {
             ui.label("Configuration file:");
-            ui.monospace(paths.settings_file().display().to_string());
+            path(ui, paths.settings_file());
             ui.end_row();
             ui.label("Sessions file:");
-            ui.monospace(paths.sessions_file().display().to_string());
+            path(ui, paths.sessions_file());
             ui.end_row();
             ui.label("Mode:");
             ui.label(if paths.portable {
