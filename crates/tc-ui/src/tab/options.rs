@@ -105,6 +105,43 @@ pub(super) fn x11_display() -> (Option<String>, Option<&'static str>) {
     )
 }
 
+/// SSH 3_14 "Remote environment": the command that starts the chosen
+/// desktop (`None` = "Interactive shell").
+pub(super) fn remote_desktop(index: usize) -> Option<&'static str> {
+    let label = tc_core::schema::type_params(0)
+        .iter()
+        .find(|p| p.id == "3_14")
+        .and_then(|p| match p.widget {
+            tc_core::schema::Widget::Choice(items) => items.get(index).copied(),
+            _ => None,
+        })?;
+    let name = label.strip_suffix(" desktop")?.to_ascii_lowercase();
+    Some(match name.as_str() {
+        "lxde" => "startlxde",
+        "gnome" => "gnome-session",
+        "kde" => "startplasma-x11 || startkde",
+        "fvwm2" => "fvwm2",
+        "dwm" => "dwm",
+        "i3" => "i3",
+        "twm" => "twm",
+        "awesome" => "awesome",
+        "xmonad" => "xmonad",
+        "icewm" => "icewm-session",
+        "wmaker" => "wmaker",
+        "blackbox" => "blackbox",
+        "fluxbox" => "startfluxbox",
+        "openbox" => "openbox-session",
+        "xfce4" => "startxfce4",
+        "enlightenment" => "enlightenment_start",
+        "cde" => "/usr/dt/bin/Xsession",
+        "mate" => "mate-session",
+        "wmii" => "wmii",
+        "flwm" => "flwm",
+        "spectrwm" => "spectrwm",
+        _ => return None,
+    })
+}
+
 /// 4_36 "Syntax highlighting" index of the session, when it sets one.
 pub(super) fn session_syntax(session: Option<&Session>) -> Option<usize> {
     session
@@ -158,6 +195,30 @@ pub(super) fn session_proxy(session: Option<&Session>) -> Option<tc_ssh::proxy::
         _ => return None,
     };
     tc_ssh::proxy::from_options_with(ids, &|id| session.options.get(id).cloned())
+}
+
+/// The proxy of an SFTP session: 3_11 type (0 none, 1 / 2 SOCKS4, 3 / 4
+/// SOCKS5, 5 / 6 HTTP, 7 / 8 HTTP with digest / NTLM authentication, which
+/// TermCraft does not have), 3_12 host, 3_13 port, 3_14 login.
+pub(super) fn sftp_proxy(get: &dyn Fn(&str) -> Option<String>) -> Option<tc_ssh::proxy::Proxy> {
+    let kind = match get("3_11")?.trim() {
+        "1" | "2" => "1",
+        "3" | "4" => "2",
+        "5" | "6" => "3",
+        _ => return None,
+    };
+    let ids = tc_ssh::proxy::ProxyIds {
+        kind: "3_11",
+        host: "3_12",
+        port: "3_13",
+        login: "3_14",
+        command: "",
+    };
+    tc_ssh::proxy::from_options_with(&ids, &|id| match id {
+        "3_11" => Some(kind.to_string()),
+        "" => None,
+        _ => get(id),
+    })
 }
 
 /// A local file path from the session settings. A MobaXterm placeholder

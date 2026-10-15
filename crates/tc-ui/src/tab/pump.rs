@@ -90,7 +90,12 @@ impl Tab {
         for event in events {
             match event {
                 tc_net::StreamEvent::Output(bytes) => {
-                    let reply = self.output(&bytes);
+                    let mut reply = self.output(&bytes);
+                    if self.auto_login.is_some() && is_login_prompt(&bytes) {
+                        let user = self.auto_login.take().expect("checked");
+                        reply.extend_from_slice(user.as_bytes());
+                        reply.push(b'\r');
+                    }
                     if !reply.is_empty()
                         && let Backend::Stream(stream) = &mut self.backend
                     {
@@ -311,5 +316,25 @@ impl Tab {
         for e in errors {
             self.message(&format!("\x1b[31m{e}\x1b[0m"));
         }
+    }
+}
+
+/// The end of `bytes` is a login prompt ("login:", "Username:").
+fn is_login_prompt(bytes: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(bytes).to_ascii_lowercase();
+    let text = text.trim_end();
+    ["login:", "username:", "user name:"]
+        .iter()
+        .any(|p| text.ends_with(p))
+}
+
+#[cfg(test)]
+mod login_prompt_tests {
+    #[test]
+    fn login_prompts() {
+        assert!(super::is_login_prompt(b"\r\nrouter login: "));
+        assert!(super::is_login_prompt(b"Username:"));
+        assert!(!super::is_login_prompt(b"Last login: Mon\r\n$ "));
+        assert!(!super::is_login_prompt(b"Password: "));
     }
 }

@@ -645,6 +645,10 @@ fn control(
         }
         ("sTabSheet2", "sCheckBox63") => check(ui, &mut s.general.multiple_instances),
         ("OngletSSH", "sCheckBox61") => check(ui, &mut s.ssh.show_banner),
+        ("OngletSSH", "sEdit5") => {
+            ui.put(rect, egui::TextEdit::singleline(&mut s.ssh.default_login));
+        }
+        ("OngletSSH", "ChkPreserveFilesDates") => check(ui, &mut s.ssh.preserve_file_dates),
         ("sTabSheet2", "ChkBackgroundPopupTermInsteadOfClosingIt") => {
             check(ui, &mut s.popup.hide_instead_of_close);
         }

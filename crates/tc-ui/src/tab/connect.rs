@@ -130,6 +130,7 @@ impl Tab {
             x11_display: None,
             refuse_trivial_auth: false,
             show_banner: false,
+            preserve_dates: false,
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -168,12 +169,23 @@ impl Tab {
     pub(super) fn connect_sftp(&mut self, user: String) {
         let Some(Session {
             kind: SessionKind::Sftp { host, port, .. },
+            options,
             ..
         }) = &self.session
         else {
             return;
         };
         let (host, port) = (host.clone(), *port);
+        // Schema ids: 3_6 Compression, 3_10 private key, 3_17 Preserve
+        // files dates, 3_11 … 3_14 proxy.
+        let opt = |id: &str| options.get(id).map(String::as_str);
+        let private_key = opt("3_10")
+            .map(str::trim)
+            .filter(|k| !k.is_empty() && *k != "<>")
+            .map(local_path);
+        let compression = opt("3_6").is_some_and(schema::is_true);
+        let preserve_dates = opt("3_17").is_some_and(schema::is_true);
+        let proxy = sftp_proxy(&|id| opt(id).map(String::from));
         self.credentials.reset();
         let (user, credential_error) = self.credentials.use_named(&user, &host, port);
         if let Some(e) = credential_error {
@@ -187,10 +199,10 @@ impl Tab {
             host,
             port,
             user,
-            private_key: None,
+            private_key,
             gateways: Vec::new(),
             known_hosts: self.known_hosts.clone(),
-            compression: false,
+            compression,
             command: None,
             term: "xterm-256color".into(),
             cols,
@@ -203,11 +215,12 @@ impl Tab {
             remote_monitoring: false,
             agent: agent_config(&self.ssh_settings),
             shell: false,
-            proxy: None,
+            proxy,
             agent_forwarding: false,
             x11_display: None,
             refuse_trivial_auth: false,
             show_banner: false,
+            preserve_dates,
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -352,7 +365,11 @@ impl Tab {
                 host: hop.host,
             })
             .collect();
-        let x11 = if *x11_forwarding {
+        // 3_14 "Remote environment": a desktop runs over X11 forwarding.
+        let desktop = opt("3_14")
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .and_then(remote_desktop);
+        let x11 = if *x11_forwarding || desktop.is_some() {
             x11_display()
         } else {
             (None, None)
@@ -368,7 +385,8 @@ impl Tab {
             command: opt("3_8")
                 .map(str::trim)
                 .filter(|c| !c.is_empty())
-                .map(|c| keep_open(c, opt("3_12").is_some_and(schema::is_true))),
+                .map(|c| keep_open(c, opt("3_12").is_some_and(schema::is_true)))
+                .or_else(|| desktop.map(String::from)),
             term: self
                 .term_type
                 .clone()
@@ -399,6 +417,7 @@ impl Tab {
             x11_display: x11.0,
             refuse_trivial_auth: opt("3_32").is_some_and(schema::is_true),
             show_banner: self.ssh_settings.show_banner,
+            preserve_dates: self.ssh_settings.preserve_file_dates,
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());
@@ -409,6 +428,9 @@ impl Tab {
         self.folder_hook = params.detect_login_shell.then(FolderHook::new);
         if let Some(e) = credential_error {
             self.message(&format!("\x1b[33m{e}\x1b[0m"));
+        }
+        if let Some(note) = x11.1 {
+            self.message(note);
         }
         if params.sftp {
             self.sftp = SftpStatus::Connecting;
@@ -434,7 +456,7 @@ impl Tab {
     /// Hops without a login ask for one first ("login as:").
     pub(super) fn start_via_gateway(&mut self, via: ViaGateway, login: Option<String>) {
         let needs_login = via.hops.iter().any(|h| h.user.trim().is_empty());
-        let login = match login {
+        let login = match login.or_else(|| super::default_login(&self.ssh_settings)) {
             Some(l) => l,
             None if needs_login => {
                 self.message("\x1b[90mLogin for the SSH gateway:\x1b[0m");
@@ -499,7 +521,18 @@ impl Tab {
             GatewayTarget::Telnet => self.open_telnet(local.into(), local_port),
             GatewayTarget::Rdp(user) => {
                 let temp = std::env::temp_dir().join("termcraft-rdp");
-                let result = crate::external::launch_rdp(local, local_port, user.as_deref(), &temp);
+                let options = crate::external::RdpOptions::from_options(&|id| {
+                    self.session
+                        .as_ref()
+                        .and_then(|s| s.options.get(id).cloned())
+                });
+                let result = crate::external::launch_rdp(
+                    local,
+                    local_port,
+                    user.as_deref(),
+                    &options,
+                    &temp,
+                );
                 self.external_result("RDP", &via.host, via.port, result);
             }
             GatewayTarget::Vnc => {
@@ -571,8 +604,25 @@ impl Tab {
         let (rows, cols) = self.term.size();
         let term = self.term_type.clone().unwrap_or_else(|| "xterm".into());
         let repaint = self.repaint.clone();
+        // Advanced Telnet settings: 3_17 negotiation mode (0 active),
+        // 3_18 newlines, 3_19 keepalives; 3_4 user, typed at the login
+        // prompt.
+        let session = self.session.as_ref();
+        let opt = |id: &str| -> String {
+            let param = tc_core::schema::type_params(1).iter().find(|p| p.id == id);
+            match (session, param) {
+                (Some(s), Some(p)) => s.option(p).trim().to_string(),
+                _ => String::new(),
+            }
+        };
+        let options = tc_net::telnet::TelnetOptions {
+            active: opt("3_17") != "1",
+            newlines: schema::is_true(&opt("3_18")),
+            keepalive: schema::is_true(&opt("3_19")),
+        };
+        self.auto_login = Some(opt("3_4")).filter(|u| !u.is_empty() && u != "<>");
         self.open_in_background(move || {
-            tc_net::telnet::Telnet::connect(&host, port, &term, rows, cols, repaint)
+            tc_net::telnet::Telnet::connect(&host, port, &term, rows, cols, options, repaint)
                 .map(|t| Box::new(t) as Box<dyn tc_net::Stream>)
                 .map_err(|e| format!("{host}:{port}: {e}"))
         });
@@ -682,11 +732,32 @@ impl Tab {
                 .unwrap_or(default)
         };
         let from = opt("3_3");
+        // 3_7 font server (3_8 host, 3_9 port), 3_11 keyboard, 3_10 clipboard.
+        let font_host = opt("3_8").unwrap_or_else(|| "localhost".into());
+        let font_server = opt("3_7").is_some_and(|v| schema::is_true(&v)).then(|| {
+            (
+                font_host.as_str(),
+                u16::try_from(num("3_9", 7100)).unwrap_or(7100),
+            )
+        });
+        let keyboard = tc_core::schema::type_params(3)
+            .iter()
+            .find(|p| p.id == "3_11")
+            .and_then(|p| match p.widget {
+                tc_core::schema::Widget::Choice(items) => items
+                    .get(usize::try_from(num("3_11", 0)).unwrap_or(0))
+                    .copied(),
+                _ => None,
+            })
+            .filter(|k| *k != "Automatic");
         let request = crate::external::Xdmcp {
             host: (query && !host.trim().is_empty()).then_some(host.trim()),
             from: from.as_deref(),
             display: u16::try_from(num("3_12", 1)).unwrap_or(1),
             size: (num("3_14", 1024), num("3_15", 768)),
+            font_server,
+            keyboard,
+            clipboard: u8::try_from(num("3_10", 1).min(2)).unwrap_or(1),
         };
         let shown = request.host.unwrap_or("any server (broadcast)").to_string();
         let result = crate::external::launch_xdmcp(&request);

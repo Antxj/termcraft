@@ -149,6 +149,14 @@ impl russh_sftp::server::Handler for SftpFs {
             perms.set_readonly(mode & 0o200 == 0);
             std::fs::set_permissions(&local, perms).map_err(io_err)?;
         }
+        if let Some(mtime) = attrs.mtime {
+            let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(mtime.into());
+            std::fs::File::options()
+                .write(true)
+                .open(self.local(&path))
+                .and_then(|f| f.set_modified(when))
+                .map_err(io_err)?;
+        }
         Ok(ok(id))
     }
 

@@ -9,6 +9,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 const IAC: u8 = 255;
+const NOP: u8 = 241;
 const DONT: u8 = 254;
 const DO: u8 = 253;
 const WONT: u8 = 252;
@@ -23,12 +24,47 @@ const OPT_NAWS: u8 = 31;
 const TTYPE_SEND: u8 = 1;
 const TTYPE_IS: u8 = 0;
 
+/// Session settings of a Telnet connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TelnetOptions {
+    /// "Active mode": offer our options at once instead of waiting for
+    /// the server to ask.
+    pub active: bool,
+    /// "Send newlines instead of ctrl-M": Enter sends CR LF.
+    pub newlines: bool,
+    /// "Telnet keepalives": a NOP every minute keeps idle links open.
+    pub keepalive: bool,
+}
+
+impl Default for TelnetOptions {
+    fn default() -> Self {
+        Self {
+            active: true,
+            newlines: true,
+            keepalive: false,
+        }
+    }
+}
+
+const KEEPALIVE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// What we offered in active mode; the server's answer to it is not
+/// answered again (RFC 854: no acknowledgement of an acknowledgement).
+const ACTIVE_OFFER: [[u8; 3]; 4] = [
+    [IAC, WILL, OPT_NAWS],
+    [IAC, WILL, OPT_TTYPE],
+    [IAC, DO, OPT_SGA],
+    [IAC, DO, OPT_ECHO],
+];
+
 /// Protocol state shared by the reader thread and the writer.
 struct Shared {
     socket: TcpStream,
     naws: bool,
     size: (u16, u16),
     term: String,
+    /// Offers still waiting for the server's answer: (our verb, option).
+    offered: Vec<(u8, u8)>,
 }
 
 impl Shared {
@@ -53,6 +89,9 @@ impl Shared {
 pub struct Telnet {
     shared: Arc<Mutex<Shared>>,
     events: Receiver<StreamEvent>,
+    newlines: bool,
+    /// Dropped with the connection: stops the keepalive thread.
+    _keepalive: Option<Sender<()>>,
 }
 
 impl Telnet {
@@ -62,39 +101,62 @@ impl Telnet {
         term: &str,
         rows: u16,
         cols: u16,
+        options: TelnetOptions,
         notify: Notify,
     ) -> std::io::Result<Self> {
         let socket = TcpStream::connect((host, port))?;
         socket.set_nodelay(true)?;
         let reader = socket.try_clone()?;
-        let shared = Arc::new(Mutex::new(Shared {
+        let mut shared = Shared {
             socket,
             naws: false,
             size: (rows, cols),
             term: term.to_ascii_uppercase(),
-        }));
+            offered: Vec::new(),
+        };
+        if options.active {
+            shared.send(&ACTIVE_OFFER.concat())?;
+            shared.offered = ACTIVE_OFFER.iter().map(|o| (o[1], o[2])).collect();
+        }
+        let shared = Arc::new(Mutex::new(shared));
         let (tx, events) = crossbeam_channel::unbounded();
         let thread_shared = shared.clone();
         std::thread::Builder::new()
             .name(format!("telnet {host}"))
             .spawn(move || read_loop(reader, thread_shared, tx, notify))?;
-        Ok(Self { shared, events })
+        let keepalive = options.keepalive.then(|| {
+            let (stop, stopped) = crossbeam_channel::bounded::<()>(0);
+            let shared = shared.clone();
+            let _ = std::thread::Builder::new()
+                .name(format!("telnet keepalive {host}"))
+                .spawn(move || {
+                    while let Err(crossbeam_channel::RecvTimeoutError::Timeout) =
+                        stopped.recv_timeout(KEEPALIVE)
+                    {
+                        if shared.lock().expect("lock").send(&[IAC, NOP]).is_err() {
+                            break;
+                        }
+                    }
+                });
+            stop
+        });
+        Ok(Self {
+            shared,
+            events,
+            newlines: options.newlines,
+            _keepalive: keepalive,
+        })
     }
 }
 
 impl Stream for Telnet {
-    /// Send user input; 0xFF is doubled and a lone CR becomes CR NUL.
+    /// Send user input; 0xFF is doubled and a lone CR becomes CR LF
+    /// ("Send newlines instead of ctrl-M") or CR NUL.
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        let mut out = Vec::with_capacity(bytes.len());
-        for (i, &b) in bytes.iter().enumerate() {
-            out.push(b);
-            if b == IAC {
-                out.push(IAC);
-            } else if b == b'\r' && bytes.get(i + 1) != Some(&b'\n') {
-                out.push(0);
-            }
-        }
-        self.shared.lock().expect("lock").send(&out)
+        self.shared
+            .lock()
+            .expect("lock")
+            .send(&encode(bytes, self.newlines))
     }
 
     fn resize(&mut self, rows: u16, cols: u16) {
@@ -110,6 +172,20 @@ impl Stream for Telnet {
     fn events(&self) -> &Receiver<StreamEvent> {
         &self.events
     }
+}
+
+/// User input on the wire.
+fn encode(bytes: &[u8], newlines: bool) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    for (i, &b) in bytes.iter().enumerate() {
+        out.push(b);
+        if b == IAC {
+            out.push(IAC);
+        } else if b == b'\r' && bytes.get(i + 1) != Some(&b'\n') {
+            out.push(if newlines { b'\n' } else { 0 });
+        }
+    }
+    out
 }
 
 enum State {
@@ -184,9 +260,25 @@ pub(crate) struct ShareView<'a> {
     pub naws: &'a mut bool,
     pub size: (u16, u16),
     pub term: &'a str,
+    pub offered: &'a mut Vec<(u8, u8)>,
 }
 
 fn negotiate(verb: u8, opt: u8, reply: &mut Vec<u8>, s: &mut ShareView<'_>) {
+    // The answer to one of our offers: take note, do not answer it.
+    let ours = match verb {
+        DO | DONT => WILL,
+        _ => DO,
+    };
+    if let Some(i) = s.offered.iter().position(|o| *o == (ours, opt)) {
+        s.offered.remove(i);
+        if opt == OPT_NAWS {
+            *s.naws = verb == DO;
+            if verb == DO {
+                naws_message(s.size, reply);
+            }
+        }
+        return;
+    }
     match (verb, opt) {
         // Let the server echo and suppress go-ahead.
         (WILL, OPT_ECHO | OPT_SGA) => reply.extend_from_slice(&[IAC, DO, opt]),
@@ -196,20 +288,23 @@ fn negotiate(verb: u8, opt: u8, reply: &mut Vec<u8>, s: &mut ShareView<'_>) {
         (DO, OPT_NAWS) => {
             *s.naws = true;
             reply.extend_from_slice(&[IAC, WILL, OPT_NAWS]);
-            let (rows, cols) = s.size;
-            reply.extend_from_slice(&[IAC, SB, OPT_NAWS]);
-            for b in cols.to_be_bytes().into_iter().chain(rows.to_be_bytes()) {
-                reply.push(b);
-                if b == IAC {
-                    reply.push(IAC);
-                }
-            }
-            reply.extend_from_slice(&[IAC, SE]);
+            naws_message(s.size, reply);
         }
         (DO, _) => reply.extend_from_slice(&[IAC, WONT, opt]),
         (DONT, OPT_NAWS) => *s.naws = false,
         _ => {} // WONT / DONT: nothing to do
     }
+}
+
+fn naws_message((rows, cols): (u16, u16), reply: &mut Vec<u8>) {
+    reply.extend_from_slice(&[IAC, SB, OPT_NAWS]);
+    for b in cols.to_be_bytes().into_iter().chain(rows.to_be_bytes()) {
+        reply.push(b);
+        if b == IAC {
+            reply.push(IAC);
+        }
+    }
+    reply.extend_from_slice(&[IAC, SE]);
 }
 
 fn subnegotiation(buf: &[u8], reply: &mut Vec<u8>, s: &mut ShareView<'_>) {
@@ -237,12 +332,15 @@ fn read_loop(
                     let mut s = shared.lock().expect("lock");
                     let term = s.term.clone();
                     let size = s.size;
+                    let mut offered = std::mem::take(&mut s.offered);
                     let mut view = ShareView {
                         naws: &mut s.naws,
                         size,
                         term: &term,
+                        offered: &mut offered,
                     };
                     let out = parser.feed(&buf[..n], &mut view);
+                    s.offered = offered;
                     if !out.1.is_empty() {
                         let _ = s.send(&out.1);
                     }
@@ -264,12 +362,41 @@ mod tests {
     use super::*;
 
     fn feed(p: &mut Parser, naws: &mut bool, input: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        let mut offered = Vec::new();
         let mut view = ShareView {
             naws,
             size: (24, 80),
             term: "XTERM",
+            offered: &mut offered,
         };
         p.feed(input, &mut view)
+    }
+
+    #[test]
+    fn answers_to_active_offers_are_not_answered() {
+        let mut p = Parser::new();
+        let mut naws = false;
+        let mut offered: Vec<(u8, u8)> = ACTIVE_OFFER.iter().map(|o| (o[1], o[2])).collect();
+        let mut view = ShareView {
+            naws: &mut naws,
+            size: (24, 80),
+            term: "XTERM",
+            offered: &mut offered,
+        };
+        let input = [IAC, DO, OPT_NAWS, IAC, WILL, OPT_ECHO, IAC, DONT, OPT_TTYPE];
+        let (_, reply) = p.feed(&input, &mut view);
+        // Only the window size: no WILL NAWS / DO ECHO again.
+        assert_eq!(reply, [IAC, SB, OPT_NAWS, 0, 80, 0, 24, IAC, SE]);
+        assert_eq!(offered, [(DO, OPT_SGA)], "still waiting for SGA");
+        assert!(naws);
+    }
+
+    #[test]
+    fn enter_as_newline_or_cr_nul() {
+        assert_eq!(encode(b"ls\r", true), b"ls\r\n");
+        assert_eq!(encode(b"ls\r", false), b"ls\r\0");
+        assert_eq!(encode(b"a\r\nb", true), b"a\r\nb", "CR LF stays");
+        assert_eq!(encode(&[IAC], true), [IAC, IAC]);
     }
 
     #[test]
@@ -324,7 +451,21 @@ mod tests {
             }
             got
         });
-        let mut t = Telnet::connect("127.0.0.1", port, "xterm", 30, 100, Arc::new(|| {})).unwrap();
+        let passive = TelnetOptions {
+            active: false,
+            newlines: false,
+            keepalive: false,
+        };
+        let mut t = Telnet::connect(
+            "127.0.0.1",
+            port,
+            "xterm",
+            30,
+            100,
+            passive,
+            Arc::new(|| {}),
+        )
+        .unwrap();
         match t
             .events()
             .recv_timeout(std::time::Duration::from_secs(5))

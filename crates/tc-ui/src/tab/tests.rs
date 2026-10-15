@@ -499,3 +499,52 @@ fn start_macro_runs_after_the_first_output() {
     received(&mut tab, &rx, b"admin\r");
     assert!(tab.start_macro.is_none(), "only once");
 }
+
+#[test]
+fn sftp_session_proxy() {
+    use tc_ssh::proxy::{Proxy, ProxyKind};
+    let options = |kind: &str| {
+        let map: std::collections::BTreeMap<&str, String> = [
+            ("3_11", kind.to_string()),
+            ("3_12", "proxy.example".to_string()),
+            ("3_13", "3128".to_string()),
+            ("3_14", "me".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        move |id: &str| map.get(id).cloned()
+    };
+    let proxy = |kind: &str| sftp_proxy(&options(kind));
+    assert_eq!(proxy("0"), None);
+    assert_eq!(
+        proxy("4"),
+        Some(Proxy {
+            kind: ProxyKind::Socks5,
+            host: "proxy.example".into(),
+            port: 3128,
+            user: Some("me".into()),
+        })
+    );
+    assert_eq!(proxy("1").map(|p| p.kind), Some(ProxyKind::Socks4));
+    assert_eq!(proxy("6").map(|p| p.kind), Some(ProxyKind::Http));
+    assert_eq!(proxy("8"), None, "NTLM is not available");
+}
+
+#[test]
+fn remote_desktops() {
+    assert_eq!(remote_desktop(0), None, "interactive shell");
+    assert_eq!(remote_desktop(1), Some("startlxde"));
+    assert_eq!(remote_desktop(99), None);
+    // Every desktop of the list has a command.
+    let count = tc_core::schema::type_params(0)
+        .iter()
+        .find(|p| p.id == "3_14")
+        .and_then(|p| match p.widget {
+            tc_core::schema::Widget::Choice(items) => Some(items.len()),
+            _ => None,
+        })
+        .unwrap();
+    for i in 1..count {
+        assert!(remote_desktop(i).is_some(), "desktop {i}");
+    }
+}

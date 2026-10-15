@@ -60,6 +60,13 @@ pub struct TabEnv {
     pub home: Option<PathBuf>,
 }
 
+/// Configuration › SSH "Default login": the user of sessions and jump
+/// hosts that name none (else "login as:" asks).
+fn default_login(ssh: &tc_core::settings::SshSettings) -> Option<String> {
+    let user = ssh.default_login.trim();
+    (!user.is_empty()).then(|| user.to_string())
+}
+
 /// Keys of the "Session stopped" prompt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EndedAction {
@@ -305,6 +312,8 @@ pub struct Tab {
     pub syntax: Option<usize>,
     /// Telnet / RDP / VNC waiting for its tunnel through the jump hosts.
     via_gateway: Option<ViaGateway>,
+    /// Telnet "Username": typed once at the server's login prompt.
+    auto_login: Option<String>,
     /// That tunnel, kept open as long as the tab.
     gateway_tunnel: Option<SshSession>,
     /// Telnet / VNC through a session proxy: the loopback port it listens on.
@@ -399,6 +408,7 @@ impl Tab {
             paste_delay: std::time::Duration::ZERO,
             charset: tc_term::TermCharset::default(),
             via_gateway: None,
+            auto_login: None,
             gateway_tunnel: None,
             proxy_forward: None,
             syntax: None,
@@ -483,10 +493,13 @@ impl Tab {
             Some(SessionKind::Ssh {
                 user: Some(user), ..
             }) => tab.connect_ssh(user),
-            Some(SessionKind::Ssh { user: None, .. }) => {
-                tab.term.feed(b"login as: ");
-                tab.line = Some(LineInput::Login(String::new()));
-            }
+            Some(SessionKind::Ssh { user: None, .. }) => match default_login(&env.ssh) {
+                Some(user) => tab.connect_ssh(user),
+                None => {
+                    tab.term.feed(b"login as: ");
+                    tab.line = Some(LineInput::Login(String::new()));
+                }
+            },
             // A session proxy (other than "SSH forwarding", which is a
             // gateway) is never skipped: through it, or not at all.
             Some(SessionKind::Telnet { .. } | SessionKind::Vnc { .. })
@@ -505,7 +518,13 @@ impl Tab {
             Some(SessionKind::Ftp { host, port, user }) => tab.open_ftp(host, port, user),
             Some(SessionKind::Rdp { host, port, user }) => {
                 let temp = std::env::temp_dir().join("termcraft-rdp");
-                let result = crate::external::launch_rdp(&host, port, user.as_deref(), &temp);
+                let options = crate::external::RdpOptions::from_options(&|id| {
+                    tab.session
+                        .as_ref()
+                        .and_then(|s| s.options.get(id).cloned())
+                });
+                let result =
+                    crate::external::launch_rdp(&host, port, user.as_deref(), &options, &temp);
                 tab.external_result("RDP", &host, port, result);
             }
             Some(SessionKind::Vnc { host, port }) => {
@@ -516,17 +535,23 @@ impl Tab {
             Some(SessionKind::Sftp {
                 user: Some(user), ..
             }) => tab.connect_sftp(user),
-            Some(SessionKind::Sftp { user: None, .. }) => {
-                tab.term.feed(b"login as: ");
-                tab.line = Some(LineInput::Login(String::new()));
-            }
+            Some(SessionKind::Sftp { user: None, .. }) => match default_login(&env.ssh) {
+                Some(user) => tab.connect_sftp(user),
+                None => {
+                    tab.term.feed(b"login as: ");
+                    tab.line = Some(LineInput::Login(String::new()));
+                }
+            },
             Some(SessionKind::Mosh {
                 user: Some(user), ..
             }) => tab.connect_mosh(user),
-            Some(SessionKind::Mosh { user: None, .. }) => {
-                tab.term.feed(b"login as: ");
-                tab.line = Some(LineInput::Login(String::new()));
-            }
+            Some(SessionKind::Mosh { user: None, .. }) => match default_login(&env.ssh) {
+                Some(user) => tab.connect_mosh(user),
+                None => {
+                    tab.term.feed(b"login as: ");
+                    tab.line = Some(LineInput::Login(String::new()));
+                }
+            },
             Some(SessionKind::Wsl { distro }) => tab.open_wsl(&distro),
             Some(SessionKind::AwsS3 { key_id }) => tab.open_s3(key_id),
             Some(SessionKind::Xdmcp { host }) => tab.open_xdmcp(&host),
@@ -613,13 +638,18 @@ impl Tab {
     }
 
     /// The local pane, created on first use in the session's "Local
-    /// startup folder" (SFTP 3_16).
+    /// startup folder" (SFTP 3_16, FTP 3_21).
     pub fn local_pane_mut(&mut self) -> &mut crate::ui::local_pane::LocalPane {
         let start = self
             .session
             .as_ref()
-            .filter(|s| matches!(s.kind, SessionKind::Sftp { .. }))
-            .and_then(|s| s.options.get("3_16"))
+            .and_then(|s| match s.kind {
+                SessionKind::Sftp { .. } => s.options.get("3_16"),
+                // FTP 3_21 "Local startup folder".
+                SessionKind::Ftp { .. } => s.options.get("3_21"),
+                _ => None,
+            })
+            .filter(|d| !d.trim().is_empty() && d.as_str() != "<>")
             .cloned();
         self.local_pane
             .get_or_insert_with(|| crate::ui::local_pane::LocalPane::new(start.as_deref()))

@@ -387,12 +387,18 @@ pub struct SshSettings {
     pub agent_keys: Vec<String>,
     /// "Display SSH banner": the message a server shows before login.
     pub show_banner: bool,
+    /// "Default login": the user of SSH sessions that name none.
+    pub default_login: String,
+    /// "Preserve files dates during SSH-browser transfers".
+    pub preserve_file_dates: bool,
 }
 
 impl Default for SshSettings {
     fn default() -> Self {
         Self {
             show_banner: true,
+            default_login: String::new(),
+            preserve_file_dates: true,
             browser: true,
             switch_to_browser: true,
             keepalive_secs: 0,

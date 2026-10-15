@@ -24,13 +24,182 @@ fn check_value(what: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Contents of a minimal `.rdp` file for mstsc.
-pub fn rdp_file(host: &str, port: u16, user: Option<&str>) -> String {
-    let mut s = format!("full address:s:{host}:{port}\r\nprompt for credentials:i:1\r\n");
-    if let Some(u) = user.filter(|u| !u.is_empty()) {
-        s.push_str(&format!("username:s:{u}\r\n"));
+/// The advanced settings of an RDP session that the system clients take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RdpOptions {
+    /// 3_5 "Connect to admin console".
+    pub admin: bool,
+    /// 3_13 "Remote command": run instead of the desktop.
+    pub command: Option<String>,
+    /// 3_31 "Authentication level" (server authentication): 0 none,
+    /// 1 force, 2 prompt.
+    pub auth_level: u8,
+    /// 3_22 "Forward keyboard shortcuts" (Alt+Tab ... to the remote side).
+    pub keyboard_shortcuts: bool,
+    /// 3_20, 3_7, 3_8, 3_6, 3_26, 3_30, 3_33: redirected devices.
+    pub clipboard: bool,
+    pub drives: bool,
+    pub printers: bool,
+    pub ports: bool,
+    pub microphone: bool,
+    pub smartcards: bool,
+    pub webauthn: bool,
+    /// 3_17 "Redirect audio": 0 no audio, 1 here, 2 on the remote server.
+    pub audio: u8,
+    /// 3_11 "Display resolution".
+    pub size: RdpSize,
+    /// 3_27 "Autoscale": scale the remote desktop to the window.
+    pub autoscale: bool,
+}
+
+/// 3_11 "Display resolution".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RdpSize {
+    /// "Fit to terminal": a window (the client's own size).
+    Window,
+    /// "Fit to screen": full screen.
+    FullScreen,
+    Fixed(u32, u32),
+}
+
+impl Default for RdpOptions {
+    /// The schema defaults.
+    fn default() -> Self {
+        Self::from_options(&|_| None)
     }
+}
+
+impl RdpOptions {
+    /// From the session options (`get` = the stored value of an id; the
+    /// schema default when `None`).
+    pub fn from_options(get: &dyn Fn(&str) -> Option<String>) -> Self {
+        let params = tc_core::schema::type_params(4);
+        let value = |id: &str| {
+            get(id).unwrap_or_else(|| {
+                params
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map(|p| p.default.to_string())
+                    .unwrap_or_default()
+            })
+        };
+        let flag = |id: &str| tc_core::schema::is_true(value(id).trim());
+        let index = |id: &str| value(id).trim().parse::<usize>().unwrap_or(0);
+        let size = match index("3_11") {
+            0 => RdpSize::Window,
+            1 => RdpSize::FullScreen,
+            i => params
+                .iter()
+                .find(|p| p.id == "3_11")
+                .and_then(|p| match p.widget {
+                    tc_core::schema::Widget::Choice(items) => items.get(i).copied(),
+                    _ => None,
+                })
+                .and_then(|label| label.split_once('x'))
+                .and_then(|(w, h)| Some(RdpSize::Fixed(w.parse().ok()?, h.parse().ok()?)))
+                .unwrap_or(RdpSize::Window),
+        };
+        Self {
+            admin: flag("3_5"),
+            command: Some(value("3_13"))
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty()),
+            auth_level: u8::try_from(index("3_31").min(2)).unwrap_or(0),
+            keyboard_shortcuts: flag("3_22"),
+            clipboard: flag("3_20"),
+            drives: flag("3_7"),
+            printers: flag("3_8"),
+            ports: flag("3_6"),
+            microphone: flag("3_26"),
+            smartcards: flag("3_30"),
+            webauthn: flag("3_33"),
+            audio: u8::try_from(index("3_17").min(2)).unwrap_or(0),
+            size,
+            autoscale: flag("3_27"),
+        }
+    }
+}
+
+/// Contents of the `.rdp` file for mstsc.
+pub fn rdp_file(host: &str, port: u16, user: Option<&str>, o: &RdpOptions) -> String {
+    let mut s = format!("full address:s:{host}:{port}\r\nprompt for credentials:i:1\r\n");
+    let mut line = |l: String| {
+        s.push_str(&l);
+        s.push_str("\r\n");
+    };
+    if let Some(u) = user.filter(|u| !u.is_empty()) {
+        line(format!("username:s:{u}"));
+    }
+    let i = |b: bool| u8::from(b);
+    line(format!("administrative session:i:{}", i(o.admin)));
+    if let Some(c) = &o.command {
+        line(format!("alternate shell:s:{c}"));
+    }
+    line(format!("authentication level:i:{}", o.auth_level));
+    // 1 = on the remote computer, 2 = only full screen.
+    line(format!(
+        "keyboardhook:i:{}",
+        if o.keyboard_shortcuts { 1 } else { 2 }
+    ));
+    line(format!("redirectclipboard:i:{}", i(o.clipboard)));
+    line(format!(
+        "drivestoredirect:s:{}",
+        if o.drives { "*" } else { "" }
+    ));
+    line(format!("redirectprinters:i:{}", i(o.printers)));
+    line(format!("redirectcomports:i:{}", i(o.ports)));
+    line(format!("audiocapturemode:i:{}", i(o.microphone)));
+    line(format!("redirectsmartcards:i:{}", i(o.smartcards)));
+    line(format!("redirectwebauthn:i:{}", i(o.webauthn)));
+    // audiomode: 0 here, 1 on the remote computer, 2 none.
+    let audio = match o.audio {
+        1 => 0,
+        2 => 1,
+        _ => 2,
+    };
+    line(format!("audiomode:i:{audio}"));
+    match o.size {
+        RdpSize::Window => line("screen mode id:i:1".into()),
+        RdpSize::FullScreen => line("screen mode id:i:2".into()),
+        RdpSize::Fixed(w, h) => {
+            line("screen mode id:i:1".into());
+            line(format!("desktopwidth:i:{w}"));
+            line(format!("desktopheight:i:{h}"));
+        }
+    }
+    line(format!("smart sizing:i:{}", i(o.autoscale)));
     s
+}
+
+/// FreeRDP arguments for the same settings.
+fn freerdp_args(host: &str, port: u16, user: Option<&str>, o: &RdpOptions) -> Vec<String> {
+    let mut args = vec![format!("/v:{host}:{port}")];
+    if let Some(u) = user.filter(|u| !u.is_empty()) {
+        args.push(format!("/u:{u}"));
+    }
+    let mut push = |on: bool, arg: &str| {
+        if on {
+            args.push(arg.to_string());
+        }
+    };
+    push(o.admin, "/admin");
+    push(o.clipboard, "+clipboard");
+    push(o.drives, "/drive:home,~");
+    push(o.printers, "/printer");
+    push(o.smartcards, "/smartcard");
+    push(o.microphone, "/microphone");
+    push(o.audio == 1, "/sound");
+    push(o.audio == 2, "/audio-mode:1");
+    push(o.autoscale, "/smart-sizing");
+    match o.size {
+        RdpSize::Window => {}
+        RdpSize::FullScreen => args.push("/f".into()),
+        RdpSize::Fixed(w, h) => args.push(format!("/size:{w}x{h}")),
+    }
+    if let Some(c) = &o.command {
+        args.push(format!("/shell:{c}"));
+    }
+    args
 }
 
 fn find_in_path(exe: &str) -> Option<PathBuf> {
@@ -52,16 +221,20 @@ pub fn launch_rdp(
     host: &str,
     port: u16,
     user: Option<&str>,
+    options: &RdpOptions,
     temp_dir: &Path,
 ) -> Result<String, String> {
     check_value("host", host)?;
     if let Some(u) = user {
         check_value("user name", u)?;
     }
+    if let Some(c) = &options.command {
+        check_value("remote command", c)?;
+    }
     if cfg!(windows) {
         std::fs::create_dir_all(temp_dir).map_err(|e| e.to_string())?;
         let file = temp_dir.join(format!("{host}-{port}.rdp").replace([':', '/', '\\'], "_"));
-        std::fs::write(&file, rdp_file(host, port, user)).map_err(|e| e.to_string())?;
+        std::fs::write(&file, rdp_file(host, port, user, options)).map_err(|e| e.to_string())?;
         let mstsc = tc_core::paths::system32("mstsc.exe");
         if !mstsc.is_file() {
             return Err(format!(
@@ -81,11 +254,7 @@ pub fn launch_rdp(
         return Ok("the default RDP app".into());
     }
     if let Some(p) = find_in_path("xfreerdp3").or_else(|| find_in_path("xfreerdp")) {
-        let mut args = vec![format!("/v:{host}:{port}")];
-        if let Some(u) = user.filter(|u| !u.is_empty()) {
-            args.push(format!("/u:{u}"));
-        }
-        spawn(&p, &args)?;
+        spawn(&p, &freerdp_args(host, port, user, options))?;
         return Ok("FreeRDP".into());
     }
     if let Some(p) = find_in_path("remmina") {
@@ -171,6 +340,13 @@ pub struct Xdmcp<'a> {
     /// "Start XDMCP on screen number".
     pub display: u16,
     pub size: (u32, u32),
+    /// "Enable font server": host and port.
+    pub font_server: Option<(&'a str, u16)>,
+    /// "Keyboard type": an XKB layout (`None` = automatic).
+    pub keyboard: Option<&'a str>,
+    /// "Clipboard": 0 disabled, 1 enabled, 2 enabled without the primary
+    /// selection (VcXsrv / Xming only).
+    pub clipboard: u8,
 }
 
 /// X server arguments; `nested` = Xephyr's `-screen WxH` (VcXsrv / Xming
@@ -195,6 +371,25 @@ pub fn xdmcp_args(x: &Xdmcp<'_>, nested: bool) -> Result<Vec<String>, String> {
         args.extend(["-screen".into(), format!("{w}x{h}")]);
     } else {
         args.extend(["-screen".into(), "0".into(), format!("{w}x{h}")]);
+    }
+    if let Some((host, port)) = x.font_server {
+        let host = host.trim();
+        check_value("host", host)?;
+        args.extend(["-fp".into(), format!("tcp/{host}:{port}")]);
+    }
+    // VcXsrv / Xming take a layout; Xephyr follows the host's keyboard.
+    if let Some(layout) = x.keyboard.filter(|_| !nested) {
+        if layout.is_empty() || !layout.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(format!("invalid keyboard layout {layout:?}"));
+        }
+        args.extend(["-xkblayout".into(), layout.to_string()]);
+    }
+    if !nested {
+        match x.clipboard {
+            0 => args.push("-noclipboard".into()),
+            2 => args.extend(["-clipboard".into(), "-noprimary".into()]),
+            _ => args.push("-clipboard".into()),
+        }
     }
     Ok(args)
 }
@@ -331,6 +526,9 @@ mod tests {
             from: Some("192.168.1.5"),
             display: 1,
             size: (1024, 768),
+            font_server: None,
+            keyboard: None,
+            clipboard: 1,
         };
         assert_eq!(
             xdmcp_args(&q, false).unwrap(),
@@ -342,7 +540,8 @@ mod tests {
                 "192.168.1.5",
                 "-screen",
                 "0",
-                "1024x768"
+                "1024x768",
+                "-clipboard"
             ]
         );
         let any = Xdmcp {
@@ -350,6 +549,7 @@ mod tests {
             from: None,
             display: 2,
             size: (10, 10),
+            ..q
         };
         assert_eq!(
             xdmcp_args(&any, true).unwrap(),
@@ -376,6 +576,26 @@ mod tests {
             )
             .is_err()
         );
+        let more = Xdmcp {
+            font_server: Some(("fonts.lan", 7100)),
+            keyboard: Some("br"),
+            clipboard: 2,
+            ..q
+        };
+        let args = xdmcp_args(&more, false).unwrap();
+        assert!(args.ends_with(&[
+            "-fp".to_string(),
+            "tcp/fonts.lan:7100".into(),
+            "-xkblayout".into(),
+            "br".into(),
+            "-clipboard".into(),
+            "-noprimary".into(),
+        ]));
+        let bad = Xdmcp {
+            keyboard: Some("us -ac"),
+            ..q
+        };
+        assert!(xdmcp_args(&bad, false).is_err(), "no option injection");
     }
 
     #[test]
@@ -399,9 +619,52 @@ mod tests {
 
     #[test]
     fn rdp_file_has_address_and_user() {
-        let f = rdp_file("srv.local", 3390, Some("admin"));
+        let o = RdpOptions::default();
+        let f = rdp_file("srv.local", 3390, Some("admin"), &o);
         assert!(f.contains("full address:s:srv.local:3390\r\n"));
         assert!(f.contains("username:s:admin\r\n"));
-        assert!(!rdp_file("h", 3389, None).contains("username"));
+        assert!(!rdp_file("h", 3389, None, &o).contains("username"));
+    }
+
+    #[test]
+    fn rdp_session_settings() {
+        let o = RdpOptions::default();
+        assert!(
+            o.clipboard && o.keyboard_shortcuts && o.autoscale,
+            "schema defaults"
+        );
+        assert!(!o.drives && !o.admin);
+        let f = rdp_file("h", 3389, None, &o);
+        assert!(f.contains("redirectclipboard:i:1\r\n"));
+        assert!(f.contains("audiomode:i:2\r\n"), "no audio");
+        assert!(f.contains("screen mode id:i:1\r\n"));
+
+        let stored: std::collections::BTreeMap<&str, &str> = [
+            ("3_5", "-1"),
+            ("3_7", "-1"),
+            ("3_20", "0"),
+            ("3_17", "1"),
+            ("3_11", "4"),
+            ("3_13", "notepad.exe"),
+        ]
+        .into_iter()
+        .collect();
+        let o = RdpOptions::from_options(&|id| stored.get(id).map(|v| v.to_string()));
+        assert_eq!(o.size, RdpSize::Fixed(1024, 768));
+        let f = rdp_file("h", 3389, None, &o);
+        for line in [
+            "administrative session:i:1",
+            "drivestoredirect:s:*",
+            "redirectclipboard:i:0",
+            "audiomode:i:0",
+            "desktopwidth:i:1024",
+            "desktopheight:i:768",
+            "alternate shell:s:notepad.exe",
+        ] {
+            assert!(f.contains(&format!("{line}\r\n")), "{line}");
+        }
+        let args = freerdp_args("h", 3389, None, &o);
+        assert!(args.contains(&"/admin".to_string()) && args.contains(&"/size:1024x768".into()));
+        assert!(!args.contains(&"+clipboard".to_string()));
     }
 }

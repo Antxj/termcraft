@@ -33,11 +33,26 @@ impl Tab {
                     .is_none_or(|v| schema::is_true(v));
                 let session = self.session.as_ref();
                 let is_ftp = matches!(session.map(|s| &s.kind), Some(SessionKind::Ftp { .. }));
-                // FTP 3_9 "ASCII mode".
-                let ascii = is_ftp
+                let is_sftp = matches!(session.map(|s| &s.kind), Some(SessionKind::Sftp { .. }));
+                // "ASCII mode": FTP 3_9, SFTP 3_8.
+                let ascii_id = if is_ftp { "3_9" } else { "3_8" };
+                let ascii = (is_ftp || is_sftp)
                     && session
-                        .and_then(|s| s.options.get("3_9"))
+                        .and_then(|s| s.options.get(ascii_id))
                         .is_some_and(|v| schema::is_true(v));
+                // SFTP 3_7 "Remote startup folder" (relative = in home).
+                let start = session
+                    .filter(|_| is_sftp)
+                    .and_then(|s| s.options.get("3_7"))
+                    .map(|d| d.trim())
+                    .filter(|d| !d.is_empty() && *d != "<>")
+                    .map(|d| {
+                        if d.starts_with('/') {
+                            d.to_string()
+                        } else {
+                            tc_ssh::sftp::join(&home, d)
+                        }
+                    });
                 self.sftp = SftpStatus::Ready(Box::new(SftpView {
                     cwd: home.clone(),
                     path_input: home.clone(),
@@ -52,7 +67,7 @@ impl Tab {
                     Some(cwd) => self.sftp_list(&cwd),
                     None => {
                         self.sftp_just_ready = true;
-                        self.sftp_list(&home);
+                        self.sftp_list(start.as_deref().unwrap_or(&home));
                     }
                 }
             }

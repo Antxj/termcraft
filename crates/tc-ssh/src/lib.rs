@@ -87,6 +87,8 @@ pub struct ConnectParams {
     pub refuse_trivial_auth: bool,
     /// "Display SSH banner".
     pub show_banner: bool,
+    /// "Preserve files dates during SSH-browser transfers" (SFTP).
+    pub preserve_dates: bool,
 }
 
 impl ConnectParams {
@@ -1081,7 +1083,8 @@ async fn run_shell(
                 }
                 Some(Input::Sftp(id, request)) => match &sftp {
                     Some(Browser::Sftp(s)) => {
-                        tokio::spawn(sftp::execute(s.clone(), id, request, events.clone()));
+                        let transfer = sftp::Transfer { preserve_dates: params.preserve_dates };
+                        tokio::spawn(sftp::execute(s.clone(), id, request, transfer, events.clone()));
                     }
                     Some(Browser::Scp { chunk }) => match session.channel_open_session().await {
                         Ok(channel) => {

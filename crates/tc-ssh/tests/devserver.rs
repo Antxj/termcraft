@@ -50,6 +50,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         x11_display: None,
         refuse_trivial_auth: false,
         show_banner: false,
+        preserve_dates: true,
     }
 }
 
@@ -534,12 +535,37 @@ fn sftp_browser_operations() {
     let up = local.path().join("up.bin");
     std::fs::write(&up, &big).unwrap();
     let id = s.sftp(SftpRequest::Upload {
-        local: up,
+        local: up.clone(),
         remote: "/up.bin".into(),
         ascii: false,
     });
     done(&s, id);
     assert_eq!(std::fs::read(root.path().join("up.bin")).unwrap(), big);
+
+    // "Preserve files dates": both ways.
+    let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000);
+    let mtime = |p: &std::path::Path| std::fs::metadata(p).unwrap().modified().unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&up)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let id = s.sftp(SftpRequest::Upload {
+        local: up.clone(),
+        remote: "/dated.bin".into(),
+        ascii: false,
+    });
+    done(&s, id);
+    assert_eq!(mtime(&root.path().join("dated.bin")), old);
+    let dated = local.path().join("dated.bin");
+    let id = s.sftp(SftpRequest::Download {
+        remote: "/dated.bin".into(),
+        local: dated.clone(),
+        ascii: false,
+    });
+    done(&s, id);
+    assert_eq!(mtime(&dated), old);
 
     // ASCII mode: CRLF goes up as LF, and comes back with local endings.
     let text = local.path().join("text.txt");

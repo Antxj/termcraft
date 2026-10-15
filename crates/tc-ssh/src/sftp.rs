@@ -139,7 +139,20 @@ pub(crate) async fn open_sudo(
 
 const CHUNK: usize = 64 * 1024;
 
-pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpRequest, events: Events) {
+/// How the browser transfers files.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Transfer {
+    /// Give the copy the modification time of the original.
+    pub preserve_dates: bool,
+}
+
+pub(crate) async fn execute(
+    sftp: Arc<SftpSession>,
+    id: u64,
+    request: SftpRequest,
+    transfer: Transfer,
+    events: Events,
+) {
     let send = |e: SftpEvent| events.send(SshEvent::Sftp(e));
     let result: Result<Option<SftpEvent>, String> = async {
         match request {
@@ -176,11 +189,9 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
             } => {
                 let mut eol = ascii.then(EolConverter::to_local).flatten();
                 let mut converted = Vec::new();
-                let total = sftp
-                    .metadata(remote.clone())
-                    .await
-                    .ok()
-                    .and_then(|m| m.size);
+                let meta = sftp.metadata(remote.clone()).await.ok();
+                let total = meta.as_ref().and_then(|m| m.size);
+                let mtime = meta.and_then(|m| m.mtime);
                 let mut src = sftp.open(remote).await.map_err(|e| e.to_string())?;
                 let mut dst = tokio::fs::File::create(&local)
                     .await
@@ -210,6 +221,13 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                     dst.write_all(&converted).await.map_err(|e| e.to_string())?;
                 }
                 dst.flush().await.map_err(|e| e.to_string())?;
+                if transfer.preserve_dates
+                    && let Some(t) = mtime
+                {
+                    let when = std::time::UNIX_EPOCH + std::time::Duration::from_secs(t.into());
+                    // A date that cannot be kept does not fail the copy.
+                    let _ = dst.into_std().await.set_modified(when);
+                }
                 Ok(None)
             }
             SftpRequest::Upload {
@@ -222,8 +240,12 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                 let mut src = tokio::fs::File::open(&local)
                     .await
                     .map_err(|e| format!("{}: {e}", local.display()))?;
-                let total = src.metadata().await.ok().map(|m| m.len());
-                let mut dst = sftp.create(remote).await.map_err(|e| e.to_string())?;
+                let local_meta = src.metadata().await.ok();
+                let total = local_meta.as_ref().map(|m| m.len());
+                let mut dst = sftp
+                    .create(remote.clone())
+                    .await
+                    .map_err(|e| e.to_string())?;
                 let mut buf = vec![0u8; CHUNK];
                 let mut done = 0u64;
                 loop {
@@ -249,6 +271,18 @@ pub(crate) async fn execute(sftp: Arc<SftpSession>, id: u64, request: SftpReques
                     dst.write_all(&converted).await.map_err(|e| e.to_string())?;
                 }
                 dst.shutdown().await.map_err(|e| e.to_string())?;
+                let mtime = local_meta
+                    .filter(|_| transfer.preserve_dates)
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|d| u32::try_from(d.as_secs()).ok());
+                if let Some(t) = mtime {
+                    let mut attrs = russh_sftp::protocol::FileAttributes::empty();
+                    attrs.atime = Some(t);
+                    attrs.mtime = Some(t);
+                    // A server that refuses dates still has the file.
+                    let _ = sftp.set_metadata(remote, attrs).await;
+                }
                 Ok(None)
             }
             SftpRequest::Mkdir(path) => {
