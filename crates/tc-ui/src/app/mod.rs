@@ -43,6 +43,19 @@ struct Core {
 }
 
 impl Core {
+    /// Configuration › Security "Disable sessions" (a local terminal is a
+    /// "Shell" session).
+    fn check_session_allowed(&self, session: Option<&Session>) -> Result<(), CommandError> {
+        let label = session.map_or("Shell", |s| s.kind.label());
+        if self.settings.security.session_allowed(label) {
+            Ok(())
+        } else {
+            Err(CommandError::Failed(format!(
+                "{label} sessions are disabled (Settings › Configuration › Security)"
+            )))
+        }
+    }
+
     /// Open a tab and make it active; it goes beside the active one when
     /// "Open new tab beside current tab" says so.
     fn open_tab(&mut self, session: Option<Session>, duplicate: bool) -> u64 {
@@ -108,6 +121,7 @@ impl Core {
             log_dir: Some(self.settings.terminal.log_dir.trim())
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
+            disable_log: self.settings.terminal.disable_log,
             use_windows_path: self.settings.terminal.use_windows_path,
             theme: crate::term_settings::default_theme(self.settings.terminal.colors.as_ref()),
             home: self.settings.general.terminal_home(),
@@ -1024,6 +1038,7 @@ impl eframe::App for TermCraftApp {
         }
         self.serve_control(&ctx);
         self.serve_tray(&ctx);
+        crate::ui::menus::set_disabled_tools(&self.core.settings.security.disabled_tools);
         if std::mem::take(&mut self.core.show_requested) {
             show_window(&ctx, true);
         }

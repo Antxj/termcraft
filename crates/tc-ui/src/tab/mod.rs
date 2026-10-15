@@ -52,6 +52,8 @@ pub struct TabEnv {
     /// Configuration › Terminal "Log terminal output to the following
     /// directory" (sessions can log on their own: 4_12 / 4_13).
     pub log_dir: Option<PathBuf>,
+    /// Configuration › Security "Disable log".
+    pub disable_log: bool,
     /// "Use Windows PATH" in the local Bash / Zsh.
     pub use_windows_path: bool,
     /// Configured terminal colors and cursor, if any.
@@ -469,7 +471,9 @@ impl Tab {
             .as_ref()
             .and_then(|s| s.options.get("7_1"))
             .and_then(|v| delphi_color(v));
-        if let Some(folder) = log_folder(tab.session.as_ref(), env.log_dir.as_deref()) {
+        if !env.disable_log
+            && let Some(folder) = log_folder(tab.session.as_ref(), env.log_dir.as_deref())
+        {
             match crate::term_log::TermLog::create(&folder, &tab.title) {
                 Ok(log) => tab.log = Some(log),
                 Err(e) => tab.message(&format!(

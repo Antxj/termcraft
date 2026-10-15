@@ -257,8 +257,31 @@ pub fn tools_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
     }
 }
 
-/// Tools that are implemented.
+/// Tools turned off in Configuration › Security (set by the app).
+static DISABLED_TOOLS: std::sync::RwLock<Vec<String>> = std::sync::RwLock::new(Vec::new());
+
+/// Configuration › Security "Disable embedded tools".
+pub fn set_disabled_tools(tools: &[String]) {
+    if let Ok(mut d) = DISABLED_TOOLS.write()
+        && d.as_slice() != tools
+    {
+        *d = tools.to_vec();
+    }
+}
+
+/// The action of a tool; `None` = not implemented, or disabled.
 pub fn tool_action(name: &str) -> Option<Action> {
+    let disabled = DISABLED_TOOLS
+        .read()
+        .is_ok_and(|d| d.iter().any(|t| t == name));
+    if disabled {
+        return None;
+    }
+    implemented_tool(name)
+}
+
+/// Tools that are implemented.
+pub fn implemented_tool(name: &str) -> Option<Action> {
     match name {
         "Network services" => Some(Action::Servers),
         "Text editor" => Some(Action::TextEditor),

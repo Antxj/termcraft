@@ -26,6 +26,7 @@ impl Host for Core {
     }
 
     fn tab_open(&mut self, session: Option<Session>) -> Result<u64, CommandError> {
+        self.check_session_allowed(session.as_ref())?;
         Ok(self.open_tab(session, false))
     }
 
@@ -60,6 +61,7 @@ impl Host for Core {
     fn tab_duplicate(&mut self, tab: Option<u64>) -> Result<u64, CommandError> {
         let i = self.tab_index(tab)?;
         let session = self.tabs[i].session.clone();
+        self.check_session_allowed(session.as_ref())?;
         Ok(self.open_tab(session, true))
     }
 
@@ -108,6 +110,11 @@ impl Host for Core {
     }
 
     fn server_start(&mut self, server: &str) -> Result<String, CommandError> {
+        if !self.settings.security.server_allowed(server) {
+            return Err(CommandError::Failed(format!(
+                "the {server} server is disabled (Settings › Configuration › Security)"
+            )));
+        }
         let shared = self.paths.data_dir.join("shared");
         self.servers.start(server, &self.settings.servers, &shared)
     }

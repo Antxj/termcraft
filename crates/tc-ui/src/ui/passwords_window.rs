@@ -220,7 +220,7 @@ impl PasswordsUi {
                             Page::Credentials => self.credentials_list(ui, vault),
                         });
                 });
-                ui.horizontal(|ui| self.buttons(ui, vault, out));
+                ui.horizontal(|ui| self.buttons(ui, vault, settings.disable_show, out));
                 ui.add_space(8.0);
                 egui::Frame::group(ui.style()).show(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -406,14 +406,23 @@ impl PasswordsUi {
         });
     }
 
-    fn buttons(&mut self, ui: &mut egui::Ui, vault: &Vault, out: &mut Vec<Action>) {
+    fn buttons(&mut self, ui: &mut egui::Ui, vault: &Vault, no_show: bool, out: &mut Vec<Action>) {
+        if no_show {
+            self.revealed = None;
+        }
         let shown = self.revealed.is_some();
         let label = if shown {
             "Hide passwords"
         } else {
             "Show passwords"
         };
-        if ui.button(format!("{} {label}", icon::EYE)).clicked() {
+        let button = ui
+            .add_enabled(
+                !no_show,
+                egui::Button::new(format!("{} {label}", icon::EYE)),
+            )
+            .on_disabled_hover_text("Disabled in Settings › Configuration › Security");
+        if button.clicked() {
             if shown {
                 self.revealed = None;
             } else {

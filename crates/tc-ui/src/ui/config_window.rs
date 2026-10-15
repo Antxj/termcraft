@@ -645,8 +645,93 @@ fn control(
         }
         ("sTabSheet2", "sCheckBox63") => check(ui, &mut s.general.multiple_instances),
         ("OngletSSH", "sCheckBox61") => check(ui, &mut s.ssh.show_banner),
+        // ---------------------------------------------------------- Security
+        ("OngletCustom", "sCheckBox25") => check(ui, &mut s.passwords.disable_show),
+        ("OngletCustom", "ChkDisablePassphraseCaching") => {
+            let mut off = !s.passwords.save_key_passphrases;
+            if ui
+                .put(rect, egui::Checkbox::new(&mut off, caption))
+                .changed()
+            {
+                s.passwords.save_key_passphrases = !off;
+            }
+        }
+        ("OngletCustom", "sCheckBox15") => {
+            use tc_core::settings::SavePasswords;
+            let mut off = s.passwords.save == SavePasswords::Never;
+            if ui
+                .put(rect, egui::Checkbox::new(&mut off, caption))
+                .changed()
+            {
+                s.passwords.save = if off {
+                    SavePasswords::Never
+                } else {
+                    SavePasswords::Ask
+                };
+            }
+        }
+        ("OngletCustom", "sCheckBox6") => {
+            use tc_core::settings::MasterPrompt;
+            let mut off = s.passwords.master_prompt == MasterPrompt::EveryStartup;
+            if ui
+                .put(rect, egui::Checkbox::new(&mut off, caption))
+                .changed()
+            {
+                s.passwords.master_prompt = if off {
+                    MasterPrompt::EveryStartup
+                } else {
+                    MasterPrompt::NewComputer
+                };
+            }
+        }
+        ("OngletCustom", "sCheckBox13") => check(ui, &mut s.terminal.disable_log),
+        ("OngletCustom", "ChkListClients") => {
+            let items: Vec<(&str, &str)> = tc_core::schema::SESSION_TYPES
+                .iter()
+                .map(|t| (*t, *t))
+                .collect();
+            check_list(
+                ui,
+                rect,
+                "cfg-sec-sessions",
+                &items,
+                &mut s.security.disabled_sessions,
+            );
+        }
+        ("OngletCustom", "ChkListServers") => {
+            let items = [("HTTP", "http"), ("TFTP", "tftp")];
+            check_list(
+                ui,
+                rect,
+                "cfg-sec-servers",
+                &items,
+                &mut s.security.disabled_servers,
+            );
+        }
+        ("OngletCustom", "ChkListTools") => {
+            let items: Vec<(&str, &str)> = super::menus::TOOLS
+                .iter()
+                .flat_map(|(_, tools)| tools.iter())
+                .filter(|t| super::menus::implemented_tool(t).is_some())
+                .map(|t| (*t, *t))
+                .collect();
+            check_list(
+                ui,
+                rect,
+                "cfg-sec-tools",
+                &items,
+                &mut s.security.disabled_tools,
+            );
+        }
+        ("OngletCustom", "BtnStandardSec" | "BtnHighSec" | "BtnInsaneSec") => {
+            if button(ui, caption) {
+                security_preset(s, c.name);
+            }
+        }
         ("OngletSSH", "sEdit5") => {
-            ui.put(rect, egui::TextEdit::singleline(&mut s.ssh.default_login));
+            bound_label(ui, rect, caption);
+            ui.put(rect, egui::TextEdit::singleline(&mut s.ssh.default_login))
+                .on_hover_text("The user of SSH sessions that name none");
         }
         ("OngletSSH", "ChkPreserveFilesDates") => check(ui, &mut s.ssh.preserve_file_dates),
         ("sTabSheet2", "ChkBackgroundPopupTermInsteadOfClosingIt") => {
@@ -670,6 +755,76 @@ fn control(
             Kind::List if !c.items.is_empty() => list(ui, rect, c),
             _ => placeholder(ui, c, rect),
         },
+    }
+}
+
+/// A list of check boxes: checked = the item's id is in `disabled`.
+fn check_list(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    id: &str,
+    items: &[(&str, &str)],
+    disabled: &mut Vec<String>,
+) {
+    let v = ui.visuals().clone();
+    ui.painter().rect(
+        rect,
+        2.0,
+        v.extreme_bg_color,
+        egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(3.0)));
+    child.spacing_mut().item_spacing.y = 0.0;
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .max_height(rect.height() - 6.0)
+        .show(&mut child, |ui| {
+            ui.set_width(rect.width() - 8.0);
+            for (label, key) in items {
+                let mut off = disabled.iter().any(|d| d == key);
+                if ui.checkbox(&mut off, *label).changed() {
+                    disabled.retain(|d| d != key);
+                    if off {
+                        disabled.push((*key).to_string());
+                    }
+                }
+            }
+        });
+}
+
+/// "Apply presets": Defaults, High security (passwords are never kept or
+/// shown) and Restricted features (also no logs, servers or tools).
+fn security_preset(s: &mut Settings, button: &str) {
+    use tc_core::settings::{MasterPrompt, SavePasswords};
+    let high = button != "BtnStandardSec";
+    let restricted = button == "BtnInsaneSec";
+    let p = &mut s.passwords;
+    p.disable_show = high;
+    p.save_key_passphrases = false;
+    p.save = if high {
+        SavePasswords::Never
+    } else {
+        SavePasswords::Ask
+    };
+    p.master_prompt = if high {
+        MasterPrompt::EveryStartup
+    } else {
+        MasterPrompt::NewComputer
+    };
+    s.terminal.disable_log = restricted;
+    s.security.disabled_sessions.clear();
+    if restricted {
+        s.security.disabled_servers = vec!["http".into(), "tftp".into()];
+        s.security.disabled_tools = super::menus::TOOLS
+            .iter()
+            .flat_map(|(_, tools)| tools.iter())
+            .filter(|t| super::menus::implemented_tool(t).is_some())
+            .map(|t| (*t).to_string())
+            .collect();
+    } else {
+        s.security.disabled_servers.clear();
+        s.security.disabled_tools.clear();
     }
 }
 
@@ -1057,6 +1212,21 @@ fn termcraft_tab(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn security_presets() {
+        let mut s = Settings::default();
+        security_preset(&mut s, "BtnInsaneSec");
+        assert!(s.passwords.disable_show && s.terminal.disable_log);
+        assert!(!s.security.server_allowed("http"));
+        assert!(!s.security.tool_allowed("Text editor"));
+        security_preset(&mut s, "BtnHighSec");
+        assert!(s.passwords.disable_show && !s.terminal.disable_log);
+        assert!(s.security.tool_allowed("Text editor"));
+        security_preset(&mut s, "BtnStandardSec");
+        assert_eq!(s.passwords, Settings::default().passwords);
+        assert_eq!(s.security, Settings::default().security);
+    }
 
     #[test]
     fn every_reference_tab_exists() {

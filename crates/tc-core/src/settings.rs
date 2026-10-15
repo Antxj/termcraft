@@ -18,6 +18,39 @@ pub struct Settings {
     /// Keyboard shortcuts changed from their defaults: action id →
     /// hotkey (`<none>` removes one). See `crate::hotkeys`.
     pub hotkeys: std::collections::BTreeMap<String, String>,
+    /// Configuration › Security: features turned off.
+    pub security: SecuritySettings,
+}
+
+/// Configuration › Security "Disable sessions" / "Disable embedded
+/// servers" / "Disable embedded tools".
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SecuritySettings {
+    /// Session types (`crate::schema::SESSION_TYPES` names) that do not open.
+    pub disabled_sessions: Vec<String>,
+    /// Servers ("http", "tftp") that do not start.
+    pub disabled_servers: Vec<String>,
+    /// Tools (their Tools menu captions) that are greyed out.
+    pub disabled_tools: Vec<String>,
+}
+
+impl SecuritySettings {
+    /// Whether sessions of this type (a `SessionKind::label`) may open.
+    pub fn session_allowed(&self, label: &str) -> bool {
+        !self.disabled_sessions.iter().any(|d| d == label)
+    }
+
+    pub fn server_allowed(&self, name: &str) -> bool {
+        !self
+            .disabled_servers
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(name))
+    }
+
+    pub fn tool_allowed(&self, name: &str) -> bool {
+        !self.disabled_tools.iter().any(|d| d == name)
+    }
 }
 
 /// "Popup terminal" (Configuration › Misc): a terminal that drops in
@@ -439,6 +472,9 @@ pub struct PasswordSettings {
     /// "Save SSH keys passphrases as well".
     pub save_key_passphrases: bool,
     pub master_prompt: MasterPrompt,
+    /// Configuration › Security "Disable \"show passwords\"": saved
+    /// secrets are never shown or copied from the password manager.
+    pub disable_show: bool,
 }
 
 /// "Skin selection" (Configuration › Display).
@@ -671,6 +707,9 @@ pub struct TerminalSettings {
     pub custom_syntaxes: [crate::syntax::CustomSyntax; crate::syntax::SLOTS],
     /// "Expert settings".
     pub expert: ExpertTerminal,
+    /// Configuration › Security "Disable log": no terminal is logged, even
+    /// sessions that ask for it.
+    pub disable_log: bool,
 }
 
 /// Terminal colors and cursor, as RGB.
@@ -916,6 +955,7 @@ impl LocalShell {
 impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
+            disable_log: false,
             font_size: 14.0,
             font_name: String::new(),
             font_bold: false,
@@ -971,6 +1011,18 @@ impl Default for UpdateSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn security_lists() {
+        let s = SecuritySettings {
+            disabled_sessions: vec!["Telnet".into()],
+            disabled_servers: vec!["tftp".into()],
+            disabled_tools: vec!["Diff tool".into()],
+        };
+        assert!(!s.session_allowed("Telnet") && s.session_allowed("SSH"));
+        assert!(!s.server_allowed("TFTP") && s.server_allowed("http"));
+        assert!(!s.tool_allowed("Diff tool") && s.tool_allowed("Text editor"));
+    }
 
     #[test]
     fn new_tab_position() {
