@@ -501,6 +501,9 @@ pub struct ViewSettings {
     pub ui_size: UiSize,
     /// "Show green/orange buttons next to each open session in the sessions tree".
     pub session_dots: bool,
+    /// Configuration › Toolbar: the buttons of the left group, in order
+    /// (their captions); empty = all of them, in the reference order.
+    pub toolbar_buttons: Vec<String>,
     /// "Disable "Quick connect" when sidebar is hidden" (otherwise it moves
     /// next to the tabs).
     pub no_quick_connect_without_sidebar: bool,
@@ -536,6 +539,7 @@ impl Default for ViewSettings {
             rounded_tabs: true,
             ui_size: UiSize::default(),
             session_dots: true,
+            toolbar_buttons: Vec::new(),
             no_quick_connect_without_sidebar: false,
             compact: false,
             saturation: DEFAULT_SATURATION,

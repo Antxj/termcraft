@@ -1,10 +1,28 @@
-//! Settings › Configuration (reference `TFORMPARAMS`): General, Terminal,
-//! X11, SSH, Display, Toolbar and Misc tabs. Options TermCraft supports are
-//! live; the rest are shown disabled so the layout matches.
+//! Settings › Configuration (reference `TFORMPARAMS`, 804×522): the tabs
+//! General, Terminal, X11, SSH, Display, Toolbar, Misc and Security drawn
+//! from the reference layout, each control at its place and bound to its
+//! TermCraft setting; reference options TermCraft does not have are greyed
+//! out. "Default font settings" / "Default color settings" open the font
+//! and color dialogs for the defaults. A last tab, "TermCraft", holds what
+//! the reference has elsewhere: data files, links, known hosts, updates.
 
-use super::{Action, NOT_YET};
-use tc_core::settings::{HomeLocation, LocalShell, Theme, ToolbarStyle, UiSize, UpdateChannel};
+use super::form::{HEADER_H, bound_label, compact, frame, group, list, placeholder, text_width};
+use super::{Action, NOT_YET, icon};
+use egui::{Pos2, Rect, vec2};
+use tc_core::layout::{self, Ctl, Kind};
+use tc_core::settings::{
+    HomeLocation, LocalShell, PopupPosition, TerminalColors, Theme, ToolbarStyle, UiSize,
+    UpdateChannel,
+};
 use tc_core::{Paths, Settings};
+
+const WIDTH: f32 = 804.0;
+const HEIGHT: f32 = 522.0;
+/// The reference page control.
+const PAGES: Rect = Rect {
+    min: Pos2::new(17.0, 17.0),
+    max: Pos2::new(17.0 + 656.0, 17.0 + 432.0),
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConfigTab {
@@ -16,66 +34,935 @@ pub enum ConfigTab {
     Display,
     Toolbar,
     Misc,
+    Security,
+    TermCraft,
 }
 
-fn disabled_check(ui: &mut egui::Ui, label: &str) {
-    ui.add_enabled(false, egui::Checkbox::new(&mut false, label))
-        .on_disabled_hover_text(NOT_YET);
+impl ConfigTab {
+    const ALL: [ConfigTab; 9] = [
+        ConfigTab::General,
+        ConfigTab::Terminal,
+        ConfigTab::X11,
+        ConfigTab::Ssh,
+        ConfigTab::Display,
+        ConfigTab::Toolbar,
+        ConfigTab::Misc,
+        ConfigTab::Security,
+        ConfigTab::TermCraft,
+    ];
+
+    /// By its name in lower case (`ssh`, `display` …), for snapshots.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|t| t.caption().eq_ignore_ascii_case(name))
+    }
+
+    /// The reference tab sheet (`None` for TermCraft's own tab).
+    fn sheet(self) -> Option<&'static str> {
+        Some(match self {
+            ConfigTab::General => "Params.OngletMisc",
+            ConfigTab::Terminal => "Params.OngletTerminal",
+            ConfigTab::X11 => "Params.OngletX11",
+            ConfigTab::Ssh => "Params.OngletSSH",
+            ConfigTab::Display => "Params.OngletDisplay",
+            ConfigTab::Toolbar => "Params.sTabSheet1",
+            ConfigTab::Misc => "Params.sTabSheet2",
+            ConfigTab::Security => "Params.OngletCustom",
+            ConfigTab::TermCraft => return None,
+        })
+    }
+
+    fn caption(self) -> &'static str {
+        match self.sheet().and_then(layout::page) {
+            Some(p) => p.caption,
+            None => "TermCraft",
+        }
+    }
+}
+
+/// The window's state between frames.
+#[derive(Default)]
+pub struct ConfigState {
+    pub tab: ConfigTab,
+    /// "Default font settings" (`FormFont`) / "Default color settings"
+    /// (`FormColor`).
+    sub_dialog: Option<&'static str>,
+    /// "Paste warning settings".
+    paste_settings: bool,
+    /// Selected key of "Load following keys at MobAgent startup".
+    agent_key: Option<usize>,
+    /// Selected button in "Available buttons" / "Toolbar buttons".
+    available: Option<&'static str>,
+    on_toolbar: Option<&'static str>,
 }
 
 /// Returns true when a setting changed (the caller persists it).
 pub fn show(
     ctx: &egui::Context,
     open: &mut bool,
-    tab: &mut ConfigTab,
+    state: &mut ConfigState,
     settings: &mut Settings,
     paths: &Paths,
     out: &mut Vec<Action>,
 ) -> bool {
     let before = settings.clone();
+    let mut close = false;
     egui::Window::new("TermCraft Configuration")
         .open(open)
         .collapsible(false)
-        .default_width(640.0)
+        .resizable(false)
+        .fixed_size([WIDTH, HEIGHT])
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                for (t, label) in [
-                    (ConfigTab::General, "General"),
-                    (ConfigTab::Terminal, "Terminal"),
-                    (ConfigTab::X11, "X11"),
-                    (ConfigTab::Ssh, "SSH"),
-                    (ConfigTab::Display, "Display"),
-                    (ConfigTab::Toolbar, "Toolbar"),
-                    (ConfigTab::Misc, "Misc"),
-                ] {
-                    ui.selectable_value(tab, t, label);
+            compact(ui);
+            let (area, _) = ui.allocate_exact_size(vec2(WIDTH, HEIGHT), egui::Sense::hover());
+            let o = area.min.to_vec2();
+            // The reference's artwork on the right.
+            let strip = Rect::from_min_size(area.min + vec2(672.0, 0.0), vec2(132.0, HEIGHT));
+            ui.painter()
+                .rect_filled(strip, 0.0, ui.visuals().faint_bg_color);
+            ui.painter().text(
+                strip.center_top() + vec2(0.0, 70.0),
+                egui::Align2::CENTER_CENTER,
+                icon::GEAR,
+                egui::FontId::proportional(56.0),
+                ui.visuals().weak_text_color(),
+            );
+            // Tab headers.
+            let mut x = PAGES.min.x + o.x + 4.0;
+            for tab in ConfigTab::ALL {
+                let caption = tab.caption();
+                let width = text_width(ui, caption) + 14.0;
+                let rect = Rect::from_min_size(
+                    Pos2::new(x, PAGES.min.y + o.y),
+                    vec2(width, HEADER_H - 2.0),
+                );
+                if ui
+                    .put(rect, egui::Button::selectable(state.tab == tab, caption))
+                    .clicked()
+                {
+                    state.tab = tab;
                 }
-            });
-            ui.separator();
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                ui.set_min_size(egui::vec2(600.0, 260.0));
-                match tab {
-                    ConfigTab::General => general(ui, settings, paths, out),
-                    ConfigTab::Terminal => terminal(ui, settings, out),
-                    ConfigTab::X11 => x11(ui),
-                    ConfigTab::Ssh => ssh(ui, settings, out),
-                    ConfigTab::Display => display(ui, settings),
-                    ConfigTab::Toolbar => {
-                        ui.weak("Toolbar customization (add / remove / reorder buttons) is not implemented yet.");
+                x += width + 2.0;
+            }
+            let body = Rect::from_min_max(PAGES.min + o + vec2(0.0, HEADER_H), PAGES.max + o);
+            frame(ui, body);
+            let origin = body.min + vec2(4.0, 4.0);
+            match state.tab.sheet().and_then(layout::page) {
+                Some(page) => {
+                    for c in page.controls {
+                        let rect = Rect::from_min_size(
+                            origin + vec2(c.x as f32, c.y as f32),
+                            vec2(c.w as f32, c.h as f32),
+                        );
+                        control(ui, page.name, c, rect, settings, state, out);
                     }
-                    ConfigTab::Misc => misc(ui, settings, out),
                 }
-            });
+                None => termcraft_tab(
+                    ui,
+                    Rect::from_min_size(origin, body.size()),
+                    settings,
+                    paths,
+                    out,
+                ),
+            }
+            let ok = Rect::from_min_size(area.min + vec2(285.0, 468.0), vec2(121.0, 34.0));
+            if ui.put(ok, egui::Button::new("OK")).clicked() {
+                close = true;
+            }
         });
+    sub_dialog(ctx, state, settings);
+    paste_settings(ctx, state, settings);
+    if close {
+        *open = false;
+    }
     *settings != before
 }
 
-fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths, out: &mut Vec<Action>) {
-    egui::Grid::new("cfg-general")
+/// One reference control, bound to its setting.
+fn control(
+    ui: &mut egui::Ui,
+    page: &str,
+    c: &'static Ctl,
+    rect: Rect,
+    s: &mut Settings,
+    state: &mut ConfigState,
+    out: &mut Vec<Action>,
+) {
+    let caption = c.caption.trim();
+    let check = |ui: &mut egui::Ui, value: &mut bool| {
+        ui.put(rect, egui::Checkbox::new(value, caption));
+    };
+    let button = |ui: &mut egui::Ui, label: &str| ui.put(rect, egui::Button::new(label)).clicked();
+    let page = page.trim_start_matches("Params.");
+    match (page, c.name) {
+        // ---------------------------------------------------------- General
+        ("OngletMisc", "sEdit1") => {
+            bound_label(ui, rect, caption);
+            let g = &mut s.general;
+            let mut text = match g.home_location {
+                HomeLocation::Custom => g.home_dir.clone(),
+                other => other.label().to_string(),
+            };
+            if ui
+                .put(rect, egui::TextEdit::singleline(&mut text))
+                .on_hover_text("HOME of the local Bash / Zsh terminals")
+                .changed()
+            {
+                match HomeLocation::ALL.iter().find(|l| l.label() == text.trim()) {
+                    Some(l) => g.home_location = *l,
+                    None => {
+                        g.home_location = HomeLocation::Custom;
+                        g.home_dir = text;
+                    }
+                }
+            }
+        }
+        ("OngletMisc", "sBitBtn11") => {
+            if ui
+                .put(rect, egui::Button::new(icon::HOURGLASS))
+                .on_hover_text("Do not use a persistent home folder (use a temporary one)")
+                .clicked()
+            {
+                s.general.home_location = HomeLocation::Temp;
+            }
+        }
+        ("OngletMisc", "sSpeedButton9") => {
+            if ui
+                .put(rect, egui::Button::new(icon::FOLDER_OPEN))
+                .on_hover_text("Browse home folder")
+                .clicked()
+                && let Some(dir) = rfd::FileDialog::new().pick_folder()
+            {
+                s.general.home_location = HomeLocation::Custom;
+                s.general.home_dir = dir.display().to_string();
+            }
+        }
+        ("OngletMisc", "sCheckBox52") => check(ui, &mut s.general.auto_backup),
+        ("OngletMisc", "sBitBtn12") => {
+            if button(ui, caption) {
+                out.push(Action::KeyboardShortcuts);
+            }
+        }
+        ("OngletMisc", "sBitBtn14") => {
+            if button(ui, caption) {
+                out.push(Action::PasswordsSettings);
+            }
+        }
+        ("OngletMisc", "sSpeedButton14") => {
+            if button(ui, caption) {
+                out.push(Action::ManageShared);
+            }
+        }
+        // --------------------------------------------------------- Terminal
+        ("OngletTerminal", "sSpeedButton23") => {
+            if button(ui, caption) {
+                state.sub_dialog = Some("FormFont");
+            }
+        }
+        ("OngletTerminal", "sSpeedButton21") => {
+            if button(ui, caption) {
+                state.sub_dialog = Some("FormColor");
+            }
+        }
+        ("OngletTerminal", "sBitBtn2") => {
+            if button(ui, caption) {
+                out.push(Action::ExpertTerminal);
+            }
+        }
+        ("OngletTerminal", "sSpeedButton13") => {
+            if button(ui, caption) {
+                out.push(Action::CustomizeSyntax);
+            }
+        }
+        ("OngletTerminal", "BtnPasteOpts") => {
+            if button(ui, caption) {
+                state.paste_settings = true;
+            }
+        }
+        ("OngletTerminal", "sComboBox32") => {
+            bound_label(ui, rect, caption);
+            let t = &mut s.terminal;
+            let choices = super::syntax_window::choices(&t.custom_syntaxes);
+            let selected = choices
+                .iter()
+                .find(|(i, _)| *i == t.syntax_highlighting)
+                .map_or("", |(_, label)| label.as_str())
+                .to_string();
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+            egui::ComboBox::from_id_salt("cfg-syntax")
+                .selected_text(selected)
+                .width(rect.width() - 8.0)
+                .show_ui(&mut child, |ui| {
+                    for (i, label) in &choices {
+                        ui.selectable_value(&mut t.syntax_highlighting, *i, label);
+                    }
+                });
+        }
+        ("OngletTerminal", "sCheckBox5") => check(ui, &mut s.terminal.paste_right_click),
+        ("OngletTerminal", "sCheckBox8") => check(ui, &mut s.terminal.confirm_exit),
+        ("OngletTerminal", "sCheckBox11") => {
+            let t = &mut s.terminal;
+            let mut on = !t.log_dir.is_empty();
+            if ui
+                .put(rect, egui::Checkbox::new(&mut on, caption))
+                .changed()
+            {
+                t.log_dir = if on {
+                    rfd::FileDialog::new()
+                        .pick_folder()
+                        .map(|d| d.display().to_string())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+            }
+        }
+        ("OngletTerminal", "sEdit3") => {
+            let t = &mut s.terminal;
+            ui.add_enabled_ui(!t.log_dir.is_empty(), |ui| {
+                ui.put(rect, egui::TextEdit::singleline(&mut t.log_dir));
+            });
+        }
+        ("OngletTerminal", "ComboShells") => {
+            bound_label(ui, rect, caption);
+            let t = &mut s.terminal;
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+            egui::ComboBox::from_id_salt("cfg-local-shell")
+                .selected_text(t.local_shell.label())
+                .width(rect.width() - 8.0)
+                .show_ui(&mut child, |ui| {
+                    for shell in LocalShell::ALL {
+                        ui.selectable_value(&mut t.local_shell, shell, shell.label());
+                    }
+                });
+        }
+        ("OngletTerminal", "CheckPath") => check(ui, &mut s.terminal.use_windows_path),
+        ("OngletTerminal", "sCheckBox57") => check(ui, &mut s.terminal.backspace_ctrl_h),
+        // -------------------------------------------------------------- SSH
+        ("OngletSSH", "sCheckBox27") => check(ui, &mut s.ssh.browser),
+        ("OngletSSH", "sCheckBox4") => check(ui, &mut s.ssh.switch_to_browser),
+        ("OngletSSH", "ChkRemoteMonitoring") => check(ui, &mut s.ssh.remote_monitoring),
+        ("OngletSSH", "sCheckBox26") => {
+            let mut on = s.ssh.keepalive_secs > 0;
+            if ui
+                .put(rect, egui::Checkbox::new(&mut on, caption))
+                .changed()
+            {
+                s.ssh.keepalive_secs = if on { 60 } else { 0 };
+            }
+        }
+        // Always on in TermCraft.
+        ("OngletSSH", "sCheckBox64") => {
+            ui.add_enabled_ui(false, |ui| {
+                ui.put(rect, egui::Checkbox::new(&mut true, caption))
+            })
+            .inner
+            .on_disabled_hover_text(
+                "TermCraft always checks a server's identity at the first connection",
+            );
+        }
+        ("OngletSSH", "sCheckBox45") => check(ui, &mut s.ssh.internal_agent),
+        ("OngletSSH", "sListBox1") => agent_keys(ui, rect, caption, s, state),
+        ("OngletSSH", "sBitBtn17") => {
+            if button(ui, "+")
+                && let Some(path) = rfd::FileDialog::new().pick_file()
+            {
+                s.ssh.agent_keys.push(path.display().to_string());
+            }
+        }
+        ("OngletSSH", "sBitBtn18") => {
+            let selected = state.agent_key.filter(|i| *i < s.ssh.agent_keys.len());
+            let clicked = ui
+                .add_enabled_ui(selected.is_some(), |ui| {
+                    ui.put(rect, egui::Button::new("-"))
+                })
+                .inner
+                .clicked();
+            if clicked && let Some(i) = selected {
+                s.ssh.agent_keys.remove(i);
+                state.agent_key = None;
+            }
+        }
+        ("OngletSSH", "sCheckBox62") if cfg!(windows) => check(ui, &mut s.ssh.use_pageant),
+        ("OngletSSH", "sCheckBox2") => {
+            let label = if cfg!(windows) {
+                caption
+            } else {
+                "Use SSH agent"
+            };
+            ui.put(
+                rect,
+                egui::Checkbox::new(&mut s.ssh.use_system_agent, label),
+            );
+        }
+        // ---------------------------------------------------------- Display
+        ("OngletDisplay", "ComboSkins") => {
+            bound_label(ui, rect, caption);
+            let v = &mut s.view;
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+            egui::ComboBox::from_id_salt("cfg-theme")
+                .selected_text(v.theme.label())
+                .width(rect.width() - 8.0)
+                .show_ui(&mut child, |ui| {
+                    for theme in Theme::ALL {
+                        ui.selectable_value(&mut v.theme, theme, theme.label());
+                    }
+                });
+        }
+        ("OngletDisplay", "sScrollBar1") => slider(ui, rect, &mut s.view.saturation, 90),
+        ("OngletDisplay", "sScrollBar2") => {
+            slider(
+                ui,
+                rect,
+                &mut s.view.transparency,
+                tc_core::settings::MAX_TRANSPARENCY,
+            );
+        }
+        ("OngletDisplay", "sScrollBar3") => slider(
+            ui,
+            rect,
+            &mut s.view.detached_transparency,
+            tc_core::settings::MAX_TRANSPARENCY,
+        ),
+        ("OngletDisplay", "sLabel2") => percent(ui, rect, s.view.saturation),
+        ("OngletDisplay", "sLabel7") => percent(ui, rect, s.view.transparency),
+        ("OngletDisplay", "sLabel6") => percent(ui, rect, s.view.detached_transparency),
+        ("OngletDisplay", "sRadioGroup1") => {
+            let v = &mut s.view;
+            let mut index = match (v.show_menu_bar, v.show_toolbar) {
+                (true, false) => 0,
+                (false, true) => 1,
+                _ => 2,
+            };
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-bars",
+                &["Show menu bar", "Show buttons bar", "Show both"],
+                &mut index,
+            ) {
+                (v.show_menu_bar, v.show_toolbar) = (index != 1, index != 0);
+            }
+        }
+        ("OngletDisplay", "sRadioGroup2") => {
+            let styles = [
+                ToolbarStyle::Small,
+                ToolbarStyle::Standard,
+                ToolbarStyle::StandardWithCaptions,
+            ];
+            let mut index = styles
+                .iter()
+                .position(|t| *t == s.view.toolbar_style)
+                .unwrap_or(2);
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-buttons",
+                &["Small buttons", "Standard buttons", "Buttons with captions"],
+                &mut index,
+            ) {
+                s.view.toolbar_style = styles[index];
+            }
+        }
+        ("OngletDisplay", "sRadioGroup3") => {
+            let mut index = usize::from(s.view.sidebar_right);
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-sidebar",
+                &["left", "right"],
+                &mut index,
+            ) {
+                s.view.sidebar_right = index == 1;
+            }
+        }
+        ("OngletDisplay", "ComboCustomDpi") => {
+            let mut index = UiSize::ALL
+                .iter()
+                .position(|u| *u == s.view.ui_size)
+                .unwrap_or(0);
+            let labels: Vec<&str> = UiSize::ALL.iter().map(|u| u.label()).collect();
+            if choice(ui, rect, caption, "cfg-ui-size", &labels, &mut index) {
+                s.view.ui_size = UiSize::ALL[index];
+            }
+        }
+        ("OngletDisplay", "sCheckBox51") => check(ui, &mut s.view.no_quick_connect_without_sidebar),
+        ("OngletDisplay", "sCheckBox31") => check(ui, &mut s.view.show_tab_numbers),
+        ("OngletDisplay", "sCheckBox33") => check(ui, &mut s.view.show_close_button),
+        ("OngletDisplay", "ChkRoundedTabs") => check(ui, &mut s.view.rounded_tabs),
+        ("OngletDisplay", "ChkSessionsDots") => check(ui, &mut s.view.session_dots),
+        // ---------------------------------------------------------- Toolbar
+        ("sTabSheet1", "sListView1") => {
+            let shown = super::toolbar::chosen(&s.view);
+            let available: Vec<&'static str> = super::toolbar::BUTTONS
+                .into_iter()
+                .filter(|b| !shown.contains(b))
+                .collect();
+            button_list(
+                ui,
+                rect,
+                caption,
+                "cfg-available",
+                &available,
+                &mut state.available,
+            );
+        }
+        ("sTabSheet1", "sListView2") => {
+            let shown = super::toolbar::chosen(&s.view);
+            button_list(
+                ui,
+                rect,
+                caption,
+                "cfg-toolbar",
+                &shown,
+                &mut state.on_toolbar,
+            );
+        }
+        // → add the selected available button / ← remove the selected one.
+        ("sTabSheet1", "sBitBtn1") => {
+            let enabled = state.available.is_some();
+            if ui
+                .add_enabled_ui(enabled, |ui| {
+                    ui.put(rect, egui::Button::new(icon::ARROW_RIGHT))
+                })
+                .inner
+                .clicked()
+                && let Some(name) = state.available.take()
+            {
+                let mut list = super::toolbar::chosen(&s.view);
+                list.push(name);
+                s.view.toolbar_buttons = list.into_iter().map(String::from).collect();
+            }
+        }
+        ("sTabSheet1", "sBitBtn10") => {
+            let enabled = state.on_toolbar.is_some();
+            if ui
+                .add_enabled_ui(enabled, |ui| {
+                    ui.put(rect, egui::Button::new(icon::ARROW_LEFT))
+                })
+                .inner
+                .clicked()
+                && let Some(name) = state.on_toolbar.take()
+            {
+                let list: Vec<String> = super::toolbar::chosen(&s.view)
+                    .into_iter()
+                    .filter(|b| *b != name)
+                    .map(String::from)
+                    .collect();
+                // An empty list means "all": keep one button at least.
+                if !list.is_empty() {
+                    s.view.toolbar_buttons = list;
+                }
+            }
+        }
+        ("sTabSheet1", "sBitBtn13" | "sBitBtn15") => {
+            let up = c.name == "sBitBtn13";
+            let enabled = state.on_toolbar.is_some();
+            if ui
+                .add_enabled_ui(enabled, |ui| ui.put(rect, egui::Button::new(caption)))
+                .inner
+                .clicked()
+                && let Some(name) = state.on_toolbar
+            {
+                let mut list = super::toolbar::chosen(&s.view);
+                if let Some(i) = list.iter().position(|b| *b == name) {
+                    let j = if up {
+                        i.checked_sub(1)
+                    } else {
+                        Some(i + 1).filter(|j| *j < list.len())
+                    };
+                    if let Some(j) = j {
+                        list.swap(i, j);
+                    }
+                }
+                s.view.toolbar_buttons = list.into_iter().map(String::from).collect();
+            }
+        }
+        ("sTabSheet1", "sBitBtn16") => {
+            if button(ui, caption) {
+                s.view.toolbar_buttons.clear();
+                state.available = None;
+                state.on_toolbar = None;
+            }
+        }
+        // ------------------------------------------------- Misc (popup term.)
+        ("sTabSheet2", "ScrollPopupConsoleTransparency") => {
+            slider(
+                ui,
+                rect,
+                &mut s.popup.transparency,
+                tc_core::settings::MAX_TRANSPARENCY,
+            );
+        }
+        ("sTabSheet2", "ScrollPopupConsoleSize") => slider(ui, rect, &mut s.popup.size, 100),
+        ("sTabSheet2", "sLabel11") => percent(ui, rect, s.popup.transparency),
+        ("sTabSheet2", "sLabel13") => percent(ui, rect, s.popup.size),
+        ("sTabSheet2", "ComboPopupConsolePosition") => {
+            let mut index = PopupPosition::ALL
+                .iter()
+                .position(|p| *p == s.popup.position)
+                .unwrap_or(3);
+            let labels: Vec<&str> = PopupPosition::ALL.iter().map(|p| p.label()).collect();
+            if choice(ui, rect, caption, "cfg-popup-position", &labels, &mut index) {
+                s.popup.position = PopupPosition::ALL[index];
+            }
+        }
+        ("sTabSheet2", "ChkPopupConsoleIsSizeable") => check(ui, &mut s.popup.sizeable),
+        ("sTabSheet2", "ChkBackgroundPopupTermInsteadOfClosingIt") => {
+            check(ui, &mut s.popup.hide_instead_of_close);
+        }
+        // ------------------------------------------- everything else: drawn
+        _ => match c.kind {
+            Kind::Group => group(ui, rect, c.caption),
+            Kind::Label => {
+                if !caption.is_empty() && c.w < 600 {
+                    ui.put(rect, egui::Label::new(caption));
+                }
+            }
+            Kind::Button => {
+                if !caption.is_empty() {
+                    ui.add_enabled_ui(false, |ui| ui.put(rect, egui::Button::new(caption)))
+                        .inner
+                        .on_disabled_hover_text(NOT_YET);
+                }
+            }
+            Kind::List if !c.items.is_empty() => list(ui, rect, c),
+            _ => placeholder(ui, c, rect),
+        },
+    }
+}
+
+/// A list of toolbar buttons with its caption above; click selects one.
+fn button_list(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    caption: &str,
+    id: &str,
+    buttons: &[&'static str],
+    selected: &mut Option<&'static str>,
+) {
+    let v = ui.visuals().clone();
+    ui.painter().text(
+        rect.left_top() - vec2(0.0, 3.0),
+        egui::Align2::LEFT_BOTTOM,
+        caption,
+        egui::TextStyle::Body.resolve(ui.style()),
+        v.text_color(),
+    );
+    ui.painter().rect(
+        rect,
+        2.0,
+        v.extreme_bg_color,
+        egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(3.0)));
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .max_height(rect.height() - 6.0)
+        .show(&mut child, |ui| {
+            ui.set_width(rect.width() - 8.0);
+            for b in buttons {
+                if ui.selectable_label(*selected == Some(*b), *b).clicked() {
+                    *selected = Some(*b);
+                }
+            }
+        });
+}
+
+/// A percentage slider in a reference scroll bar's place.
+fn slider(ui: &mut egui::Ui, rect: Rect, value: &mut u8, max: u8) {
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    child.spacing_mut().slider_width = rect.width();
+    child.add(egui::Slider::new(value, 0..=max).show_value(false));
+}
+
+/// The value label beside a slider.
+fn percent(ui: &mut egui::Ui, rect: Rect, value: u8) {
+    ui.put(rect, egui::Label::new(format!("{value}%")));
+}
+
+/// A combo box with its bound label; true when the choice changed.
+fn choice(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    caption: &str,
+    id: &str,
+    items: &[&str],
+    index: &mut usize,
+) -> bool {
+    if !caption.is_empty() {
+        bound_label(ui, rect, caption);
+    }
+    let before = *index;
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(items.get(*index).copied().unwrap_or(""))
+        .width(rect.width() - 8.0)
+        .show_ui(&mut child, |ui| {
+            for (i, label) in items.iter().enumerate() {
+                ui.selectable_value(index, i, *label);
+            }
+        });
+    *index != before
+}
+
+/// "Load following keys at MobAgent startup": the internal agent's keys.
+fn agent_keys(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    caption: &str,
+    s: &mut Settings,
+    state: &mut ConfigState,
+) {
+    let v = ui.visuals().clone();
+    ui.painter().text(
+        rect.left_top() - vec2(0.0, 3.0),
+        egui::Align2::LEFT_BOTTOM,
+        caption,
+        egui::TextStyle::Body.resolve(ui.style()),
+        v.text_color(),
+    );
+    ui.painter().rect(
+        rect,
+        2.0,
+        v.extreme_bg_color,
+        egui::Stroke::new(1.0, v.widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(3.0)));
+    if !s.ssh.internal_agent {
+        child.disable();
+    }
+    egui::ScrollArea::vertical()
+        .id_salt("cfg-agent-keys")
+        .max_height(rect.height() - 6.0)
+        .show(&mut child, |ui| {
+            for (i, key) in s.ssh.agent_keys.iter().enumerate() {
+                if ui
+                    .selectable_label(state.agent_key == Some(i), egui::RichText::new(key).small())
+                    .clicked()
+                {
+                    state.agent_key = Some(i);
+                }
+            }
+        });
+}
+
+/// "Default font settings" / "Default color settings", drawn from the
+/// reference dialogs and bound to the default terminal settings.
+fn sub_dialog(ctx: &egui::Context, state: &mut ConfigState, s: &mut Settings) {
+    let Some(name) = state.sub_dialog else {
+        return;
+    };
+    let Some(page) = layout::page(name) else {
+        state.sub_dialog = None;
+        return;
+    };
+    let size = vec2(page.width as f32, page.height as f32);
+    let mut open = true;
+    let mut close = false;
+    egui::Window::new(page.caption)
+        .id(egui::Id::new(("config-sub-dialog", name)))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .fixed_size(size)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            compact(ui);
+            let (area, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            let strip = Rect::from_min_size(area.min, vec2(89.0, size.y));
+            ui.painter()
+                .rect_filled(strip, 0.0, ui.visuals().faint_bg_color);
+            for c in page.controls {
+                let rect = Rect::from_min_size(
+                    area.min + vec2(c.x as f32, c.y as f32),
+                    vec2(c.w as f32, c.h as f32),
+                );
+                if c.kind == Kind::Button && c.caption.trim() == "OK" {
+                    if ui.put(rect, egui::Button::new("OK")).clicked() {
+                        close = true;
+                    }
+                    continue;
+                }
+                default_control(ui, name, c, rect, s);
+            }
+        });
+    if !open || close {
+        state.sub_dialog = None;
+    }
+}
+
+/// A control of the font / color dialog, bound to the defaults.
+fn default_control(ui: &mut egui::Ui, dialog: &str, c: &'static Ctl, rect: Rect, s: &mut Settings) {
+    let caption = c.caption.trim();
+    let t = &mut s.terminal;
+    match (dialog, c.name) {
+        ("FormFont", "ComboFontName") => {
+            bound_label(ui, rect, caption);
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+            crate::term_fonts::combo(&mut child, "cfg-font", &mut t.font_name);
+        }
+        // Points, as in the reference (1 pt = 4/3 px).
+        ("FormFont", "SpinFontSize") => {
+            bound_label(ui, rect, caption);
+            let mut pt = (t.font_size * 3.0 / 4.0).round() as u32;
+            if ui
+                .put(rect, egui::DragValue::new(&mut pt).range(5..=48))
+                .changed()
+            {
+                t.font_size = pt as f32 * 4.0 / 3.0;
+            }
+        }
+        ("FormFont", "CheckBold") => {
+            ui.put(rect, egui::Checkbox::new(&mut t.font_bold, caption));
+        }
+        ("FormFont", "sCheckBox9") => {
+            ui.put(rect, egui::Checkbox::new(&mut t.fixed_grid, caption));
+        }
+        ("FormFont", "sSpinEdit15") => {
+            ui.add_enabled_ui(t.fixed_grid, |ui| {
+                ui.put(
+                    rect,
+                    egui::DragValue::new(&mut t.fixed_cols).range(20..=500),
+                );
+            });
+        }
+        ("FormFont", "sSpinEdit16") => {
+            if !caption.is_empty() {
+                bound_label(ui, rect, caption);
+            }
+            ui.add_enabled_ui(t.fixed_grid, |ui| {
+                ui.put(rect, egui::DragValue::new(&mut t.fixed_rows).range(5..=200));
+            });
+        }
+        ("FormColor", name)
+            if name == "ColBack"
+                || name == "ColFore"
+                || name == "ColCur"
+                || name.starts_with("Col") && name[3..].parse::<usize>().is_ok() =>
+        {
+            let colors = t.colors.get_or_insert_with(default_colors);
+            let slot = match name {
+                "ColBack" => &mut colors.background,
+                "ColFore" => &mut colors.foreground,
+                "ColCur" => &mut colors.cursor,
+                n => {
+                    let i: usize = n[3..].parse().unwrap_or(1);
+                    // Col1 Black, Col2 BoldBlack, Col3 Red …
+                    let ansi = (i - 1) / 2 + if i.is_multiple_of(2) { 8 } else { 0 };
+                    &mut colors.ansi[ansi.min(15)]
+                }
+            };
+            let mut child = ui.new_child(
+                egui::UiBuilder::new()
+                    .max_rect(rect)
+                    .layout(egui::Layout::left_to_right(egui::Align::Center)),
+            );
+            egui::color_picker::color_edit_button_srgb(&mut child, slot);
+            if !caption.is_empty() {
+                child.label(caption);
+            }
+        }
+        ("FormColor", "ComboCursor") => {
+            let colors = t.colors.get_or_insert_with(default_colors);
+            let mut index =
+                usize::from(colors.cursor_type.min(2)) + if colors.cursor_blink { 3 } else { 0 };
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-cursor",
+                &[
+                    "Block",
+                    "Underline",
+                    "Line",
+                    "Blinking block",
+                    "Blinking underline",
+                    "Blinking line",
+                ],
+                &mut index,
+            ) {
+                colors.cursor_type = (index % 3) as u8;
+                colors.cursor_blink = index >= 3;
+            }
+        }
+        _ => match c.kind {
+            Kind::Group => group(ui, rect, c.caption),
+            Kind::Label => {
+                if !caption.is_empty() {
+                    ui.put(rect, egui::Label::new(caption));
+                }
+            }
+            Kind::Button => {}
+            _ => placeholder(ui, c, rect),
+        },
+    }
+}
+
+/// TermCraft's own palette, as colors to edit.
+fn default_colors() -> TerminalColors {
+    let theme = tc_term::Theme::default();
+    let rgb = |c: tc_term::Rgb| [c.0, c.1, c.2];
+    TerminalColors {
+        foreground: rgb(theme.foreground),
+        background: rgb(theme.background),
+        cursor: rgb(theme.cursor),
+        ansi: theme.ansi.map(rgb),
+        cursor_type: 0,
+        cursor_blink: false,
+    }
+}
+
+/// "Paste warning settings".
+fn paste_settings(ctx: &egui::Context, state: &mut ConfigState, s: &mut Settings) {
+    if !state.paste_settings {
+        return;
+    }
+    let mut open = true;
+    egui::Window::new("TermCraft paste settings")
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            ui.strong("Select which warnings to show before pasting");
+            ui.add_space(6.0);
+            ui.checkbox(
+                &mut s.terminal.warn_multiline_paste,
+                "Warn me when pasted content contains multiple lines",
+            )
+            .on_hover_text("Several lines may run several commands when pasted into a terminal");
+            ui.add_space(6.0);
+            if ui.button("OK").clicked() {
+                state.paste_settings = false;
+            }
+        });
+    if !open {
+        state.paste_settings = false;
+    }
+}
+
+/// TermCraft's own tab: where its data is, links, known hosts, updates.
+fn termcraft_tab(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    s: &mut Settings,
+    paths: &Paths,
+    out: &mut Vec<Action>,
+) {
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(12.0)));
+    let ui = &mut child;
+    egui::Grid::new("cfg-termcraft")
         .num_columns(2)
-        .spacing([12.0, 8.0])
+        .spacing([12.0, 6.0])
         .show(ui, |ui| {
-            ui.label("Configuration file location:");
+            ui.label("Configuration file:");
             ui.monospace(paths.settings_file().display().to_string());
             ui.end_row();
             ui.label("Sessions file:");
@@ -83,57 +970,16 @@ fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths, out: &mut Vec<Act
             ui.end_row();
             ui.label("Mode:");
             ui.label(if paths.portable {
-                "Portable (data next to the executable)"
+                "Portable (data next to the program)"
             } else {
                 "Installed (per-user data folders)"
             });
             ui.end_row();
         });
+    ui.weak(
+        "Tip: an empty \"termcraft.portable\" file next to the program switches to portable mode.",
+    );
     ui.add_space(8.0);
-    egui::Grid::new("cfg-home")
-        .num_columns(2)
-        .spacing([12.0, 6.0])
-        .show(ui, |ui| {
-            let g = &mut s.general;
-            ui.label("Home directory location:");
-            egui::ComboBox::from_id_salt("cfg-home-location")
-                .selected_text(g.home_location.label())
-                .width(337.0)
-                .show_ui(ui, |ui| {
-                    for loc in HomeLocation::ALL {
-                        ui.selectable_value(&mut g.home_location, loc, loc.label());
-                    }
-                })
-                .response
-                .on_hover_text("HOME of the local Bash / Zsh terminals (kept between runs unless <Temp directory>)");
-            ui.end_row();
-            if g.home_location == HomeLocation::Custom {
-                ui.label("Terminal home directory:");
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut g.home_dir).desired_width(289.0));
-                    if ui.button("…").clicked()
-                        && let Some(dir) = rfd::FileDialog::new().pick_folder()
-                    {
-                        g.home_dir = dir.display().to_string();
-                    }
-                });
-                ui.end_row();
-            }
-            ui.label("Root (/) directory location:");
-            ui.add_enabled(false, egui::Button::new("<Default>"))
-                .on_disabled_hover_text("TermCraft uses the shells installed on this computer (Git Bash, MSYS2, WSL…), which keep their own root.");
-            ui.end_row();
-        });
-    ui.add_space(8.0);
-    ui.checkbox(
-        &mut s.general.auto_backup,
-        "Automatically backup TermCraft configuration file",
-    )
-    .on_hover_text(format!(
-        "At start-up, changed configuration files are copied to {} (the last {} are kept)",
-        paths.config_dir.join("backups").display(),
-        tc_core::backup::KEEP
-    ));
     ui.horizontal(|ui| {
         if ui
             .button("Open termcraft:// links with TermCraft")
@@ -142,373 +988,55 @@ fn general(ui: &mut egui::Ui, s: &mut Settings, paths: &Paths, out: &mut Vec<Act
         {
             out.push(Action::Run(tc_commands::Command::UrlHandlerRegister {}));
         }
-    });
-    ui.weak("Tip: create an empty \"termcraft.portable\" file next to the executable for portable mode.");
-}
-
-fn terminal(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
-    let t = &mut s.terminal;
-    ui.horizontal(|ui| {
-        ui.label("Local terminal environment:");
-        egui::ComboBox::from_id_salt("cfg-local-shell")
-            .selected_text(t.local_shell.label())
-            .show_ui(ui, |ui| {
-                for shell in LocalShell::ALL {
-                    ui.selectable_value(&mut t.local_shell, shell, shell.label());
-                }
-            })
-            .response
-            .on_hover_text("Shell used by new local terminals (Start local terminal)");
-        if ui
-            .button("Expert settings")
-            .on_hover_text("Customize advanced terminal settings (for experts only)")
-            .clicked()
-        {
-            out.push(Action::ExpertTerminal);
-        }
-    });
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut t.backspace_ctrl_h, "Backspace sends ^H");
-        ui.checkbox(&mut t.paste_right_click, "Paste using right-click");
-        ui.checkbox(&mut t.copy_on_select, "Copy on select")
-            .on_hover_text("Selected text is copied to the clipboard");
-        ui.checkbox(&mut t.confirm_exit, "Close prompt")
-            .on_hover_text("Ask before exiting TermCraft while sessions are open");
-    });
-    ui.add_space(6.0);
-    egui::Grid::new("cfg-term")
-        .num_columns(2)
-        .spacing([12.0, 8.0])
-        .show(ui, |ui| {
-            ui.label("Font:");
-            ui.horizontal(|ui| {
-                crate::term_fonts::combo(ui, "cfg-font", &mut t.font_name);
-                ui.checkbox(&mut t.font_bold, "Bold")
-                    .on_hover_text("Always draw the terminal with the bold face");
-            });
-            ui.end_row();
-            ui.label("Default font size (px):");
-            ui.add(egui::Slider::new(&mut t.font_size, 8.0..=32.0).step_by(1.0));
-            ui.end_row();
-            ui.checkbox(&mut t.fixed_grid, "Force fixed rows / columns number:")
-                .on_hover_text(
-                    "Number of rows and columns will be kept upon resize: only font size will change.",
-                );
-            ui.horizontal(|ui| {
-                ui.label("Columns:");
-                ui.add(egui::DragValue::new(&mut t.fixed_cols).range(20..=500));
-                ui.label("x");
-                ui.add(egui::DragValue::new(&mut t.fixed_rows).range(5..=200));
-            });
-            ui.end_row();
-            ui.label("Scrollback lines:");
-            ui.add(
-                egui::DragValue::new(&mut t.scrollback_lines)
-                    .range(100..=200_000)
-                    .speed(100),
-            );
-            ui.end_row();
-        });
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let mut on = !t.log_dir.is_empty();
-        if ui
-            .checkbox(&mut on, "Log terminal output to the following directory")
-            .changed()
-        {
-            t.log_dir = if on {
-                rfd::FileDialog::new()
-                    .pick_folder()
-                    .map(|d| d.display().to_string())
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            };
-        }
-        if on {
-            ui.add(egui::TextEdit::singleline(&mut t.log_dir).desired_width(260.0));
-        }
-    });
-    ui.horizontal(|ui| {
-        // Same choices as the session "Syntax highlighting" (4_36), with
-        // the user syntaxes after the built-in ones.
-        let choices = super::syntax_window::choices(&t.custom_syntaxes);
-        let selected = choices
-            .iter()
-            .find(|(i, _)| *i == t.syntax_highlighting)
-            .map_or("", |(_, label)| label.as_str());
-        ui.label("Syntax highlighting:");
-        egui::ComboBox::from_id_salt("cfg-syntax")
-            .selected_text(selected)
-            .width(313.0)
-            .show_ui(ui, |ui| {
-                for (i, label) in &choices {
-                    ui.selectable_value(&mut t.syntax_highlighting, *i, label);
-                }
-            })
-            .response
-            .on_hover_text(
-                "Colors keywords in terminal output that the program did not color itself. \
-                 Sessions can choose their own in \"Terminal settings\".",
-            );
-        if ui
-            .button("Customize")
-            .on_hover_text("Create your own syntax coloration definition")
-            .clicked()
-        {
-            out.push(Action::CustomizeSyntax);
-        }
-    });
-    ui.checkbox(&mut t.use_windows_path, "Use Windows PATH")
-        .on_hover_text("Local Bash / Zsh terminals also find the Windows programs");
-    ui.weak(
-        "Per-session font, colors and terminal type are in each session's \"Terminal settings\".",
-    );
-}
-
-fn x11(ui: &mut egui::Ui) {
-    disabled_check(ui, "Automatically start X server at TermCraft start up");
-    for ext in [
-        "Randr",
-        "Composite",
-        "Damage",
-        "Xfixes",
-        "Xtest",
-        "Xinerama",
-    ] {
-        disabled_check(ui, ext);
-    }
-    ui.weak("The X11 server and X11 forwarding are not implemented yet.");
-}
-
-fn ssh(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
-    let ssh = &mut s.ssh;
-    ui.checkbox(&mut ssh.browser, "Enable graphical SSH-browser");
-    ui.checkbox(
-        &mut ssh.switch_to_browser,
-        "Automatically switch to SSH-browser tab after login",
-    );
-    ui.horizontal(|ui| {
-        let mut on = ssh.keepalive_secs > 0;
-        if ui.checkbox(&mut on, "SSH keepalive").changed() {
-            ssh.keepalive_secs = if on { 60 } else { 0 };
-        }
-        if on {
-            ui.add(
-                egui::DragValue::new(&mut ssh.keepalive_secs)
-                    .range(5..=3600)
-                    .suffix(" s"),
-            );
-        }
-    });
-    ui.add_space(6.0);
-    ui.checkbox(&mut ssh.remote_monitoring, "Remote-monitoring")
-        .on_hover_text(
-            "Display the \"remote monitoring\" bar below each SSH session: resources usage \
-         (CPU / RAM / network / disk…) of the server. Linux servers only.",
-        );
-    disabled_check(ui, "GSSAPI Kerberos");
-    ui.checkbox(&mut ssh.internal_agent, "Use internal SSH agent")
-        .on_hover_text("Offer the key files below to every SSH server");
-    if ssh.internal_agent {
-        ui.indent("agent-keys", |ui| {
-            let mut remove = None;
-            for (i, key) in ssh.agent_keys.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.monospace(key);
-                    if ui.small_button("Remove").clicked() {
-                        remove = Some(i);
-                    }
-                });
-            }
-            if let Some(i) = remove {
-                ssh.agent_keys.remove(i);
-            }
-            if ui.button("Add key file…").clicked()
-                && let Some(path) = rfd::FileDialog::new().pick_file()
-            {
-                ssh.agent_keys.push(path.display().to_string());
-            }
-        });
-    }
-    if cfg!(windows) {
-        ui.checkbox(&mut ssh.use_pageant, "Use PuTTY agent")
-            .on_hover_text("Log in with the keys loaded in Pageant");
-        ui.checkbox(&mut ssh.use_system_agent, "Use Windows SSH agent")
-            .on_hover_text("Log in with the keys of the OpenSSH agent service (ssh-add)");
-    } else {
-        ui.checkbox(&mut ssh.use_system_agent, "Use SSH agent")
-            .on_hover_text("Log in with the keys of the agent in SSH_AUTH_SOCK (ssh-add)");
-    }
-    ui.horizontal(|ui| {
         if ui.button("Known hosts…").clicked() {
             out.push(Action::KnownHosts);
         }
-        ui.weak("Host keys are always validated against known_hosts at first connection.");
     });
-}
-
-fn display(ui: &mut egui::Ui, s: &mut Settings) {
-    let v = &mut s.view;
-    egui::Grid::new("cfg-display-sliders")
-        .num_columns(2)
-        .spacing([12.0, 6.0])
-        .show(ui, |ui| {
-            let max = tc_core::settings::MAX_TRANSPARENCY;
-            ui.label("Color saturation");
-            ui.add(egui::Slider::new(&mut v.saturation, 0..=90).suffix("%"));
-            ui.end_row();
-            ui.label("Transparency");
-            ui.add(egui::Slider::new(&mut v.transparency, 0..=max).suffix("%"))
-                .on_hover_text("Turning transparency on takes effect after a restart");
-            ui.end_row();
-            ui.label("Detached/fullscreen transparency");
-            ui.add(egui::Slider::new(&mut v.detached_transparency, 0..=max).suffix("%"))
-                .on_hover_text("Detached tabs and the fullscreen window");
-            ui.end_row();
-        });
-    ui.add_space(8.0);
-    egui::Grid::new("cfg-display")
-        .num_columns(2)
-        .spacing([12.0, 8.0])
-        .show(ui, |ui| {
-            ui.label("Skin selection:");
-            egui::ComboBox::from_id_salt("cfg-theme")
-                .selected_text(v.theme.label())
-                .show_ui(ui, |ui| {
-                    for theme in Theme::ALL {
-                        ui.selectable_value(&mut v.theme, theme, theme.label());
-                    }
-                });
-            ui.end_row();
-            ui.label("Graphical interface elements size:");
-            egui::ComboBox::from_id_salt("cfg-ui-size")
-                .selected_text(v.ui_size.label())
-                .show_ui(ui, |ui| {
-                    for size in UiSize::ALL {
-                        ui.selectable_value(&mut v.ui_size, size, size.label());
-                    }
-                });
-            ui.end_row();
-            ui.label("Menus and buttons:");
-            let both = v.show_menu_bar && v.show_toolbar;
-            let label = if both {
-                "Show both"
-            } else if v.show_menu_bar {
-                "Show menu bar"
-            } else {
-                "Show buttons bar"
-            };
-            egui::ComboBox::from_id_salt("cfg-bars")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(both, "Show both").clicked() {
-                        (v.show_menu_bar, v.show_toolbar) = (true, true);
-                    }
-                    if ui
-                        .selectable_label(v.show_menu_bar && !v.show_toolbar, "Show menu bar")
-                        .clicked()
-                    {
-                        (v.show_menu_bar, v.show_toolbar) = (true, false);
-                    }
-                    if ui
-                        .selectable_label(!v.show_menu_bar && v.show_toolbar, "Show buttons bar")
-                        .clicked()
-                    {
-                        (v.show_menu_bar, v.show_toolbar) = (false, true);
-                    }
-                });
-            ui.end_row();
-            ui.label("Buttons bar:");
-            egui::ComboBox::from_id_salt("cfg-buttons")
-                .selected_text(match v.toolbar_style {
-                    ToolbarStyle::Small => "Small buttons",
-                    ToolbarStyle::Standard => "Standard buttons",
-                    ToolbarStyle::StandardWithCaptions => "Buttons with captions",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut v.toolbar_style, ToolbarStyle::Small, "Small buttons");
-                    ui.selectable_value(
-                        &mut v.toolbar_style,
-                        ToolbarStyle::Standard,
-                        "Standard buttons",
-                    );
-                    ui.selectable_value(
-                        &mut v.toolbar_style,
-                        ToolbarStyle::StandardWithCaptions,
-                        "Buttons with captions",
-                    );
-                });
-            ui.end_row();
-            ui.label("Sidebar position:");
-            egui::ComboBox::from_id_salt("cfg-sidebar")
-                .selected_text(if v.sidebar_right { "right" } else { "left" })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut v.sidebar_right, false, "left");
-                    ui.selectable_value(&mut v.sidebar_right, true, "right");
-                });
-            ui.end_row();
-        });
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        ui.label("Tabs settings:");
-        ui.checkbox(&mut v.rounded_tabs, "Rounded tabs");
-        ui.checkbox(&mut v.show_tab_numbers, "Show tab numbers");
-        ui.checkbox(&mut v.show_close_button, "Show close buttons");
-    });
-    ui.checkbox(
-        &mut v.session_dots,
-        "Show green/orange buttons next to each open session in the sessions tree",
-    );
-    ui.checkbox(
-        &mut v.no_quick_connect_without_sidebar,
-        "Disable \"Quick connect\" when sidebar is hidden",
-    );
-}
-
-fn misc(ui: &mut egui::Ui, s: &mut Settings, out: &mut Vec<Action>) {
-    let u = &mut s.update;
-    ui.checkbox(&mut u.check_on_startup, "Check for updates at startup");
-    ui.checkbox(&mut u.auto_install, "Install updates automatically");
-    ui.horizontal(|ui| {
-        ui.label("Update channel:");
-        ui.radio_value(&mut u.channel, UpdateChannel::Stable, "Stable");
-        ui.radio_value(&mut u.channel, UpdateChannel::Beta, "Beta");
-    });
-    ui.separator();
-    if ui.button("TermCraft passwords settings").clicked() {
-        out.push(Action::PasswordsSettings);
-    }
     ui.add_space(8.0);
     ui.group(|ui| {
-        let p = &mut s.popup;
-        ui.strong("Popup terminal");
-        egui::Grid::new("cfg-popup")
-            .num_columns(4)
-            .spacing([12.0, 6.0])
-            .show(ui, |ui| {
-                ui.label("Transparency:");
-                ui.add(
-                    egui::Slider::new(&mut p.transparency, 0..=tc_core::settings::MAX_TRANSPARENCY)
-                        .suffix("%"),
-                );
-                ui.label("Position:");
-                egui::ComboBox::from_id_salt("cfg-popup-position")
-                    .selected_text(p.position.label())
-                    .show_ui(ui, |ui| {
-                        for pos in tc_core::settings::PopupPosition::ALL {
-                            ui.selectable_value(&mut p.position, pos, pos.label());
-                        }
-                    });
-                ui.end_row();
-                ui.label("Size:");
-                ui.add(egui::Slider::new(&mut p.size, 10..=100).suffix("%"));
-                ui.checkbox(&mut p.sizeable, "Popup terminal is sizeable");
-                ui.end_row();
-            });
-        ui.checkbox(&mut p.hide_instead_of_close, "Hide popup terminal instead of closing it")
-            .on_hover_text("Hiding keeps the terminal and its history for the next time");
-        ui.weak("Show / hide it with its keyboard shortcut (Settings › Keyboard shortcuts), from any program.");
+        ui.strong("Updates");
+        let u = &mut s.update;
+        ui.checkbox(&mut u.check_on_startup, "Check for updates at startup");
+        ui.checkbox(&mut u.auto_install, "Install updates automatically");
+        ui.horizontal(|ui| {
+            ui.label("Update channel:");
+            ui.radio_value(&mut u.channel, UpdateChannel::Stable, "Stable");
+            ui.radio_value(&mut u.channel, UpdateChannel::Beta, "Beta");
+        });
     });
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        ui.label("Scrollback lines:");
+        ui.add(
+            egui::DragValue::new(&mut s.terminal.scrollback_lines)
+                .range(100..=200_000)
+                .speed(100),
+        );
+        ui.checkbox(&mut s.terminal.copy_on_select, "Copy on select")
+            .on_hover_text("Selected text is copied to the clipboard (also in Expert settings)");
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_reference_tab_exists() {
+        for tab in ConfigTab::ALL {
+            if let Some(sheet) = tab.sheet() {
+                assert!(layout::page(sheet).is_some(), "{sheet}");
+            }
+        }
+    }
+
+    #[test]
+    fn color_slots_follow_the_reference_order() {
+        // Col1 Black (0), Col2 BoldBlack (8), Col3 Red (1) … Col16 BoldWhite (15).
+        let slot = |i: usize| (i - 1) / 2 + if i.is_multiple_of(2) { 8 } else { 0 };
+        assert_eq!(slot(1), 0);
+        assert_eq!(slot(2), 8);
+        assert_eq!(slot(3), 1);
+        assert_eq!(slot(16), 15);
+    }
 }

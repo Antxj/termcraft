@@ -8,7 +8,7 @@
 //!   (use only with the local dev server credentials)
 //! - `TERMCRAFT_SNAPSHOT_DELAY_MS=6000` — time to let the scene settle
 //! - `TERMCRAFT_SNAPSHOT_LOCAL_TABS=3` — also open N local terminals
-//! - `TERMCRAFT_SNAPSHOT_WINDOW=config|passwords|credentials|master|master_settings|hotkeys|keygen|known_hosts|jump_hosts|syntax|expert|servers|editor|diff|import_offer|new_session:<type>[:terminal|network|bookmark|expert_ssh|font|colors]` — open that window
+//! - `TERMCRAFT_SNAPSHOT_WINDOW=config[:<tab>]|passwords|credentials|master|master_settings|hotkeys|keygen|known_hosts|jump_hosts|syntax|expert|servers|editor|diff|import_offer|new_session:<type>[:terminal|network|bookmark|expert_ssh|font|colors]` — open that window
 //! - `TERMCRAFT_SNAPSHOT_TYPE=text` — typed (with Enter) into the active
 //!   tab two seconds after start
 //! - `TERMCRAFT_SNAPSHOT_HOSTKEY=1` — leave host key questions open (to

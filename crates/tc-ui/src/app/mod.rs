@@ -176,7 +176,7 @@ pub struct TermCraftApp {
     /// start-up); changes from 0 apply after a restart.
     transparent_window: bool,
     show_config: bool,
-    config_tab: crate::ui::config_window::ConfigTab,
+    config_tab: crate::ui::config_window::ConfigState,
     /// "Close prompt" waiting for an answer.
     confirm_exit: bool,
     exit_confirmed: bool,
@@ -1069,9 +1069,14 @@ impl eframe::App for TermCraftApp {
             let tab = self.core.tabs.iter_mut().find(|t| Some(t.id) == active);
             let first_frame = !self.show_tunnels && snap.tunnels;
             match snap.window.take().as_deref() {
-                Some("config") => {
+                Some(w) if w.starts_with("config") => {
                     self.show_config = true;
-                    self.config_tab = crate::ui::config_window::ConfigTab::Terminal;
+                    // `config:<tab>` (general, terminal, … termcraft).
+                    self.config_tab.tab = w
+                        .split(':')
+                        .nth(1)
+                        .and_then(crate::ui::config_window::ConfigTab::from_name)
+                        .unwrap_or(crate::ui::config_window::ConfigTab::Terminal);
                 }
                 Some("passwords") => self.passwords.open = true,
                 Some("master") => self.passwords.ask_unlock(),

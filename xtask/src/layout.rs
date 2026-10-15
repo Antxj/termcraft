@@ -13,11 +13,14 @@ use std::fmt::Write as _;
 
 /// Forms drawn by TermCraft, and the prefix their controls have in the
 /// `Comp_*` entries of the parameter table.
-const FORMS: &[(&str, &str)] = &[
-    ("TFORMSESSIONEDIT", ""),
-    ("TFORMSSHPROTOSETTINGS", "FormExpertSSH"),
-    ("TFORMFONTSELECTOR", "FormFont"),
-    ("TFORMCOLORSSELECTOR", "FormColor"),
+/// Forms with tab sheets give one page per sheet (named `prefix.sheet`,
+/// or just `sheet` without a prefix); the others one page.
+const FORMS: &[(&str, &str, bool)] = &[
+    ("TFORMSESSIONEDIT", "", true),
+    ("TFORMPARAMS", "Params", true),
+    ("TFORMSSHPROTOSETTINGS", "FormExpertSSH", false),
+    ("TFORMFONTSELECTOR", "FormFont", false),
+    ("TFORMCOLORSSELECTOR", "FormColor", false),
 ];
 
 /// Controls of the parameter table without a `Comp_*` entry.
@@ -47,14 +50,15 @@ fn kind(class: &str) -> Option<&'static str> {
         "TsEdit" | "TEdit" => "Edit",
         "TsMemo" | "TSynEdit" | "TMemo" => "Memo",
         "TsSpinEdit" | "TsDecimalSpinEdit" => "Spin",
-        "TsComboBox" | "TsComboBoxEx" | "TsFontComboBox" => "Combo",
+        "TsComboBox" | "TsComboBoxEx" | "TsFontComboBox" | "TsComboEdit" => "Combo",
         "TsFilenameEdit" => "File",
         "TsDirectoryEdit" => "Folder",
         "TsBitBtn" | "TButton" | "TsButton" | "TsSpeedButton" => "Button",
         "TsColorSelect" => "Color",
         "TsGroupBox" => "Group",
         "TsLabel" | "TLabel" => "Label",
-        "TsListBox" => "List",
+        "TsListBox" | "TsListView" | "TsCheckListBox" => "List",
+        "TsScrollBar" => "Slider",
         _ => return None,
     })
 }
@@ -111,7 +115,10 @@ fn controls(o: &Object, dx: i64, dy: i64, panel: &str, out: &mut Vec<Ctl>) {
             .filter(|s| !s.is_empty())
             .or(bound)
             .unwrap_or("")
-            .replace('&', "");
+            .replace('&', "")
+            // TermCraft's captions name TermCraft, not the reference.
+            .replace("MobaXterm", "TermCraft")
+            .replace("MobAgent", "TermCraft agent");
         out.push(Ctl {
             name: c.name.clone(),
             kind,
@@ -160,20 +167,25 @@ pub fn generate(r: &Reference) -> Result<String> {
          pub const PAGES: &[Page] = &[",
         r.version
     );
-    for (form_name, prefix) in FORMS {
+    for (form_name, prefix, by_sheet) in FORMS {
         let form = r
             .forms
             .get(*form_name)
             .with_context(|| format!("{form_name} missing"))?;
         let mut pages: Vec<(String, String, i64, i64, Vec<Ctl>)> = Vec::new();
-        if prefix.is_empty() {
+        if *by_sheet {
             let mut list = Vec::new();
             sheets(form, &mut list);
             for sheet in list {
                 let mut ctls = Vec::new();
                 controls(sheet, 0, 0, "", &mut ctls);
                 let caption = sheet.str_prop("Caption").unwrap_or("").to_string();
-                pages.push((sheet.name.clone(), caption, 0, 0, ctls));
+                let name = if prefix.is_empty() {
+                    sheet.name.clone()
+                } else {
+                    format!("{prefix}.{}", sheet.name)
+                };
+                pages.push((name, caption, 0, 0, ctls));
             }
         } else {
             let mut ctls = Vec::new();

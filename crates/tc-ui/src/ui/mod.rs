@@ -7,6 +7,7 @@
 pub mod config_window;
 pub mod diff_window;
 pub mod expert_window;
+pub mod form;
 pub mod home;
 pub mod host_key_dialog;
 pub mod hotkeys_window;

@@ -18,6 +18,8 @@ pub enum Kind {
     List,
     /// A multi-line text (startup commands).
     Memo,
+    /// A scroll bar used as a slider (percentages).
+    Slider,
 }
 
 #[derive(Debug, Clone, Copy)]

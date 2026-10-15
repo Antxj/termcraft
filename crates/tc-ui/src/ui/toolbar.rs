@@ -85,10 +85,38 @@ fn button(
     })
 }
 
+/// The buttons of the left group, in the reference order (Configuration ›
+/// Toolbar lists and orders them by caption).
+pub const BUTTONS: [&str; 12] = [
+    "Session",
+    "Servers",
+    "Tools",
+    "Games",
+    "Sessions",
+    "View",
+    "Split",
+    "MultiExec",
+    "Tunneling",
+    "Packages",
+    "Settings",
+    "Help",
+];
+
+/// The toolbar buttons to show, in order.
+pub fn chosen(view: &ViewSettings) -> Vec<&'static str> {
+    if view.toolbar_buttons.is_empty() {
+        return BUTTONS.to_vec();
+    }
+    view.toolbar_buttons
+        .iter()
+        .filter_map(|name| BUTTONS.iter().find(|b| **b == name).copied())
+        .collect()
+}
+
 pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &mut Vec<Action>) {
     let style = view.toolbar_style;
     let cx = PopupCtx { view, sessions };
-    let left: [(&str, &str, &str, Kind); 12] = [
+    let left: [(&str, &str, &str, Kind); BUTTONS.len()] = [
         (
             icon::MONITOR_PLAY,
             "Session",
@@ -193,10 +221,18 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             }
         };
 
+    let mut left: Vec<Option<(&str, &str, &str, Kind)>> = left.into_iter().map(Some).collect();
+    let order = chosen(view);
     ui.horizontal_centered(|ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
-        for b in left {
-            draw(ui, b);
+        for name in order {
+            if let Some(b) = left
+                .iter_mut()
+                .find(|b| b.as_ref().is_some_and(|b| b.1 == name))
+                .and_then(Option::take)
+            {
+                draw(ui, b);
+            }
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             for b in right.into_iter().rev() {
@@ -204,4 +240,17 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             }
         });
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chosen_buttons_keep_their_order() {
+        let mut view = ViewSettings::default();
+        assert_eq!(chosen(&view), BUTTONS.to_vec(), "empty = all");
+        view.toolbar_buttons = vec!["Help".into(), "Session".into(), "Gone".into()];
+        assert_eq!(chosen(&view), ["Help", "Session"], "unknown names are skipped");
+    }
 }
