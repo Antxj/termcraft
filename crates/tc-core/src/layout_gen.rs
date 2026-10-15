@@ -3498,7 +3498,7 @@ pub const PAGES: &[Page] = &[
                 y: 254,
                 w: 233,
                 h: 24,
-                caption: "Use internal SSH agent \"TermCraft agent\"",
+                caption: "Use internal SSH agent",
                 items: &[],
                 panel: "",
             },

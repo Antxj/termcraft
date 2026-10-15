@@ -118,6 +118,7 @@ fn controls(o: &Object, dx: i64, dy: i64, panel: &str, out: &mut Vec<Ctl>) {
             .replace('&', "")
             // TermCraft's captions name TermCraft, not the reference.
             .replace("MobaXterm", "TermCraft")
+            .replace(" \"MobAgent\"", "")
             .replace("MobAgent", "TermCraft agent");
         out.push(Ctl {
             name: c.name.clone(),

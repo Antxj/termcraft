@@ -224,6 +224,73 @@ pub struct GeneralSettings {
     pub home_dir: String,
     /// The first start already offered to import a MobaXterm.ini.
     pub mobaxterm_import_offered: bool,
+    /// Misc › "Open the following tab at startup".
+    pub startup_tab: StartupTab,
+    /// Misc › "Open new tab beside current tab".
+    pub new_tab_position: NewTabPosition,
+    /// Misc › not "Do not exit when last tab is closed".
+    pub exit_on_last_tab: bool,
+    /// Misc › "Allow multiple instances": a new start opens another window
+    /// instead of showing the running one.
+    pub multiple_instances: bool,
+}
+
+/// Misc › "Open the following tab at startup".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupTab {
+    Home,
+    #[default]
+    HomePinned,
+    Terminal,
+}
+
+impl StartupTab {
+    pub const ALL: [StartupTab; 3] = [Self::Home, Self::HomePinned, Self::Terminal];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Home => "<Home>",
+            Self::HomePinned => "<Home (pinned)>",
+            Self::Terminal => "<Terminal>",
+        }
+    }
+}
+
+/// Misc › "Open new tab beside current tab".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NewTabPosition {
+    Never,
+    #[default]
+    WhenDuplicating,
+    Always,
+}
+
+impl NewTabPosition {
+    pub const ALL: [NewTabPosition; 3] = [Self::Never, Self::WhenDuplicating, Self::Always];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::WhenDuplicating => "when duplicating tab",
+            Self::Always => "always",
+        }
+    }
+
+    /// Where a new tab goes among `len` tabs, `active` being the index of
+    /// the current one.
+    pub fn index(self, len: usize, active: Option<usize>, duplicate: bool) -> usize {
+        let beside = match self {
+            Self::Never => false,
+            Self::WhenDuplicating => duplicate,
+            Self::Always => true,
+        };
+        match active {
+            Some(i) if beside && i < len => i + 1,
+            _ => len,
+        }
+    }
 }
 
 impl Default for GeneralSettings {
@@ -233,6 +300,10 @@ impl Default for GeneralSettings {
             home_location: HomeLocation::default(),
             home_dir: String::new(),
             mobaxterm_import_offered: false,
+            startup_tab: StartupTab::default(),
+            new_tab_position: NewTabPosition::default(),
+            exit_on_last_tab: false,
+            multiple_instances: false,
         }
     }
 }
@@ -314,11 +385,14 @@ pub struct SshSettings {
     /// SSH server (passphrases asked, or taken from the saved ones).
     pub internal_agent: bool,
     pub agent_keys: Vec<String>,
+    /// "Display SSH banner": the message a server shows before login.
+    pub show_banner: bool,
 }
 
 impl Default for SshSettings {
     fn default() -> Self {
         Self {
+            show_banner: true,
             browser: true,
             switch_to_browser: true,
             keepalive_secs: 0,
@@ -891,6 +965,17 @@ impl Default for UpdateSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_tab_position() {
+        use NewTabPosition::*;
+        assert_eq!(Never.index(3, Some(0), true), 3);
+        assert_eq!(WhenDuplicating.index(3, Some(0), true), 1);
+        assert_eq!(WhenDuplicating.index(3, Some(0), false), 3);
+        assert_eq!(Always.index(3, Some(1), false), 2);
+        assert_eq!(Always.index(0, None, false), 0);
+        assert_eq!(Always.index(2, Some(7), false), 2);
+    }
 
     #[test]
     fn terminal_home_locations() {

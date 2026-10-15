@@ -612,6 +612,39 @@ fn control(
             }
         }
         ("sTabSheet2", "ChkPopupConsoleIsSizeable") => check(ui, &mut s.popup.sizeable),
+        ("sTabSheet2", "sComboEdit1") => {
+            use tc_core::settings::StartupTab;
+            let mut index = StartupTab::ALL
+                .iter()
+                .position(|t| *t == s.general.startup_tab)
+                .unwrap_or(1);
+            let labels: Vec<&str> = StartupTab::ALL.iter().map(|t| t.label()).collect();
+            if choice(ui, rect, caption, "cfg-startup-tab", &labels, &mut index) {
+                s.general.startup_tab = StartupTab::ALL[index];
+            }
+        }
+        ("sTabSheet2", "CmbNewTabPosition") => {
+            use tc_core::settings::NewTabPosition;
+            let mut index = NewTabPosition::ALL
+                .iter()
+                .position(|t| *t == s.general.new_tab_position)
+                .unwrap_or(1);
+            let labels: Vec<&str> = NewTabPosition::ALL.iter().map(|t| t.label()).collect();
+            if choice(ui, rect, caption, "cfg-new-tab", &labels, &mut index) {
+                s.general.new_tab_position = NewTabPosition::ALL[index];
+            }
+        }
+        ("sTabSheet2", "sCheckBox60") => {
+            let mut stay = !s.general.exit_on_last_tab;
+            if ui
+                .put(rect, egui::Checkbox::new(&mut stay, caption))
+                .changed()
+            {
+                s.general.exit_on_last_tab = !stay;
+            }
+        }
+        ("sTabSheet2", "sCheckBox63") => check(ui, &mut s.general.multiple_instances),
+        ("OngletSSH", "sCheckBox61") => check(ui, &mut s.ssh.show_banner),
         ("sTabSheet2", "ChkBackgroundPopupTermInsteadOfClosingIt") => {
             check(ui, &mut s.popup.hide_instead_of_close);
         }

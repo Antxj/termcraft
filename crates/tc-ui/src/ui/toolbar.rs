@@ -251,6 +251,10 @@ mod tests {
         let mut view = ViewSettings::default();
         assert_eq!(chosen(&view), BUTTONS.to_vec(), "empty = all");
         view.toolbar_buttons = vec!["Help".into(), "Session".into(), "Gone".into()];
-        assert_eq!(chosen(&view), ["Help", "Session"], "unknown names are skipped");
+        assert_eq!(
+            chosen(&view),
+            ["Help", "Session"],
+            "unknown names are skipped"
+        );
     }
 }

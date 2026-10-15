@@ -85,6 +85,8 @@ pub struct ConnectParams {
     /// 3_32 "Disconnect if authentication succeeds trivially": a server
     /// that lets us in without any password, signature or answer is left.
     pub refuse_trivial_auth: bool,
+    /// "Display SSH banner".
+    pub show_banner: bool,
 }
 
 impl ConnectParams {
@@ -417,9 +419,30 @@ pub(crate) struct Handler {
     agent_forward: Option<AgentConfig>,
     /// X11 forwarding: `None` = X11 channels are refused.
     x11: Option<Arc<x11::X11State>>,
+    /// "Display SSH banner".
+    banner: bool,
 }
 
 impl client::Handler for Handler {
+    async fn auth_banner(
+        &mut self,
+        banner: &str,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        if self.banner {
+            // Shown as text: no control sequences from the server here.
+            let text: String = banner
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+                .take(8192)
+                .collect();
+            let text = text.trim_end().replace('\n', "\r\n");
+            self.events
+                .send(SshEvent::Output(format!("{text}\r\n").into_bytes()));
+        }
+        Ok(())
+    }
+
     type Error = russh::Error;
 
     async fn check_server_key(
@@ -612,6 +635,8 @@ pub(crate) struct ConnectOptions<'a> {
     pub x11: Option<Arc<x11::X11State>>,
     /// See [`ConnectParams::refuse_trivial_auth`].
     pub refuse_trivial_auth: bool,
+    /// Show the target server's banner before login.
+    pub show_banner: bool,
 }
 
 fn client_config(compression: bool, keepalive: Option<std::time::Duration>) -> Arc<client::Config> {
@@ -684,8 +709,10 @@ pub(crate) async fn establish(
         forwards: forwards.clone(),
         agent_forward: None,
         x11: None,
+        banner: false,
     };
     let target_handler = |e: &Endpoint| Handler {
+        banner: opts.show_banner,
         agent_forward: opts.agent_forward.then(|| opts.agent.clone()),
         x11: opts.x11.clone(),
         ..handler(e)
@@ -905,6 +932,7 @@ async fn run_shell(
             agent_forward: params.agent_forwarding,
             x11: x11.clone(),
             refuse_trivial_auth: params.refuse_trivial_auth,
+            show_banner: params.show_banner,
         },
         &replies,
         &events,

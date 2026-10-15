@@ -36,9 +36,32 @@ struct Core {
     running: BTreeMap<TunnelId, RunningTunnel>,
     /// Network services of the "Servers" window.
     servers: crate::servers::Servers,
+    /// `window_show` was asked (another start of TermCraft).
+    show_requested: bool,
+    /// The last tab was closed and the settings say to exit then.
+    exit_requested: bool,
 }
 
 impl Core {
+    /// Open a tab and make it active; it goes beside the active one when
+    /// "Open new tab beside current tab" says so.
+    fn open_tab(&mut self, session: Option<Session>, duplicate: bool) -> u64 {
+        let id = self.next_tab_id;
+        self.next_tab_id += 1;
+        let tab = self.new_tab(id, session);
+        let active = self
+            .active
+            .and_then(|a| self.tabs.iter().position(|t| t.id == a));
+        let at = self
+            .settings
+            .general
+            .new_tab_position
+            .index(self.tabs.len(), active, duplicate);
+        self.tabs.insert(at, tab);
+        self.active = Some(id);
+        id
+    }
+
     /// A new tab for `session`, with its "Execute macro at session start".
     fn new_tab(&self, id: u64, session: Option<Session>) -> Tab {
         let macro_keys = session
@@ -249,6 +272,8 @@ impl TermCraftApp {
                 tunnels,
                 running: BTreeMap::new(),
                 servers: Default::default(),
+                show_requested: false,
+                exit_requested: false,
             },
             updates,
             quick_connect: String::new(),
@@ -297,6 +322,13 @@ impl TermCraftApp {
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
         };
+        // "Open the following tab at startup: <Terminal>".
+        if app.snapshot.is_none()
+            && app.startup.is_empty()
+            && app.core.settings.general.startup_tab == tc_core::settings::StartupTab::Terminal
+        {
+            app.startup.push(Command::TabOpen { session: None });
+        }
         // First start with an empty session list: offer a MobaXterm.ini
         // found next to the program (or of an installed MobaXterm), once.
         if app.snapshot.is_none()
@@ -992,6 +1024,12 @@ impl eframe::App for TermCraftApp {
         }
         self.serve_control(&ctx);
         self.serve_tray(&ctx);
+        if std::mem::take(&mut self.core.show_requested) {
+            show_window(&ctx, true);
+        }
+        if std::mem::take(&mut self.core.exit_requested) {
+            self.request_exit(&ctx);
+        }
         // Shortcuts first, so the terminal never sees their keys.
         let shortcuts = crate::ui::hotkeys_window::take_shortcuts(
             &ctx,

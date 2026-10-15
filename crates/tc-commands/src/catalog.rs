@@ -174,6 +174,14 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "window_show",
+        title: "Show the window",
+        description: "Bring the TermCraft window to the front, also from the tray (GUI only).",
+        input_schema: EMPTY,
+        example_args: "{}",
+        mutating: false,
+    },
+    CommandSpec {
         name: "tab_list",
         title: "List tabs",
         description: "List open tabs in the running app.",

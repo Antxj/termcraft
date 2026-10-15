@@ -26,12 +26,12 @@ impl Host for Core {
     }
 
     fn tab_open(&mut self, session: Option<Session>) -> Result<u64, CommandError> {
-        let id = self.next_tab_id;
-        self.next_tab_id += 1;
-        let tab = self.new_tab(id, session);
-        self.tabs.push(tab);
-        self.active = Some(id);
-        Ok(id)
+        Ok(self.open_tab(session, false))
+    }
+
+    fn window_show(&mut self) -> Result<(), CommandError> {
+        self.show_requested = true;
+        Ok(())
     }
 
     fn tab_send(&mut self, tab: Option<u64>, text: &str) -> Result<(), CommandError> {
@@ -43,6 +43,9 @@ impl Host for Core {
     fn tab_close(&mut self, tab: Option<u64>) -> Result<(), CommandError> {
         let i = self.tab_index(tab)?;
         let id = self.tabs.remove(i).id;
+        if self.tabs.is_empty() && self.settings.general.exit_on_last_tab {
+            self.exit_requested = true;
+        }
         if self.active == Some(id) {
             // Focus the neighbour on the left, else the one on the right.
             self.active = self
@@ -57,7 +60,7 @@ impl Host for Core {
     fn tab_duplicate(&mut self, tab: Option<u64>) -> Result<u64, CommandError> {
         let i = self.tab_index(tab)?;
         let session = self.tabs[i].session.clone();
-        self.tab_open(session)
+        Ok(self.open_tab(session, true))
     }
 
     fn vault(&self) -> Result<&tc_vault::Vault, CommandError> {

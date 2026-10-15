@@ -104,6 +104,9 @@ pub enum Command {
         session: Box<Session>,
     },
     TabList {},
+    /// Bring the window to the front (a second start shows the running
+    /// window instead of opening another one).
+    WindowShow {},
     TabOpen {
         /// Session name or id; omitted = local shell.
         #[serde(default)]
@@ -233,6 +236,7 @@ impl Command {
             Self::SessionFolderRemove { .. } => "session_folder_remove",
             Self::SessionUpdate { .. } => "session_update",
             Self::TabList {} => "tab_list",
+            Self::WindowShow {} => "window_show",
             Self::TabOpen { .. } => "tab_open",
             Self::TabSend { .. } => "tab_send",
             Self::TabQuickConnect { .. } => "tab_quick_connect",
@@ -314,6 +318,9 @@ pub trait Host {
     fn store(&mut self) -> &mut SessionStore;
     fn persist(&mut self) -> Result<(), CommandError>;
 
+    fn window_show(&mut self) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("the window is a GUI feature"))
+    }
     fn tab_list(&self) -> Result<Vec<TabInfo>, CommandError> {
         Err(CommandError::Unsupported("tabs require the GUI"))
     }
@@ -661,6 +668,10 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
                 ..*session
             };
             host.persist()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::WindowShow {} => {
+            host.window_show()?;
             Ok(json!({ "ok": true }))
         }
         Command::TabList {} => to_json(&host.tab_list()?),

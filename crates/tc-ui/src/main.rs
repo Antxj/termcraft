@@ -50,13 +50,22 @@ fn main() -> eframe::Result<()> {
     if !startup.commands.is_empty() && forward(&paths, &startup.commands) {
         return Ok(());
     }
+    let settings = tc_core::Settings::load(&paths.settings_file()).unwrap_or_default();
+    // A second start shows the running window ("Allow multiple instances"
+    // off): two windows would overwrite each other's sessions file.
+    if startup.commands.is_empty()
+        && !settings.general.multiple_instances
+        && std::env::var_os("TERMCRAFT_SNAPSHOT").is_none()
+        && forward(&paths, &[tc_commands::Command::WindowShow {}])
+    {
+        return Ok(());
+    }
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("TermCraft")
         .with_icon(std::sync::Arc::new(app_icon()))
         .with_inner_size([1100.0, 700.0])
         .with_min_inner_size([480.0, 320.0]);
-    let settings = tc_core::Settings::load(&paths.settings_file()).unwrap_or_default();
     if wants_transparency(&settings.view) {
         viewport = viewport.with_transparent(true);
     }

@@ -49,6 +49,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         agent_forwarding: false,
         x11_display: None,
         refuse_trivial_auth: false,
+        show_banner: false,
     }
 }
 

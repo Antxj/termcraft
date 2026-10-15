@@ -129,6 +129,7 @@ impl Tab {
             agent_forwarding: false,
             x11_display: None,
             refuse_trivial_auth: false,
+            show_banner: false,
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -206,6 +207,7 @@ impl Tab {
             agent_forwarding: false,
             x11_display: None,
             refuse_trivial_auth: false,
+            show_banner: false,
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -396,6 +398,7 @@ impl Tab {
             agent_forwarding: opt("3_35").is_some_and(schema::is_true),
             x11_display: x11.0,
             refuse_trivial_auth: opt("3_32").is_some_and(schema::is_true),
+            show_banner: self.ssh_settings.show_banner,
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());

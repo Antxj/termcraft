@@ -276,9 +276,27 @@ pub fn apply_settings(ini: &Ini, s: &mut Settings) -> SettingsReport {
         s.view.detached_transparency = v;
     });
 
+    a.flag("Misc", "AllowMultiInstances", |v| {
+        s.general.multiple_instances = v
+    });
+    let startup = match a.get("Misc", "DefaultHome") {
+        Some("<Home>") => Some(tc_core::settings::StartupTab::Home),
+        Some("<Home (pinned)>") => Some(tc_core::settings::StartupTab::HomePinned),
+        Some("<Terminal>") => Some(tc_core::settings::StartupTab::Terminal),
+        _ => None,
+    };
+    if let Some(tab) = startup {
+        s.general.startup_tab = tab;
+        a.note("Misc", "DefaultHome");
+    }
+    a.number("Misc", "NewTabPosition", 0..=2, |v: usize| {
+        s.general.new_tab_position = tc_core::settings::NewTabPosition::ALL[v];
+    });
+
     // [SSH]
     let ssh = &mut s.ssh;
     a.flag("SSH", "RemoteMonitoring", |v| ssh.remote_monitoring = v);
+    a.flag("SSH", "DisplaySSHBanner", |v| ssh.show_banner = v);
     a.flag("SSH", "AutoStartSSHGUI", |v| ssh.browser = v);
     a.flag("SSH", "UseExternalPageant", |v| ssh.use_pageant = v);
     a.flag("SSH", "UseInternalMobAgent", |v| ssh.internal_agent = v);
