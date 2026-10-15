@@ -5,8 +5,8 @@
 - **Clean room.** Read [docs/CLEAN_ROOM.md](docs/CLEAN_ROOM.md) first. Never
   decompile or disassemble proprietary software. Never copy proprietary
   assets or text.
-- **Engine first.** `tc-core`, `tc-commands`, `tc-term`, `tc-import` and
-  `tc-update` must not depend on `egui`/`eframe`. UI code lives only in `tc-ui`.
+- **Engine first.** `tc-core`, `tc-commands`, `tc-term`, `tc-import`,
+  `tc-update` and `tc-rdp` must not depend on `egui`/`eframe`. UI code lives only in `tc-ui`.
 - **Everything is a command.** A new user-facing action is a variant of
   `tc_commands::Command` plus a `CommandSpec` in `catalog.rs`, with a valid
   `example_args`. The GUI menu, `termcraft-cli run` and the MCP tool all come
@@ -25,6 +25,7 @@
 | `tc-ssh` | Native SSH client (russh): auth, host keys, shell / exec channels |
 | `tc-net` | Telnet, rlogin and serial terminals; FTP / FTPS and Amazon S3 file browsers |
 | `tc-servers` | Network services of the "Servers" window (TFTP, HTTP) |
+| `tc-rdp` | Built-in RDP client (IronRDP): NLA, pinned TLS certificate, session loop, framebuffer and input |
 | `tc-devserver` | Loopback SSH server for tests and manual runs (docs/DEV.md) |
 | `tc-vault` | Saved passwords and credentials: OS keychain or Master-Password-encrypted file (index of names only) |
 | `tc-import` | MobaXterm, PuTTY, OpenSSH config and WSL importers |

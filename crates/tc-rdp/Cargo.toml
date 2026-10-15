@@ -1,0 +1,30 @@
+[package]
+name = "tc-rdp"
+description = "Built-in RDP client (IronRDP): connection, NLA, session loop, framebuffer and input"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+ironrdp-connector = "0.7"
+ironrdp-session = "0.7"
+ironrdp-tokio = { version = "0.7", default-features = false }
+ironrdp-pdu = "0.6"
+ironrdp-core = "0.1"
+ironrdp-graphics = "0.6"
+ironrdp-input = "0.4"
+tokio = { version = "1", features = ["rt", "net", "io-util", "sync", "time", "macros"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+x509-cert = { version = "0.2", default-features = false, features = ["std"] }
+crossbeam-channel.workspace = true
+zeroize = "1"
+tc-net.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tc-devserver = { workspace = true, features = ["rdp"] }

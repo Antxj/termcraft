@@ -3,6 +3,8 @@
 //! local shell via `tc-pty`), exec requests, window resizes and an SFTP
 //! subsystem rooted at `DevConfig::sftp_root`.
 
+#[cfg(feature = "rdp")]
+pub mod rdp;
 pub mod sftp;
 
 use russh::keys::ssh_key::private::Ed25519Keypair;

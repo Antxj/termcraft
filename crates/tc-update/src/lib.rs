@@ -16,7 +16,6 @@
 //!    copies and for the programs inside `TermCraft.app`.
 
 use base64::Engine as _;
-use ed25519_dalek::{Signature, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -86,10 +85,44 @@ pub struct Available {
     pub cli: Option<Asset>,
 }
 
+/// An Ed25519 public key trusted for update manifests (verified with
+/// `ring`, like the TLS of the rest of TermCraft).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrustedKey([u8; 32]);
+
+impl TrustedKey {
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    /// The public key of a 32-byte secret seed.
+    pub fn from_seed(seed: &[u8; 32]) -> Result<Self, UpdateError> {
+        use ring::signature::KeyPair as _;
+        let pair = ring::signature::Ed25519KeyPair::from_seed_unchecked(seed)
+            .map_err(|e| UpdateError::BadKey(e.to_string()))?;
+        let public: [u8; 32] = pair
+            .public_key()
+            .as_ref()
+            .try_into()
+            .map_err(|_| UpdateError::BadKey("unexpected public key size".into()))?;
+        Ok(Self(public))
+    }
+
+    pub fn to_bytes(self) -> [u8; 32] {
+        self.0
+    }
+
+    fn verifies(&self, message: &[u8], signature: &[u8; 64]) -> bool {
+        ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, self.0)
+            .verify(message, signature)
+            .is_ok()
+    }
+}
+
 pub struct Updater {
     base_url: String,
     channel: String,
-    keys: Vec<VerifyingKey>,
+    keys: Vec<TrustedKey>,
 }
 
 pub fn current_platform() -> String {
@@ -117,7 +150,7 @@ pub fn programs(running: &Path) -> (PathBuf, PathBuf) {
     }
 }
 
-pub fn parse_keys(list: &str) -> Result<Vec<VerifyingKey>, UpdateError> {
+pub fn parse_keys(list: &str) -> Result<Vec<TrustedKey>, UpdateError> {
     list.split(',')
         .map(str::trim)
         .filter(|k| !k.is_empty())
@@ -128,7 +161,7 @@ pub fn parse_keys(list: &str) -> Result<Vec<VerifyingKey>, UpdateError> {
             let bytes: [u8; 32] = bytes
                 .try_into()
                 .map_err(|_| UpdateError::BadKey("expected 32 bytes".into()))?;
-            VerifyingKey::from_bytes(&bytes).map_err(|e| UpdateError::BadKey(e.to_string()))
+            Ok(TrustedKey::from_bytes(bytes))
         })
         .collect()
 }
@@ -138,7 +171,7 @@ pub fn parse_keys(list: &str) -> Result<Vec<VerifyingKey>, UpdateError> {
 pub fn verify_manifest(
     manifest_bytes: &[u8],
     signature_b64: &str,
-    keys: &[VerifyingKey],
+    keys: &[TrustedKey],
     channel: &str,
 ) -> Result<Manifest, UpdateError> {
     if keys.is_empty() {
@@ -148,11 +181,7 @@ pub fn verify_manifest(
         .decode(signature_b64.trim())
         .map_err(|_| UpdateError::BadSignature)?;
     let sig: [u8; 64] = sig.try_into().map_err(|_| UpdateError::BadSignature)?;
-    let sig = Signature::from_bytes(&sig);
-    if !keys
-        .iter()
-        .any(|k| k.verify_strict(manifest_bytes, &sig).is_ok())
-    {
+    if !keys.iter().any(|k| k.verifies(manifest_bytes, &sig)) {
         return Err(UpdateError::BadSignature);
     }
     let manifest: Manifest = serde_json::from_slice(manifest_bytes)
@@ -200,7 +229,7 @@ impl Updater {
         Ok(Self::new(DEFAULT_BASE_URL, channel, keys))
     }
 
-    pub fn new(base_url: &str, channel: &str, keys: Vec<VerifyingKey>) -> Self {
+    pub fn new(base_url: &str, channel: &str, keys: Vec<TrustedKey>) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').into(),
             channel: channel.into(),
@@ -354,15 +383,15 @@ fn copy_and_verify(
 
 /// Sign a manifest (used by the release pipeline via `termcraft-cli`).
 pub fn sign_manifest(manifest_bytes: &[u8], secret_key_b64: &str) -> Result<String, UpdateError> {
-    use ed25519_dalek::Signer as _;
     let secret = base64::engine::general_purpose::STANDARD
         .decode(secret_key_b64.trim())
         .map_err(|e| UpdateError::BadKey(e.to_string()))?;
     let secret: [u8; 32] = secret
         .try_into()
         .map_err(|_| UpdateError::BadKey("expected 32-byte seed".into()))?;
-    let key = ed25519_dalek::SigningKey::from_bytes(&secret);
-    Ok(base64::engine::general_purpose::STANDARD.encode(key.sign(manifest_bytes).to_bytes()))
+    let key = ring::signature::Ed25519KeyPair::from_seed_unchecked(&secret)
+        .map_err(|e| UpdateError::BadKey(e.to_string()))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(key.sign(manifest_bytes).as_ref()))
 }
 
 /// Build a release manifest from local files: `(platform, file)` pairs,
@@ -425,10 +454,9 @@ mod tests {
 
     const SEED: [u8; 32] = [7; 32];
 
-    fn keypair() -> (String, Vec<VerifyingKey>) {
-        let sk = ed25519_dalek::SigningKey::from_bytes(&SEED);
+    fn keypair() -> (String, Vec<TrustedKey>) {
         let secret = base64::engine::general_purpose::STANDARD.encode(SEED);
-        (secret, vec![sk.verifying_key()])
+        (secret, vec![TrustedKey::from_seed(&SEED).unwrap()])
     }
 
     fn manifest(version: &str, channel: &str) -> Vec<u8> {
@@ -473,7 +501,7 @@ mod tests {
     #[test]
     fn wrong_key_and_no_key_rejected() {
         let (secret, _) = keypair();
-        let other = ed25519_dalek::SigningKey::from_bytes(&[9; 32]).verifying_key();
+        let other = TrustedKey::from_seed(&[9; 32]).unwrap();
         let m = manifest("0.2.0", "stable");
         let sig = sign_manifest(&m, &secret).unwrap();
         assert!(verify_manifest(&m, &sig, &[other], "stable").is_err());
@@ -615,7 +643,7 @@ mod tests {
             updater.check("99.0.0").unwrap().is_none(),
             "already up to date"
         );
-        let other = ed25519_dalek::SigningKey::from_bytes(&[9; 32]).verifying_key();
+        let other = TrustedKey::from_seed(&[9; 32]).unwrap();
         assert!(
             Updater::new(&base, "stable", vec![other])
                 .check("1.0.0")

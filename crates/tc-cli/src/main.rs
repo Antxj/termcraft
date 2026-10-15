@@ -260,7 +260,7 @@ fn update(cmd: UpdateCmd) -> anyhow::Result<()> {
         UpdateCmd::Keygen => {
             let mut seed = [0u8; 32];
             getrandom::fill(&mut seed).map_err(|e| anyhow::anyhow!("rng: {e}"))?;
-            let public = ed25519_dalek::SigningKey::from_bytes(&seed).verifying_key();
+            let public = tc_update::TrustedKey::from_seed(&seed)?;
             println!("TERMCRAFT_UPDATE_SECRET={}", b64.encode(seed));
             println!("TERMCRAFT_UPDATE_PUBKEY={}", b64.encode(public.to_bytes()));
         }
