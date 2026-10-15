@@ -92,6 +92,9 @@ pub struct ConnectParams {
     pub preserve_dates: bool,
     /// "Expert SSH settings" algorithm lists (target server only).
     pub algorithms: algorithms::Algorithms,
+    /// 3_36 "Use certificate with the private key": an OpenSSH
+    /// certificate (`*-cert.pub`) for the private key (target only).
+    pub certificate: Option<PathBuf>,
 }
 
 impl ConnectParams {
@@ -644,6 +647,8 @@ pub(crate) struct ConnectOptions<'a> {
     pub show_banner: bool,
     /// See [`ConnectParams::algorithms`].
     pub algorithms: algorithms::Algorithms,
+    /// See [`ConnectParams::certificate`].
+    pub certificate: Option<&'a std::path::Path>,
 }
 
 fn client_config(
@@ -786,6 +791,7 @@ pub(crate) async fn establish(
         authenticate(
             &mut proxy_handle,
             &ep,
+            None,
             &opts.agent,
             opts.refuse_trivial_auth,
             replies,
@@ -823,6 +829,7 @@ pub(crate) async fn establish(
         authenticate(
             &mut gw_handle,
             gw,
+            None,
             &opts.agent,
             opts.refuse_trivial_auth,
             replies,
@@ -860,6 +867,7 @@ pub(crate) async fn establish(
     authenticate(
         &mut handle,
         target,
+        opts.certificate,
         &opts.agent,
         opts.refuse_trivial_auth,
         replies,
@@ -957,6 +965,7 @@ async fn run_shell(
             refuse_trivial_auth: params.refuse_trivial_auth,
             show_banner: params.show_banner,
             algorithms: params.algorithms.clone(),
+            certificate: params.certificate.as_deref(),
         },
         &replies,
         &events,
@@ -1242,9 +1251,11 @@ fn load_key_file(path: &std::path::Path, pass: Option<&str>) -> Result<keys::Pri
 }
 
 /// Key file, then the SSH agents, then password / keyboard-interactive.
+#[allow(clippy::too_many_arguments)]
 async fn authenticate(
     session: &mut client::Handle<Handler>,
     endpoint: &Endpoint,
+    certificate: Option<&std::path::Path>,
     agent_config: &AgentConfig,
     refuse_trivial: bool,
     replies: &Replies,
@@ -1279,16 +1290,33 @@ async fn authenticate(
             }
         };
         if let Some(key) = key {
+            let key = Arc::new(key);
+            // With its certificate first, then the plain key.
+            if let Some(cert_path) = certificate {
+                match keys::load_openssh_certificate(cert_path) {
+                    Ok(cert) => {
+                        let result = session
+                            .authenticate_openssh_cert(user.clone(), key.clone(), cert)
+                            .await
+                            .map_err(err)?;
+                        if result.success() {
+                            return Ok(());
+                        }
+                        events.send(SshEvent::Info("Server refused our certificate".into()));
+                    }
+                    Err(e) => events.send(SshEvent::Info(format!(
+                        "cannot load certificate {}: {e}",
+                        cert_path.display()
+                    ))),
+                }
+            }
             let hash = session
                 .best_supported_rsa_hash()
                 .await
                 .map_err(err)?
                 .flatten();
             let result = session
-                .authenticate_publickey(
-                    user.clone(),
-                    PrivateKeyWithHashAlg::new(Arc::new(key), hash),
-                )
+                .authenticate_publickey(user.clone(), PrivateKeyWithHashAlg::new(key, hash))
                 .await
                 .map_err(err)?;
             if result.success() {

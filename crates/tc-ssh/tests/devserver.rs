@@ -52,6 +52,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         show_banner: false,
         preserve_dates: true,
         algorithms: Default::default(),
+        certificate: None,
     }
 }
 
@@ -1089,4 +1090,92 @@ fn expert_algorithm_lists_are_negotiated() {
     let out = drive(&s, accept_and_login);
     assert!(out.errors.is_empty(), "{out:?}");
     assert!(out.output.contains("algorithms-ok"), "{out:?}");
+}
+
+/// A certificate that cannot be read is reported; the key is still used.
+#[test]
+fn unreadable_certificate_falls_back_to_the_key() {
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[43; 32]));
+    let config = DevConfig {
+        authorized_keys: vec![key.public_key().clone()],
+        ..DevConfig::default()
+    };
+    let server = start(config);
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("id_ed25519");
+    std::fs::write(
+        &key_path,
+        key.to_openssh(LineEnding::LF).unwrap().as_bytes(),
+    )
+    .unwrap();
+    let cert = dir.path().join("id_ed25519-cert.pub");
+    std::fs::write(&cert, "not a certificate").unwrap();
+
+    let mut p = params(server.port, &dir.path().join("known_hosts"), "echo via-key");
+    p.private_key = Some(key_path);
+    p.certificate = Some(cert);
+    let s = SshSession::connect(p, noop());
+    let mut infos = Vec::new();
+    let out = drive(&s, |e| {
+        if let SshEvent::Info(i) = e {
+            infos.push(i.clone());
+        }
+        accept_and_login(e)
+    });
+    assert!(out.output.contains("via-key"), "{out:?}");
+    assert!(
+        infos.iter().any(|i| i.contains("cannot load certificate")),
+        "{infos:?}"
+    );
+}
+
+/// "Use certificate with the private key": the server trusts the CA,
+/// not the key itself.
+#[test]
+fn certificate_login() {
+    use russh::keys::ssh_key::certificate::{Builder, CertType};
+    let ca = PrivateKey::from(Ed25519Keypair::from_seed(&[7; 32]));
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[8; 32]));
+    let config = DevConfig {
+        user_ca: Some(ca.public_key().clone()),
+        ..DevConfig::default()
+    };
+    let user = config.user.clone();
+    let server = start(config);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mut builder = Builder::new_with_random_nonce(
+        &mut russh::keys::key::safe_rng(),
+        key.public_key(),
+        now - 60,
+        now + 3600,
+    )
+    .unwrap();
+    builder.cert_type(CertType::User).unwrap();
+    builder.valid_principal(&user).unwrap();
+    let cert = builder.sign(&ca).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("id_ed25519");
+    std::fs::write(
+        &key_path,
+        key.to_openssh(LineEnding::LF).unwrap().as_bytes(),
+    )
+    .unwrap();
+    let cert_path = dir.path().join("id_ed25519-cert.pub");
+    std::fs::write(&cert_path, cert.to_openssh().unwrap()).unwrap();
+
+    let mut p = params(
+        server.port,
+        &dir.path().join("known_hosts"),
+        "echo via-cert",
+    );
+    p.private_key = Some(key_path);
+    p.certificate = Some(cert_path);
+    let s = SshSession::connect(p, noop());
+    let out = drive(&s, accept_and_login);
+    assert_eq!(out.secret_prompts, 0, "no password: {out:?}");
+    assert!(out.output.contains("via-cert"), "{out:?}");
 }

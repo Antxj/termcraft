@@ -43,6 +43,8 @@ pub struct DevConfig {
     /// Behave like a hostile server for tests: refuse the password, then
     /// accept keyboard-interactive without asking anything.
     pub trivial_auth: bool,
+    /// Accept user certificates signed by this CA (OpenSSH certificates).
+    pub user_ca: Option<PublicKey>,
 }
 
 impl Default for DevConfig {
@@ -57,6 +59,7 @@ impl Default for DevConfig {
             exec_shell: None,
             sftp_subsystem: true,
             trivial_auth: false,
+            user_ca: None,
         }
     }
 }
@@ -156,6 +159,24 @@ impl russh::server::Handler for Conn {
             .iter()
             .any(|k| k.key_data() == key.key_data());
         Ok(if user == self.config.user && known {
+            Auth::Accept
+        } else {
+            reject()
+        })
+    }
+
+    async fn auth_openssh_certificate(
+        &mut self,
+        user: &str,
+        certificate: &russh::keys::Certificate,
+    ) -> Result<Auth, Self::Error> {
+        let Some(ca) = &self.config.user_ca else {
+            return Ok(reject());
+        };
+        let fingerprint = ca.fingerprint(russh::keys::HashAlg::Sha256);
+        let valid = certificate.validate([&fingerprint]).is_ok()
+            && certificate.valid_principals().iter().any(|p| p == user);
+        Ok(if user == self.config.user && valid {
             Auth::Accept
         } else {
             reject()

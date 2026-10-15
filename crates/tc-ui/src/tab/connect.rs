@@ -132,6 +132,7 @@ impl Tab {
             show_banner: false,
             preserve_dates: false,
             algorithms: Default::default(),
+            certificate: None,
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -223,6 +224,7 @@ impl Tab {
             show_banner: false,
             preserve_dates,
             algorithms: Default::default(),
+            certificate: None,
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -442,6 +444,10 @@ impl Tab {
                     prefer_known: opt("3_33").is_none_or(schema::is_true),
                 }
             },
+            certificate: opt("3_36")
+                .map(str::trim)
+                .filter(|c| !c.is_empty() && *c != "<>")
+                .map(local_path),
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());

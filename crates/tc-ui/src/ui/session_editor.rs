@@ -1458,7 +1458,6 @@ const NOT_APPLIED: &[(Option<usize>, &str)] = &[
     // SSH: protocol version, algorithm lists, certificates, locales.
     (Some(0), "3_24"),
     (Some(0), "3_28"),
-    (Some(0), "3_36"),
     (Some(0), "3_37"),
     (Some(0), "3_38"),
     (Some(0), "3_39"),
