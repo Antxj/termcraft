@@ -75,6 +75,8 @@ struct Ctl {
     items: Vec<String>,
     /// The panel it is on ("" = directly on the page).
     panel: String,
+    /// The bound label is above the control.
+    label_above: bool,
 }
 
 fn hidden(o: &Object) -> bool {
@@ -110,6 +112,8 @@ fn controls(o: &Object, dx: i64, dy: i64, panel: &str, out: &mut Vec<Ctl>) {
         let bound = matches!(c.prop("BoundLabel.Active"), Some(Value::Bool(true)))
             .then(|| c.str_prop("BoundLabel.Caption"))
             .flatten();
+        let label_above = bound.is_some()
+            && matches!(c.prop("BoundLabel.Layout"), Some(Value::Ident(l)) if l.starts_with("sclTop"));
         let caption = c
             .str_prop("Caption")
             .filter(|s| !s.is_empty())
@@ -141,6 +145,7 @@ fn controls(o: &Object, dx: i64, dy: i64, panel: &str, out: &mut Vec<Ctl>) {
                 Vec::new()
             },
             panel: panel.to_string(),
+            label_above,
         });
         if kind == "Group" {
             controls(c, x, y, panel, out);
@@ -208,8 +213,8 @@ pub fn generate(r: &Reference) -> Result<String> {
             for c in ctls {
                 let _ = writeln!(
                     out,
-                    "            Ctl {{ name: {:?}, kind: Kind::{}, x: {}, y: {}, w: {}, h: {}, caption: {:?}, items: &{:?}, panel: {:?} }},",
-                    c.name, c.kind, c.x, c.y, c.w, c.h, c.caption, c.items, c.panel
+                    "            Ctl {{ name: {:?}, kind: Kind::{}, x: {}, y: {}, w: {}, h: {}, caption: {:?}, items: &{:?}, panel: {:?}, label_above: {} }},",
+                    c.name, c.kind, c.x, c.y, c.w, c.h, c.caption, c.items, c.panel, c.label_above
                 );
             }
             out.push_str("        ],\n    },\n");

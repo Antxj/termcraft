@@ -89,7 +89,11 @@ pub(super) fn paste_delay(session: Option<&Session>) -> std::time::Duration {
 
 /// The local X server for X11 forwarding: `$DISPLAY`, else XQuartz on
 /// macOS (started on demand); with a notice for the terminal.
-pub(super) fn x11_display() -> (Option<String>, Option<&'static str>) {
+pub(super) fn x11_display(offset: u16) -> (Option<String>, Option<&'static str>) {
+    // Windows: the X server TermCraft starts listens on `localhost:N`.
+    if cfg!(windows) && std::env::var_os("DISPLAY").is_none() {
+        return (Some(format!("localhost:{offset}.0")), None);
+    }
     if let Some(d) = tc_ssh::x11::default_display() {
         return (Some(d), None);
     }

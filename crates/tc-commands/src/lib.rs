@@ -38,6 +38,21 @@ pub enum Command {
         #[serde(default = "yes")]
         host_keys: bool,
     },
+    /// Settings › "Export configuration": the settings as a TOML file (no
+    /// passwords: they stay in the password store).
+    ConfigExport {
+        path: String,
+        /// Replace an existing file.
+        #[serde(default)]
+        overwrite: bool,
+    },
+    /// Settings › "Import configuration": settings from a file written by
+    /// `config_export`.
+    ConfigImport {
+        path: String,
+    },
+    /// Settings › "Reset configuration": every setting back to its default.
+    ConfigReset {},
     /// "Import PuTTY sessions" (registry on Windows, ~/.putty on Unix).
     SessionImportPutty {},
     /// "Import WSL sessions": one session per installed distribution.
@@ -107,6 +122,10 @@ pub enum Command {
     /// Bring the window to the front (a second start shows the running
     /// window instead of opening another one).
     WindowShow {},
+    /// "Start X server" (Configuration › X11 settings).
+    XServerStart {},
+    /// Stop the X server TermCraft started.
+    XServerStop {},
     TabOpen {
         /// Session name or id; omitted = local shell.
         #[serde(default)]
@@ -222,6 +241,9 @@ impl Command {
             Self::SessionRemove { .. } => "session_remove",
             Self::SessionImportMobaxterm { .. } => "session_import_mobaxterm",
             Self::ConfigImportMobaxterm { .. } => "config_import_mobaxterm",
+            Self::ConfigExport { .. } => "config_export",
+            Self::ConfigImport { .. } => "config_import",
+            Self::ConfigReset {} => "config_reset",
             Self::SessionImportPutty {} => "session_import_putty",
             Self::SessionImportWsl {} => "session_import_wsl",
             Self::SessionImportSshConfig { .. } => "session_import_ssh_config",
@@ -237,6 +259,8 @@ impl Command {
             Self::SessionUpdate { .. } => "session_update",
             Self::TabList {} => "tab_list",
             Self::WindowShow {} => "window_show",
+            Self::XServerStart {} => "x_server_start",
+            Self::XServerStop {} => "x_server_stop",
             Self::TabOpen { .. } => "tab_open",
             Self::TabSend { .. } => "tab_send",
             Self::TabQuickConnect { .. } => "tab_quick_connect",
@@ -320,6 +344,13 @@ pub trait Host {
 
     fn window_show(&mut self) -> Result<(), CommandError> {
         Err(CommandError::Unsupported("the window is a GUI feature"))
+    }
+    /// Start the X server; returns its display (`:0`) and program.
+    fn x_server_start(&mut self) -> Result<Value, CommandError> {
+        Err(CommandError::Unsupported("the X server is a GUI feature"))
+    }
+    fn x_server_stop(&mut self) -> Result<(), CommandError> {
+        Err(CommandError::Unsupported("the X server is a GUI feature"))
     }
     fn tab_list(&self) -> Result<Vec<TabInfo>, CommandError> {
         Err(CommandError::Unsupported("tabs require the GUI"))
@@ -487,6 +518,41 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
                 "host_keys_verified": keys.verified,
                 "host_keys_skipped": keys.skipped,
             }))
+        }
+        Command::ConfigExport { path, overwrite } => {
+            let file = std::path::Path::new(&path);
+            if file.exists() && !overwrite {
+                return Err(CommandError::InvalidArgs(format!(
+                    "{path} exists (pass overwrite to replace it)"
+                )));
+            }
+            host.settings()?
+                .save(file)
+                .map_err(|e| CommandError::Failed(e.to_string()))?;
+            Ok(json!({ "path": path }))
+        }
+        Command::ConfigImport { path } => {
+            let file = std::path::Path::new(&path);
+            let size = std::fs::metadata(file)
+                .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?
+                .len();
+            if size > 4 * 1024 * 1024 {
+                return Err(CommandError::InvalidArgs(format!("{path} is too large")));
+            }
+            let imported = tc_core::Settings::load(file)
+                .map_err(|e| CommandError::InvalidArgs(e.to_string()))?;
+            *host.settings()? = imported;
+            host.persist_settings()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::ConfigReset {} => {
+            let settings = host.settings()?;
+            // The first-start offer to import a MobaXterm.ini is not made again.
+            let offered = settings.general.mobaxterm_import_offered;
+            *settings = tc_core::Settings::default();
+            settings.general.mobaxterm_import_offered = offered;
+            host.persist_settings()?;
+            Ok(json!({ "ok": true }))
         }
         Command::SessionFolderAdd { path } => {
             let path = host
@@ -672,6 +738,11 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         }
         Command::WindowShow {} => {
             host.window_show()?;
+            Ok(json!({ "ok": true }))
+        }
+        Command::XServerStart {} => host.x_server_start(),
+        Command::XServerStop {} => {
+            host.x_server_stop()?;
             Ok(json!({ "ok": true }))
         }
         Command::TabList {} => to_json(&host.tab_list()?),
@@ -1285,5 +1356,70 @@ mod tests {
         let mut host = MemHost::default();
         let err = execute(&mut host, Command::TabList {}).unwrap_err();
         assert!(matches!(err, CommandError::Unsupported(_)));
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    struct SettingsHost {
+        store: SessionStore,
+        settings: tc_core::Settings,
+    }
+
+    impl Host for SettingsHost {
+        fn store(&mut self) -> &mut SessionStore {
+            &mut self.store
+        }
+        fn persist(&mut self) -> Result<(), CommandError> {
+            Ok(())
+        }
+        fn settings(&mut self) -> Result<&mut tc_core::Settings, CommandError> {
+            Ok(&mut self.settings)
+        }
+    }
+
+    #[test]
+    fn export_reset_import() {
+        let dir = std::env::temp_dir().join(format!("tc-config-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("settings.toml");
+        let path = file.display().to_string();
+        let mut host = SettingsHost {
+            store: SessionStore::default(),
+            settings: tc_core::Settings::default(),
+        };
+        host.settings.ssh.default_login = "me".into();
+        host.settings.general.mobaxterm_import_offered = true;
+        let export = |overwrite| Command::ConfigExport {
+            path: path.clone(),
+            overwrite,
+        };
+        execute(&mut host, export(false)).unwrap();
+        assert!(
+            execute(&mut host, export(false)).is_err(),
+            "no silent overwrite"
+        );
+
+        execute(&mut host, Command::ConfigReset {}).unwrap();
+        assert_eq!(host.settings.ssh.default_login, "");
+        assert!(
+            host.settings.general.mobaxterm_import_offered,
+            "not offered again"
+        );
+
+        execute(&mut host, Command::ConfigImport { path: path.clone() }).unwrap();
+        assert_eq!(host.settings.ssh.default_login, "me");
+
+        std::fs::write(&file, "not = [toml").unwrap();
+        assert!(execute(&mut host, Command::ConfigImport { path: path.clone() }).is_err());
+        let missing = dir.join("missing.toml").display().to_string();
+        assert!(execute(&mut host, Command::ConfigImport { path: missing }).is_err());
+        assert_eq!(
+            host.settings.ssh.default_login, "me",
+            "kept after a failure"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

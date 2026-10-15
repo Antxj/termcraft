@@ -40,9 +40,46 @@ struct Core {
     show_requested: bool,
     /// The last tab was closed and the settings say to exit then.
     exit_requested: bool,
+    /// The X server TermCraft started, and its display number.
+    x_server: Option<XServer>,
+}
+
+/// Help › "Documentation".
+const DOCUMENTATION: &str = "https://github.com/Antxj/termcraft#readme";
+
+/// An X server started by TermCraft; stopped with it.
+struct XServer {
+    process: Option<std::process::Child>,
+    display: u16,
+}
+
+impl XServer {
+    fn running(&mut self) -> bool {
+        self.process
+            .as_mut()
+            .is_none_or(|p| matches!(p.try_wait(), Ok(None)))
+    }
+}
+
+impl Drop for XServer {
+    fn drop(&mut self) {
+        if let Some(p) = &mut self.process {
+            let _ = p.kill();
+            let _ = p.wait();
+        }
+    }
 }
 
 impl Core {
+    /// The display of the running X server (`None` = stopped).
+    fn x_display(&mut self) -> Option<u16> {
+        let running = self.x_server.as_mut().is_some_and(XServer::running);
+        if !running {
+            self.x_server = None;
+        }
+        self.x_server.as_ref().map(|x| x.display)
+    }
+
     /// Configuration › Security "Disable sessions" (a local terminal is a
     /// "Shell" session).
     fn check_session_allowed(&self, session: Option<&Session>) -> Result<(), CommandError> {
@@ -118,6 +155,7 @@ impl Core {
             paste_right_click: self.settings.terminal.paste_right_click,
             local_shell: self.settings.terminal.local_shell,
             save_key_passphrases: self.settings.passwords.save_key_passphrases,
+            x_display: self.settings.x_server.display,
             log_dir: Some(self.settings.terminal.log_dir.trim())
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
@@ -288,6 +326,7 @@ impl TermCraftApp {
                 servers: Default::default(),
                 show_requested: false,
                 exit_requested: false,
+                x_server: None,
             },
             updates,
             quick_connect: String::new(),
@@ -336,6 +375,10 @@ impl TermCraftApp {
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
         };
+        // "Automatically start X server at TermCraft start up".
+        if app.snapshot.is_none() && app.core.settings.x_server.autostart {
+            app.startup.push(Command::XServerStart {});
+        }
         // "Open the following tab at startup: <Terminal>".
         if app.snapshot.is_none()
             && app.startup.is_empty()
@@ -455,8 +498,64 @@ impl TermCraftApp {
                 return ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
             Action::About => return self.show_about = true,
+            Action::Documentation => {
+                if let Err(e) = crate::external::open_url(DOCUMENTATION) {
+                    self.status = format!("Documentation: {e}");
+                }
+                return;
+            }
             Action::PasswordsSettings => return self.passwords.open = true,
             Action::ManageCredentials => return self.passwords.open_credentials(),
+            Action::ExportConfig => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("termcraft-settings.toml")
+                    .add_filter("TermCraft settings", &["toml"])
+                    .save_file()
+                {
+                    let cmd = Command::ConfigExport {
+                        path: path.display().to_string(),
+                        overwrite: true,
+                    };
+                    self.status = match tc_commands::execute(&mut self.core, cmd) {
+                        Ok(_) => format!("Configuration written to {}", path.display()),
+                        Err(e) => e.to_string(),
+                    };
+                }
+                return;
+            }
+            Action::ImportConfig => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("TermCraft settings", &["toml"])
+                    .pick_file()
+                {
+                    let cmd = Command::ConfigImport {
+                        path: path.display().to_string(),
+                    };
+                    self.status = match tc_commands::execute(&mut self.core, cmd) {
+                        Ok(_) => format!("Configuration imported from {}", path.display()),
+                        Err(e) => e.to_string(),
+                    };
+                }
+                return;
+            }
+            Action::ResetConfig => {
+                let answer = rfd::MessageDialog::new()
+                    .set_title("Reset configuration")
+                    .set_description(
+                        "Set every TermCraft setting back to its default? Sessions, saved \
+                         passwords and macros are kept.",
+                    )
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show();
+                if answer == rfd::MessageDialogResult::Yes {
+                    self.status =
+                        match tc_commands::execute(&mut self.core, Command::ConfigReset {}) {
+                            Ok(_) => "Configuration reset to the defaults".into(),
+                            Err(e) => e.to_string(),
+                        };
+                }
+                return;
+            }
             Action::ExportHtml => {
                 if let Some(path) = rfd::FileDialog::new()
                     .set_file_name("sessions.html")
@@ -567,6 +666,9 @@ impl TermCraftApp {
                 return;
             }
             Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
+            Action::NewSessionOfType(index) => {
+                return self.editor = Some(SessionEditor::new_of_type(index));
+            }
             Action::EditSession(id) => {
                 self.editor = self.core.store.get(id).map(SessionEditor::edit);
                 return;
@@ -1191,6 +1293,7 @@ impl eframe::App for TermCraftApp {
 
         let mut out = shortcuts;
         let view = self.core.settings.view.clone();
+        let x_display = self.core.x_display();
 
         if view.show_menu_bar && !view.compact {
             let cx = menus::MenuCtx {
@@ -1200,6 +1303,7 @@ impl eframe::App for TermCraftApp {
                 recording: self.recording.is_some(),
                 has_tab: !self.core.tabs.is_empty(),
                 active_tab: self.core.active,
+                x_display,
             };
             egui::Panel::top("menu").show(ui, |ui| menus::menu_bar(ui, &cx, &mut out));
         }
@@ -1207,7 +1311,9 @@ impl eframe::App for TermCraftApp {
             let sessions = &self.core.store.sessions;
             egui::Panel::top("toolbar")
                 .exact_size(toolbar::height(view.toolbar_style))
-                .show(ui, |ui| toolbar::show(ui, &view, sessions, &mut out));
+                .show(ui, |ui| {
+                    toolbar::show(ui, &view, sessions, x_display, &mut out)
+                });
         }
         if !view.compact {
             self.status_bar(ui);

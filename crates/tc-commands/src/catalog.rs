@@ -60,6 +60,32 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "config_export",
+        title: "Export configuration",
+        description: "Write the TermCraft settings to a TOML file (no passwords: they stay in \
+                      the password store). An existing file is only replaced with overwrite.",
+        input_schema: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"overwrite":{"type":"boolean"}}}"#,
+        example_args: r#"{"path":"termcraft-settings.toml"}"#,
+        mutating: false,
+    },
+    CommandSpec {
+        name: "config_import",
+        title: "Import configuration",
+        description: "Replace the TermCraft settings with a file written by config_export.",
+        input_schema: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string"}}}"#,
+        example_args: r#"{"path":"termcraft-settings.toml"}"#,
+        mutating: true,
+    },
+    CommandSpec {
+        name: "config_reset",
+        title: "Reset configuration",
+        description: "Set every TermCraft setting back to its default (sessions, passwords and \
+                      macros are kept).",
+        input_schema: EMPTY,
+        example_args: "{}",
+        mutating: true,
+    },
+    CommandSpec {
         name: "session_import_mobaxterm",
         title: "Import MobaXterm sessions",
         description: "Import sessions from an exported .mxtsessions file or a MobaXterm.ini. \
@@ -180,6 +206,23 @@ pub const CATALOG: &[CommandSpec] = &[
         input_schema: EMPTY,
         example_args: "{}",
         mutating: false,
+    },
+    CommandSpec {
+        name: "x_server_start",
+        title: "Start X server",
+        description: "Start the local X server with the Configuration › X11 settings (VcXsrv or \
+                      Xming on Windows, XQuartz on macOS; GUI only). Returns its display.",
+        input_schema: EMPTY,
+        example_args: "{}",
+        mutating: true,
+    },
+    CommandSpec {
+        name: "x_server_stop",
+        title: "Stop X server",
+        description: "Stop the X server TermCraft started (GUI only).",
+        input_schema: EMPTY,
+        example_args: "{}",
+        mutating: true,
     },
     CommandSpec {
         name: "tab_list",

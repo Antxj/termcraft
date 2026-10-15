@@ -48,6 +48,8 @@ pub enum Action {
     /// View › Compact mode.
     ToggleCompact,
     About,
+    /// Help › "Documentation": the project's documentation in the browser.
+    Documentation,
     PasswordsSettings,
     /// Passwords settings on the Credentials tab.
     ManageCredentials,
@@ -61,6 +63,11 @@ pub enum Action {
     TextEditor,
     /// "Generate HTML web page" (asks where to save).
     ExportHtml,
+    /// Settings › "Export configuration" / "Import configuration" (ask for
+    /// the file) and "Reset configuration" (asks first).
+    ExportConfig,
+    ImportConfig,
+    ResetConfig,
     /// "Execute all sessions from this folder".
     OpenFolder(String),
     /// "Close all folders" in the sessions tree.
@@ -90,6 +97,8 @@ pub enum Action {
     /// options" first).
     DesktopShortcut(String),
     NewSession,
+    /// The session editor for a new session of this type (index).
+    NewSessionOfType(usize),
     EditSession(SessionId),
     RenameTab(u64),
     RenameSession(SessionId),

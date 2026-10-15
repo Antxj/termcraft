@@ -54,6 +54,9 @@ pub struct TabEnv {
     pub log_dir: Option<PathBuf>,
     /// Configuration › Security "Disable log".
     pub disable_log: bool,
+    /// Configuration › X11 "Display offset": the local display of X11
+    /// forwarding on Windows.
+    pub x_display: u16,
     /// "Use Windows PATH" in the local Bash / Zsh.
     pub use_windows_path: bool,
     /// Configured terminal colors and cursor, if any.
@@ -245,6 +248,8 @@ pub struct Tab {
     pub backspace_sends_ctrl_h: bool,
     pub paste_right_click: bool,
     ssh_settings: tc_core::settings::SshSettings,
+    /// See [`TabEnv::x_display`].
+    x_display: u16,
     term_type: Option<String>,
     /// FTP connection waiting for its password prompt.
     pending_ftp: Option<tc_net::ftp::FtpParams>,
@@ -379,6 +384,7 @@ impl Tab {
             backspace_sends_ctrl_h: false,
             paste_right_click: env.paste_right_click,
             ssh_settings: env.ssh.clone(),
+            x_display: env.x_display,
             term_type: None,
             pending_ftp: None,
             pending_s3: None,

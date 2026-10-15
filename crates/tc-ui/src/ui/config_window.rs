@@ -189,7 +189,13 @@ fn control(
     state: &mut ConfigState,
     out: &mut Vec<Action>,
 ) {
-    let caption = c.caption.trim();
+    // A label above the control is drawn here; the control gets none.
+    let caption = if c.label_above && c.kind != Kind::List {
+        super::form::label_over(ui, rect, c.caption);
+        ""
+    } else {
+        c.caption.trim()
+    };
     let check = |ui: &mut egui::Ui, value: &mut bool| {
         ui.put(rect, egui::Checkbox::new(value, caption));
     };
@@ -645,6 +651,87 @@ fn control(
         }
         ("sTabSheet2", "sCheckBox63") => check(ui, &mut s.general.multiple_instances),
         ("OngletSSH", "sCheckBox61") => check(ui, &mut s.ssh.show_banner),
+        // -------------------------------------------------------------- X11
+        ("OngletX11", "sCheckBox3") => check(ui, &mut s.x_server.autostart),
+        ("OngletX11", "sComboBox6") => {
+            use tc_core::settings::XDisplayMode;
+            let mut index = XDisplayMode::ALL
+                .iter()
+                .position(|m| *m == s.x_server.display_mode)
+                .unwrap_or(0);
+            let labels: Vec<&str> = XDisplayMode::ALL.iter().map(|m| m.label()).collect();
+            if choice(ui, rect, caption, "cfg-x-mode", &labels, &mut index) {
+                s.x_server.display_mode = XDisplayMode::ALL[index];
+            }
+        }
+        ("OngletX11", "sComboBox12") => {
+            let mut index = usize::from(!s.x_server.opengl_hardware);
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-x-gl",
+                &["hardware", "software"],
+                &mut index,
+            ) {
+                s.x_server.opengl_hardware = index == 0;
+            }
+        }
+        ("OngletX11", "sComboBox7") => {
+            let mut index = usize::from(s.x_server.clipboard.min(2));
+            let items = ["disabled", "enabled", "disable primary"];
+            if choice(ui, rect, caption, "cfg-x-clip", &items, &mut index) {
+                s.x_server.clipboard = u8::try_from(index).unwrap_or(1);
+            }
+        }
+        ("OngletX11", "sComboBox5") => {
+            // The XKB layouts of the XDMCP "Keyboard type" list.
+            let layouts: Vec<&str> = tc_core::schema::type_params(3)
+                .iter()
+                .find(|p| p.id == "3_11")
+                .and_then(|p| match p.widget {
+                    tc_core::schema::Widget::Choice(items) => Some(items.to_vec()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| vec!["Automatic"]);
+            let mut index = layouts
+                .iter()
+                .position(|l| *l == s.x_server.keyboard)
+                .unwrap_or(0);
+            if choice(ui, rect, caption, "cfg-x-kbd", &layouts, &mut index) {
+                s.x_server.keyboard = if index == 0 {
+                    String::new()
+                } else {
+                    layouts[index].to_string()
+                };
+            }
+        }
+        ("OngletX11", "sSpinEdit1") => {
+            bound_label(ui, rect, caption);
+            ui.put(
+                rect,
+                egui::DragValue::new(&mut s.x_server.display).range(0..=99),
+            )
+            .on_hover_text("The X display number: :0, :1 ...");
+        }
+        ("OngletX11", "sComboBox4") => {
+            let values = [0u16, 96, 120, 144, 192];
+            let labels = ["auto", "96", "120", "144", "192"];
+            let mut index = values
+                .iter()
+                .position(|v| *v == s.x_server.dpi)
+                .unwrap_or(0);
+            if choice(ui, rect, caption, "cfg-x-dpi", &labels, &mut index) {
+                s.x_server.dpi = values[index];
+            }
+        }
+        ("OngletX11", "ComboAccessControl") => {
+            let mut index = usize::from(s.x_server.remote_access);
+            let items = ["disabled", "full (no access control)"];
+            if choice(ui, rect, caption, "cfg-x-access", &items, &mut index) {
+                s.x_server.remote_access = index == 1;
+            }
+        }
         // ---------------------------------------------------------- Security
         ("OngletCustom", "sCheckBox25") => check(ui, &mut s.passwords.disable_show),
         ("OngletCustom", "ChkDisablePassphraseCaching") => {
@@ -753,6 +840,8 @@ fn control(
                 }
             }
             Kind::List if !c.items.is_empty() => list(ui, rect, c),
+            // Its label above is drawn already.
+            _ if c.label_above => placeholder(ui, &Ctl { caption: "", ..*c }, rect),
             _ => placeholder(ui, c, rect),
         },
     }

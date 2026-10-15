@@ -48,6 +48,8 @@ const MANAGE: &str = "manage_sessions";
 const EDITOR: &str = "editor";
 const ABOUT: &str = "about";
 const EXIT: &str = "exit";
+const X_SERVER: &str = "x_server";
+const DOCS: &str = "documentation";
 /// Prefix of the menu ids of saved sessions (followed by the session id).
 const SESSION: &str = "session:";
 
@@ -143,6 +145,8 @@ pub fn menu_request(id: &str) -> Option<Request> {
         MANAGE => Request::Then(Action::SidebarTab(tc_core::settings::SidebarTab::Sessions)),
         EDITOR => Request::Then(Action::TextEditor),
         ABOUT => Request::Then(Action::About),
+        X_SERVER => Request::Then(Action::Run(Command::XServerStart {})),
+        DOCS => Request::Then(Action::Documentation),
         EXIT => Request::Then(Action::Quit),
         _ => {
             let id = id.strip_prefix(SESSION)?;
@@ -163,11 +167,6 @@ fn fingerprint(sessions: &[Session]) -> u64 {
 
 fn item(id: &str, text: &str) -> MenuItem {
     MenuItem::with_id(id, text, true, None)
-}
-
-/// Not available in TermCraft yet: shown greyed out, as in the menus.
-fn unavailable(text: &str) -> MenuItem {
-    MenuItem::new(text, false, None)
 }
 
 /// Sessions grouped by folder (`a/b` → submenu a › submenu b).
@@ -217,10 +216,10 @@ fn menu(sessions: &[Session]) -> Menu {
         &PredefinedMenuItem::separator(),
         &sessions_menu,
         &PredefinedMenuItem::separator(),
-        &unavailable("Start X server"),
+        &item(X_SERVER, "Start X server"),
         &item(EDITOR, "Text editor"),
         &PredefinedMenuItem::separator(),
-        &unavailable("Documentation"),
+        &item(DOCS, "Documentation"),
         &item(ABOUT, "About TermCraft"),
         &PredefinedMenuItem::separator(),
         &item(EXIT, "Exit TermCraft"),

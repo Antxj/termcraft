@@ -21,6 +21,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Do not exit after command ends",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit21",
@@ -32,6 +33,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Execute command: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox3",
@@ -43,6 +45,7 @@ pub const PAGES: &[Page] = &[
                 caption: "X11-Forwarding",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox4",
@@ -54,6 +57,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Compression",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox12",
@@ -65,6 +69,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote environment: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox23",
@@ -76,6 +81,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use private key ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sFilenameEdit2",
@@ -87,6 +93,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox27",
@@ -98,6 +105,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Try to follow SSH path in browser",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox35",
@@ -109,6 +117,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSH-browser type: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn12",
@@ -120,6 +129,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Expert SSH settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -140,6 +150,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Extra options: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox18",
@@ -151,6 +162,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Telnet client: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox28",
@@ -162,6 +174,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enable Telnet KeepAlive",
                 items: &[],
                 panel: "sPanel5",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox53",
@@ -173,6 +186,7 @@ pub const PAGES: &[Page] = &[
                 caption: "<Return> key sends <newline> telnet code instead of <ctrl+M>",
                 items: &[],
                 panel: "sPanel5",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox40",
@@ -184,6 +198,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Negotiation mode: ",
                 items: &[],
                 panel: "sPanel5",
+                label_above: false,
             },
         ],
     },
@@ -203,6 +218,7 @@ pub const PAGES: &[Page] = &[
             caption: "Extra options: ",
             items: &[],
             panel: "",
+            label_above: false,
         }],
     },
     Page {
@@ -222,6 +238,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Sender IP: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox2",
@@ -233,6 +250,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enable font server",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit24",
@@ -244,6 +262,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox8",
@@ -255,6 +274,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox9",
@@ -266,6 +286,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Keyboard type ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit7",
@@ -277,6 +298,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit8",
@@ -288,6 +310,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Start XDMCP on screen number ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit9",
@@ -299,6 +322,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit10",
@@ -310,6 +334,7 @@ pub const PAGES: &[Page] = &[
                 caption: "x ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox17",
@@ -321,6 +346,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Set Numlock off",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox22",
@@ -332,6 +358,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Clipboard ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -352,6 +379,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Display settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel5",
@@ -363,6 +391,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Local resources ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel8",
@@ -374,6 +403,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Session settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkAutoDetectResolution",
@@ -385,6 +415,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Autoscale",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox7",
@@ -396,6 +427,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Resolution ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CmbZoom",
@@ -407,6 +439,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Zoom ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox8",
@@ -418,6 +451,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enhanced graphics",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox10",
@@ -429,6 +463,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Redirect ports",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox7",
@@ -440,6 +475,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Redirect smartcards",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox41",
@@ -451,6 +487,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Share local/remote clipboards",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox12",
@@ -462,6 +499,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Redirect printers",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox11",
@@ -473,6 +511,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Redirect drives",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkRedirectMicro",
@@ -484,6 +523,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Redirect microphone",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox20",
@@ -495,6 +535,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Native authentication",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit13",
@@ -506,6 +547,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote command ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox31",
@@ -517,6 +559,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox51",
@@ -528,6 +571,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Forward keyboard shortcuts",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox5",
@@ -539,6 +583,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Admin console",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox39",
@@ -550,6 +595,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Server authentication ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnAdvancedRdpSettings",
@@ -561,6 +607,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Expert RDP settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox21",
@@ -572,6 +619,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Redirect webauthn",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -592,6 +640,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Auto scale display to fit the terminal size without scrollbars",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox15",
@@ -603,6 +652,7 @@ pub const PAGES: &[Page] = &[
                 caption: "View only (disable mouse and keyboard inputs)",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox54",
@@ -614,6 +664,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display VNC settings bar",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkNewVncEngine",
@@ -625,6 +676,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use new embedded VNC engine",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkVncSsl",
@@ -636,6 +688,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use SSL tunneling to secure the connection",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "EdVncUnixLogin",
@@ -647,6 +700,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use Unix login: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox52",
@@ -658,6 +712,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use IPv6",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -678,6 +733,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Passive mode",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit19",
@@ -689,6 +745,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote startup folder: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox30",
@@ -700,6 +757,7 @@ pub const PAGES: &[Page] = &[
                 caption: "FTPS mode",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox31",
@@ -711,6 +769,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Encrypt data channel",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox32",
@@ -722,6 +781,7 @@ pub const PAGES: &[Page] = &[
                 caption: "ASCII mode",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox19",
@@ -733,6 +793,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Proxy settings:  ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit25",
@@ -744,6 +805,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Server ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit26",
@@ -755,6 +817,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Password ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit27",
@@ -766,6 +829,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Login ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit11",
@@ -777,6 +841,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox35",
@@ -788,6 +853,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSL2",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox36",
@@ -799,6 +865,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSL3",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox37",
@@ -810,6 +877,7 @@ pub const PAGES: &[Page] = &[
                 caption: "TLS1",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox38",
@@ -821,6 +889,7 @@ pub const PAGES: &[Page] = &[
                 caption: "TLS1.1",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox39",
@@ -832,6 +901,7 @@ pub const PAGES: &[Page] = &[
                 caption: "TLS1.2",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox40",
@@ -843,6 +913,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Implicit SSL",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sDirectoryEdit3",
@@ -854,6 +925,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Local startup folder: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkTls13",
@@ -865,6 +937,7 @@ pub const PAGES: &[Page] = &[
                 caption: "TLS1.3",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -885,6 +958,7 @@ pub const PAGES: &[Page] = &[
                 caption: "UTF-8 Charset",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CheckBox3",
@@ -896,6 +970,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Compression",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit22",
@@ -907,6 +982,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote startup folder: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox29",
@@ -918,6 +994,7 @@ pub const PAGES: &[Page] = &[
                 caption: "ASCII mode",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox21",
@@ -929,6 +1006,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Proxy settings:  ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit29",
@@ -940,6 +1018,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Server: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit30",
@@ -951,6 +1030,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit13",
@@ -962,6 +1042,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit31",
@@ -973,6 +1054,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Password: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox34",
@@ -984,6 +1066,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use private key ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sFilenameEdit5",
@@ -995,6 +1078,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox33",
@@ -1006,6 +1090,7 @@ pub const PAGES: &[Page] = &[
                 caption: "2-steps authentication",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sDirectoryEdit2",
@@ -1017,6 +1102,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Local startup folder: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkPreserveFilesDates",
@@ -1028,6 +1114,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Preserve files dates",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1048,6 +1135,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Data bits ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox14",
@@ -1059,6 +1147,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Stop bits ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox15",
@@ -1070,6 +1159,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Parity ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox16",
@@ -1081,6 +1171,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Flow control",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn2",
@@ -1092,6 +1183,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Reset defaults",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel45",
@@ -1103,6 +1195,7 @@ pub const PAGES: &[Page] = &[
                 caption: "If you need to transfer files (e.g. router configuration file), you can use TermCraft embedded TFTP server",
                 items: &[],
                 panel: "sPanel7",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox17",
@@ -1114,6 +1207,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Serial engine: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1134,6 +1228,7 @@ pub const PAGES: &[Page] = &[
                 caption: "File/folder sessions allow you to\r\n- Open a specified folder in Windows explorer\r\n- Open a file using its default associated program\r\n- Launch URLs using the default web browser",
                 items: &[],
                 panel: "sPanel8",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox25",
@@ -1145,6 +1240,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Try to open the file/folder/url into a TermCraft tab (experimental)",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "EdAddedParams",
@@ -1156,6 +1252,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Additional parameters: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1176,6 +1273,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Execute the following commands at startup:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton27",
@@ -1187,6 +1285,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "Memo1",
@@ -1198,6 +1297,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sDirectoryEdit4",
@@ -1209,6 +1309,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Distribution directory ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1229,6 +1330,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display top bar",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox44",
@@ -1240,6 +1342,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display back button",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox45",
@@ -1251,6 +1354,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display forward button",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox46",
@@ -1262,6 +1366,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display refresh button",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox47",
@@ -1273,6 +1378,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display stop button",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox48",
@@ -1284,6 +1390,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display home button",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox49",
@@ -1295,6 +1402,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display address bar",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox50",
@@ -1306,6 +1414,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable external popup windows",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox33",
@@ -1317,6 +1426,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Emulate older Internet Explorer version: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboWhichBrowser",
@@ -1328,6 +1438,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Browser engine: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox22",
@@ -1339,6 +1450,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display top bar",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox24",
@@ -1350,6 +1462,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enable external popup windows",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox58",
@@ -1361,6 +1474,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enable Smartscreen",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox62",
@@ -1372,6 +1486,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Allow insecure localhost",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox67",
@@ -1383,6 +1498,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use Edge stored passwords",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox68",
@@ -1394,6 +1510,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enable context menus",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox2",
@@ -1405,6 +1522,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Proxy configuration ",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox38",
@@ -1416,6 +1534,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "EdProxyServer",
@@ -1427,6 +1546,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Server: ",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "EdProxyPort",
@@ -1438,6 +1558,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port: ",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
         ],
     },
@@ -1458,6 +1579,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Charset : ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox25",
@@ -1469,6 +1591,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Prediction type : ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit34",
@@ -1480,6 +1603,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Mosh-server path : ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit35",
@@ -1491,6 +1615,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Mosh UDP port : ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox42",
@@ -1502,6 +1627,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use SSH private key :",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit14",
@@ -1513,6 +1639,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSH port : ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sFilenameEdit6",
@@ -1524,6 +1651,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1543,6 +1671,7 @@ pub const PAGES: &[Page] = &[
             caption: "AWS S3 sessions are EXPERIMENTAL: you should use them for test purpose only.\r\nYou have to provide your Key ID and you will be prompted for your key secret before proceeding.",
             items: &[],
             panel: "sPanel2",
+            label_above: false,
         }],
     },
     Page {
@@ -1562,6 +1691,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Execute the following commands at startup:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "WslScript",
@@ -1573,6 +1703,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox36",
@@ -1584,6 +1715,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Graphical environment (experimental): ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "WslStartupDir",
@@ -1595,6 +1727,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Startup directory: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1615,6 +1748,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Color settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton22",
@@ -1626,6 +1760,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Customize",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton23",
@@ -1637,6 +1772,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Font settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox57",
@@ -1648,6 +1784,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Backspace sends ^H",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CheckPath",
@@ -1659,6 +1796,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use Windows PATH",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox18",
@@ -1670,6 +1808,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Log terminal output to:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sDirectoryEdit1",
@@ -1681,6 +1820,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox11",
@@ -1692,6 +1832,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Terminal type: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox32",
@@ -1703,6 +1844,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Syntax highlighting: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox34",
@@ -1714,6 +1856,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Paste delay: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnAdvancedTermSettings",
@@ -1725,6 +1868,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Expert settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1745,6 +1889,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Proxy settings (experimental) ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox20",
@@ -1756,6 +1901,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Proxy type: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit28",
@@ -1767,6 +1913,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Host: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit12",
@@ -1778,6 +1925,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit8",
@@ -1789,6 +1937,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Login: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit33",
@@ -1800,6 +1949,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Local proxy command: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnJumpHost",
@@ -1811,6 +1961,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSH gateway (jump host)",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -1831,6 +1982,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Session Icon",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn1",
@@ -1842,6 +1994,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Create a desktop shortcut to this session",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit1",
@@ -1853,6 +2006,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Session name: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox26",
@@ -1864,6 +2018,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Lock terminal title",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkReconnect",
@@ -1875,6 +2030,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display reconnection message at session end",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox10",
@@ -1886,6 +2042,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Start session in ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit16",
@@ -1897,6 +2054,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Comments: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkCustomTabColor",
@@ -1908,6 +2066,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Customize tab color",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CustomTabColor",
@@ -1919,6 +2078,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel4",
+                label_above: false,
             },
         ],
     },
@@ -1938,6 +2098,7 @@ pub const PAGES: &[Page] = &[
             caption: "SSH session",
             items: &[],
             panel: "",
+            label_above: false,
         }],
     },
     Page {
@@ -1957,6 +2118,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox27",
@@ -1968,6 +2130,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit1",
@@ -1979,6 +2142,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn4",
@@ -1990,6 +2154,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2010,6 +2175,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit3",
@@ -2021,6 +2187,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit2",
@@ -2032,6 +2199,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2052,6 +2220,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit7",
@@ -2063,6 +2232,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2083,6 +2253,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Connect to any server",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sRadioButton2",
@@ -2094,6 +2265,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Specify server to connect to:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "Edit1",
@@ -2105,6 +2277,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2125,6 +2298,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit4",
@@ -2136,6 +2310,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox28",
@@ -2147,6 +2322,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn5",
@@ -2158,6 +2334,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2178,6 +2355,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote hostname or IP address *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit5",
@@ -2189,6 +2367,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2209,6 +2388,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox29",
@@ -2220,6 +2400,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit6",
@@ -2231,6 +2412,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn6",
@@ -2242,6 +2424,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2262,6 +2445,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox30",
@@ -2273,6 +2457,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit3",
@@ -2284,6 +2469,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Port ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn3",
@@ -2295,6 +2481,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2315,6 +2502,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Serial port *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox3",
@@ -2326,6 +2514,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Speed (bps) *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2346,6 +2535,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton16",
@@ -2357,6 +2547,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit15",
@@ -2368,6 +2559,7 @@ pub const PAGES: &[Page] = &[
                 caption: "File/folder to open *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2388,6 +2580,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Terminal shell ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit20",
@@ -2399,6 +2592,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Startup directory ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2418,6 +2612,7 @@ pub const PAGES: &[Page] = &[
             caption: "URL *",
             items: &[],
             panel: "",
+            label_above: false,
         }],
     },
     Page {
@@ -2437,6 +2632,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote host *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox26",
@@ -2448,6 +2644,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Username ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn9",
@@ -2459,6 +2656,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2479,6 +2677,7 @@ pub const PAGES: &[Page] = &[
                 caption: "(Aws S3 sessions are experimental and should be used for test purpose only)",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit23",
@@ -2490,6 +2689,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Key ID *",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn10",
@@ -2501,6 +2701,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2521,6 +2722,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Distribution ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit6",
@@ -2532,6 +2734,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox1",
@@ -2543,6 +2746,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Specify username",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox23",
@@ -2554,6 +2758,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Run method ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2574,6 +2779,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton5",
@@ -2585,6 +2791,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton6",
@@ -2596,6 +2803,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton4",
@@ -2607,6 +2815,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton7",
@@ -2618,6 +2827,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton8",
@@ -2629,6 +2839,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton9",
@@ -2640,6 +2851,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton10",
@@ -2651,6 +2863,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit1",
@@ -2662,6 +2875,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Terminal home directory: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sFilenameEdit1",
@@ -2673,6 +2887,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Default text editor program: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox52",
@@ -2684,6 +2899,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Automatically backup TermCraft configuration file",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton2",
@@ -2695,6 +2911,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Windows right-click menu entries",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn14",
@@ -2706,6 +2923,7 @@ pub const PAGES: &[Page] = &[
                 caption: "TermCraft passwords management",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn12",
@@ -2717,6 +2935,7 @@ pub const PAGES: &[Page] = &[
                 caption: "TermCraft keyboard shortcuts",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton14",
@@ -2728,6 +2947,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Manage my shared sessions",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton15",
@@ -2739,6 +2959,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Edit my sessions presets",
                 items: &[],
                 panel: "sPanel3",
+                label_above: false,
             },
             Ctl {
                 name: "sDirEdit1",
@@ -2750,6 +2971,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Terminal root (/) directory: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2770,6 +2992,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Manage shared sessions",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton3",
@@ -2781,6 +3004,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton11",
@@ -2792,6 +3016,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton12",
@@ -2803,6 +3028,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton16",
@@ -2814,6 +3040,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Edit sessions presets",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboPersistentRoot",
@@ -2825,6 +3052,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Root (/) directory location: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboPersistentHome",
@@ -2836,6 +3064,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Home directory location: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel4",
@@ -2847,6 +3076,7 @@ pub const PAGES: &[Page] = &[
                 caption: "You can assign \"/home/mobaxterm\", \"/\" and \"TermCraft.ini\" paths to specific locations:\r\n\r\n<Default>:  files are stored into \"MyDocuments\" in installed mode and into \"Temp\" in portable mode\r\n<Temp directory>:  temporary storage, the files are cleaned up when TermCraft is closed\r\n<Same as application>:  files are stored in the same folder as TermCraft executable\r\n<Custom>:  select a directory where the files will be stored\r\n",
                 items: &[],
                 panel: "PanExplication",
+                label_above: false,
             },
             Ctl {
                 name: "ComboPersistentIni",
@@ -2858,6 +3088,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Configuration file location: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboDefaultUserProfile",
@@ -2869,6 +3100,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Default user profile folder: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -2889,6 +3121,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Local shell settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CheckPath",
@@ -2900,6 +3133,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use Windows PATH",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboShells",
@@ -2911,6 +3145,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Local terminal environment: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboPromptType",
@@ -2922,6 +3157,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Prompt type: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox57",
@@ -2933,6 +3169,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Backspace sends ^H",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox7",
@@ -2944,6 +3181,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Default terminal look and feel ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton13",
@@ -2955,6 +3193,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Customize",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox32",
@@ -2966,6 +3205,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Syntax highlighting: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton21",
@@ -2977,6 +3217,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Default color settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton23",
@@ -2988,6 +3229,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Default font settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn2",
@@ -2999,6 +3241,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Expert settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox8",
@@ -3010,6 +3253,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Terminal features ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox5",
@@ -3021,6 +3265,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Paste using right-click",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox10",
@@ -3032,6 +3277,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Log type: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox11",
@@ -3043,6 +3289,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Log terminal output to the following directory",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit3",
@@ -3054,6 +3301,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnLogFilename",
@@ -3065,6 +3313,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Log filename: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox8",
@@ -3076,6 +3325,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Close prompt",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnPasteOpts",
@@ -3087,6 +3337,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Paste warning settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -3107,6 +3358,7 @@ pub const PAGES: &[Page] = &[
                 caption: " X11 extensions (for advanced users only) ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox28",
@@ -3118,6 +3370,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Composite",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox29",
@@ -3129,6 +3382,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Damage",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox32",
@@ -3140,6 +3394,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Randr",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox34",
@@ -3151,6 +3406,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Xfixes",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox36",
@@ -3162,6 +3418,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Xtest",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox35",
@@ -3173,6 +3430,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Xinerama",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox10",
@@ -3184,6 +3442,7 @@ pub const PAGES: &[Page] = &[
                 caption: "DirectDraw",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox9",
@@ -3195,6 +3454,7 @@ pub const PAGES: &[Page] = &[
                 caption: " X11 settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboAccessControl",
@@ -3206,6 +3466,7 @@ pub const PAGES: &[Page] = &[
                 caption: "X11 remote access ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox6",
@@ -3217,6 +3478,7 @@ pub const PAGES: &[Page] = &[
                 caption: "X11 server display mode:",
                 items: &[],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sComboBox12",
@@ -3228,6 +3490,7 @@ pub const PAGES: &[Page] = &[
                 caption: "OpenGL acceleration ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox9",
@@ -3239,6 +3502,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Unix-compatible keyboard",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox7",
@@ -3250,6 +3514,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Clipboard",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox5",
@@ -3261,6 +3526,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Keyboard",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit1",
@@ -3272,6 +3538,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display offset",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit8",
@@ -3283,6 +3550,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Run on monitor",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox4",
@@ -3294,6 +3562,7 @@ pub const PAGES: &[Page] = &[
                 caption: "DPI",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox10",
@@ -3305,6 +3574,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Server settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox9",
@@ -3316,6 +3586,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Xorg version ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox3",
@@ -3327,6 +3598,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Automatically start X server at TermCraft start up",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -3347,6 +3619,7 @@ pub const PAGES: &[Page] = &[
                 caption: " SSH-browser settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox27",
@@ -3358,6 +3631,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Enable graphical SSH-browser",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox4",
@@ -3369,6 +3643,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Automatically switch to SSH-browser tab after login",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkRemoteMonitoring",
@@ -3380,6 +3655,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Remote-monitoring",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkPreserveFilesDates",
@@ -3391,6 +3667,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Preserve files dates during SSH-browser transfers",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox3",
@@ -3402,6 +3679,7 @@ pub const PAGES: &[Page] = &[
                 caption: " SSH settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox61",
@@ -3413,6 +3691,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Display SSH banner",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox30",
@@ -3424,6 +3703,7 @@ pub const PAGES: &[Page] = &[
                 caption: "GSSAPI Kerberos",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox26",
@@ -3435,6 +3715,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSH keepalive",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit4",
@@ -3446,6 +3727,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Domain: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sEdit5",
@@ -3457,6 +3739,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Default login: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox13",
@@ -3468,6 +3751,7 @@ pub const PAGES: &[Page] = &[
                 caption: "GSSAPI library: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox64",
@@ -3479,6 +3763,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Validate host identity at first connection",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox4",
@@ -3490,6 +3775,7 @@ pub const PAGES: &[Page] = &[
                 caption: " SSH agents ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox45",
@@ -3501,6 +3787,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use internal SSH agent",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sListBox1",
@@ -3512,6 +3799,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Load following keys at TermCraft agent startup",
                 items: &[],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sBitBtn17",
@@ -3523,6 +3811,7 @@ pub const PAGES: &[Page] = &[
                 caption: "+",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn18",
@@ -3534,6 +3823,7 @@ pub const PAGES: &[Page] = &[
                 caption: "-",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox62",
@@ -3545,6 +3835,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use PuTTY agent",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn19",
@@ -3556,6 +3847,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Show keys currently loaded in TermCraft agent",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox1",
@@ -3567,6 +3859,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Prompt before serving keys",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox2",
@@ -3578,6 +3871,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use Windows SSH agent",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn3",
@@ -3589,6 +3883,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -3609,6 +3904,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Transparency",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel7",
@@ -3620,6 +3916,7 @@ pub const PAGES: &[Page] = &[
                 caption: "0%",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel2",
@@ -3631,6 +3928,7 @@ pub const PAGES: &[Page] = &[
                 caption: "36%",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel1",
@@ -3642,6 +3940,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Color saturation",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel5",
@@ -3653,6 +3952,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Detached/fullscreen transparency",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel6",
@@ -3664,6 +3964,7 @@ pub const PAGES: &[Page] = &[
                 caption: "0%",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel3",
@@ -3675,6 +3976,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Tabs settings: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sScrollBar2",
@@ -3686,6 +3988,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sScrollBar1",
@@ -3697,6 +4000,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sScrollBar3",
@@ -3708,6 +4012,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkRoundedTabs",
@@ -3719,6 +4024,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Rounded tabs",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox31",
@@ -3730,6 +4036,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Show tab numbers",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox33",
@@ -3741,6 +4048,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Show close buttons",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox51",
@@ -3752,6 +4060,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable \"Quick connect\" when sidebar is hidden",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sRadioGroup3",
@@ -3763,6 +4072,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Sidebar position: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sRadioGroup2",
@@ -3774,6 +4084,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Buttons bar: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sRadioGroup1",
@@ -3785,6 +4096,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Menus and buttons: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboIconsTheme",
@@ -3796,6 +4108,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Icons theme ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboCustomDpi",
@@ -3807,6 +4120,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Graphical interface elements size: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboSkins",
@@ -3818,6 +4132,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Skin selection: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkSessionsDots",
@@ -3829,6 +4144,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Show green/orange buttons next to each open session in the sessions tree",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -3849,6 +4165,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Available buttons:",
                 items: &[],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sBitBtn1",
@@ -3860,6 +4177,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn10",
@@ -3871,6 +4189,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sListView2",
@@ -3882,6 +4201,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Toolbar buttons:",
                 items: &[],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sBitBtn13",
@@ -3893,6 +4213,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Up",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn15",
@@ -3904,6 +4225,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Down",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn16",
@@ -3915,6 +4237,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Reset",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -3935,6 +4258,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Tabs ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox12",
@@ -3946,6 +4270,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Home tab is replaced when starting new tab",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox60",
@@ -3957,6 +4282,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Do not exit TermCraft when last tab is closed",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboEdit2",
@@ -3968,6 +4294,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Open the following tab when pressing the \"+\" button: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboEdit1",
@@ -3979,6 +4306,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Open the following tab at startup: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CmbNewTabPosition",
@@ -3990,6 +4318,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Open new tab beside current tab: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox5",
@@ -4001,6 +4330,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Popup terminal ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel10",
@@ -4012,6 +4342,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Transparency:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel11",
@@ -4023,6 +4354,7 @@ pub const PAGES: &[Page] = &[
                 caption: "16%",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel12",
@@ -4034,6 +4366,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Size:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sLabel13",
@@ -4045,6 +4378,7 @@ pub const PAGES: &[Page] = &[
                 caption: "36%",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboPopupConsolePosition",
@@ -4056,6 +4390,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Position: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ScrollPopupConsoleTransparency",
@@ -4067,6 +4402,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ScrollPopupConsoleSize",
@@ -4078,6 +4414,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkPopupConsoleIsSizeable",
@@ -4089,6 +4426,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Popup terminal is sizeable",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkTryToOpenInExplorerFolder",
@@ -4100,6 +4438,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Try to open the popup terminal in current Windows explorer folder",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkBackgroundPopupTermInsteadOfClosingIt",
@@ -4111,6 +4450,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Hide popup terminal instead of closing it",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox63",
@@ -4122,6 +4462,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Allow multiple instances of TermCraft",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -4142,6 +4483,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Apply presets:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "GB1",
@@ -4153,6 +4495,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Passwords management ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox25",
@@ -4164,6 +4507,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable \"show passwords\"",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkDisablePassphraseCaching",
@@ -4175,6 +4519,7 @@ pub const PAGES: &[Page] = &[
                 caption: "No SSH keys passwd cache",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox15",
@@ -4186,6 +4531,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable passwords saving",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkDisableRdpReconnect",
@@ -4197,6 +4543,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable RDP \"reconnect\"",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox6",
@@ -4208,6 +4555,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Do not store master password",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CmbForceMasterPassword",
@@ -4219,6 +4567,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Master password complexity requirements: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "GB2",
@@ -4230,6 +4579,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Misc features ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox7",
@@ -4241,6 +4591,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable settings edition",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkDisableXAuto",
@@ -4252,6 +4603,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable X11 autostart",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboX11RemoteAccess",
@@ -4263,6 +4615,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox2",
@@ -4274,6 +4627,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CmbCyg",
@@ -4285,6 +4639,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox13",
@@ -4296,6 +4651,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disable log",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "GB3",
@@ -4307,6 +4663,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Disable sessions ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkListClients",
@@ -4318,6 +4675,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "GB4",
@@ -4329,6 +4687,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Disable embedded servers ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkListServers",
@@ -4340,6 +4699,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "GB5",
@@ -4351,6 +4711,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Disable embedded tools ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkListTools",
@@ -4362,6 +4723,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnStandardSec",
@@ -4373,6 +4735,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Defaults",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnHighSec",
@@ -4384,6 +4747,7 @@ pub const PAGES: &[Page] = &[
                 caption: "High security",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnInsaneSec",
@@ -4395,6 +4759,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Restricted features",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -4415,6 +4780,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton3",
@@ -4426,6 +4792,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton4",
@@ -4437,6 +4804,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton5",
@@ -4448,6 +4816,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton6",
@@ -4459,6 +4828,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpeedButton7",
@@ -4470,6 +4840,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn1",
@@ -4481,6 +4852,7 @@ pub const PAGES: &[Page] = &[
                 caption: "OK",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox1",
@@ -4492,6 +4864,7 @@ pub const PAGES: &[Page] = &[
                 caption: "SSH protocol version: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sListBox1",
@@ -4517,6 +4890,7 @@ pub const PAGES: &[Page] = &[
                     "dh-group1-sha1",
                 ],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sListBox2",
@@ -4528,6 +4902,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Host key types",
                 items: &["Ed448", "Ed25519", "ECDSA", "RSA", "DSA", "=Warn below="],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sListBox3",
@@ -4548,6 +4923,7 @@ pub const PAGES: &[Page] = &[
                     "Arcfour",
                 ],
                 panel: "",
+                label_above: true,
             },
             Ctl {
                 name: "sCheckBox1",
@@ -4559,6 +4935,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Allow agent forwarding",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox2",
@@ -4570,6 +4947,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Disconnect if authentication succeeds trivially",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox3",
@@ -4581,6 +4959,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Prefer hostkey algorithms for which a hostkey is already known",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox4",
@@ -4592,6 +4971,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Attempt authentication using the SSH agent",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn2",
@@ -4603,6 +4983,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Restore default settings",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox24",
@@ -4614,6 +4995,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Adapt locales on remote server",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "EdHostCert",
@@ -4625,6 +5007,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Host certificate: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "FileEditKeyCert",
@@ -4636,6 +5019,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use certificate with the private key: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox5",
@@ -4647,6 +5031,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Chokes on full KexInit (filter KEX algorithms list)",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CmbSmartCard",
@@ -4658,6 +5043,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Use a smart card certificate: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn3",
@@ -4669,6 +5055,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn4",
@@ -4680,6 +5067,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -4700,6 +5088,7 @@ pub const PAGES: &[Page] = &[
                 caption: "OK",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox1",
@@ -4711,6 +5100,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Terminal font ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboFontName",
@@ -4722,6 +5112,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Font: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "SpinFontSize",
@@ -4733,6 +5124,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Size: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "CheckBold",
@@ -4744,6 +5136,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Bold",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox4",
@@ -4755,6 +5148,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Term charset: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox1",
@@ -4766,6 +5160,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Font charset: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox1",
@@ -4777,6 +5172,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Antialiasing",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ChkBoldAsColour",
@@ -4788,6 +5184,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Show bold font as brighter color",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox2",
@@ -4799,6 +5196,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Ligatures",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox2",
@@ -4810,6 +5208,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Terminal size ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sCheckBox9",
@@ -4821,6 +5220,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Force fixed rows / columns number:",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit16",
@@ -4832,6 +5232,7 @@ pub const PAGES: &[Page] = &[
                 caption: "x ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sSpinEdit15",
@@ -4843,6 +5244,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },
@@ -4863,6 +5265,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnImportTheme",
@@ -4874,6 +5277,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnExportTheme",
@@ -4885,6 +5289,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "BtnDelTheme",
@@ -4896,6 +5301,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sBitBtn1",
@@ -4907,6 +5313,7 @@ pub const PAGES: &[Page] = &[
                 caption: "OK",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox1",
@@ -4918,6 +5325,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Basic terminal colors ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ColFore",
@@ -4929,6 +5337,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Foreground (standard text)",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ColBack",
@@ -4940,6 +5349,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Background color",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox3",
@@ -4951,6 +5361,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Cursor settings ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ColCur",
@@ -4962,6 +5373,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Cursor color",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "ComboCursor",
@@ -4973,6 +5385,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Cursor type: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sGroupBox2",
@@ -4984,6 +5397,7 @@ pub const PAGES: &[Page] = &[
                 caption: " Terminal colors ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "Col16",
@@ -4995,6 +5409,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col15",
@@ -5006,6 +5421,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col14",
@@ -5017,6 +5433,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col13",
@@ -5028,6 +5445,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col12",
@@ -5039,6 +5457,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col11",
@@ -5050,6 +5469,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col10",
@@ -5061,6 +5481,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col9",
@@ -5072,6 +5493,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col8",
@@ -5083,6 +5505,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col7",
@@ -5094,6 +5517,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col6",
@@ -5105,6 +5529,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col5",
@@ -5116,6 +5541,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col4",
@@ -5127,6 +5553,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col3",
@@ -5138,6 +5565,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col2",
@@ -5149,6 +5577,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "Col1",
@@ -5160,6 +5589,7 @@ pub const PAGES: &[Page] = &[
                 caption: "",
                 items: &[],
                 panel: "sPanel9",
+                label_above: false,
             },
             Ctl {
                 name: "ChkBoldAsColour",
@@ -5171,6 +5601,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Show bold font as brighter color",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
             Ctl {
                 name: "sComboBox8",
@@ -5182,6 +5613,7 @@ pub const PAGES: &[Page] = &[
                 caption: "Colors scheme: ",
                 items: &[],
                 panel: "",
+                label_above: false,
             },
         ],
     },

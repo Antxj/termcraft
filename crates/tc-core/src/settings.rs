@@ -20,6 +20,72 @@ pub struct Settings {
     pub hotkeys: std::collections::BTreeMap<String, String>,
     /// Configuration › Security: features turned off.
     pub security: SecuritySettings,
+    /// Configuration › X11: the X server TermCraft starts.
+    pub x_server: XServerSettings,
+}
+
+/// Configuration › X11: the local X server (VcXsrv or Xming on Windows,
+/// XQuartz on macOS; Linux desktops have their own).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct XServerSettings {
+    /// "Automatically start X server at TermCraft start up".
+    pub autostart: bool,
+    /// "X11 server display mode".
+    pub display_mode: XDisplayMode,
+    /// "OpenGL acceleration": hardware (else software).
+    pub opengl_hardware: bool,
+    /// "Clipboard": 0 disabled, 1 enabled, 2 enabled without the primary
+    /// selection.
+    pub clipboard: u8,
+    /// "Keyboard": an XKB layout; empty = automatic.
+    pub keyboard: String,
+    /// "Display offset": the display number (`:0`, `:1` ...).
+    pub display: u16,
+    /// "DPI"; 0 = automatic.
+    pub dpi: u16,
+    /// "X11 remote access": `true` = any host may connect (no access
+    /// control). Off by default.
+    pub remote_access: bool,
+}
+
+impl Default for XServerSettings {
+    fn default() -> Self {
+        Self {
+            autostart: false,
+            display_mode: XDisplayMode::default(),
+            opengl_hardware: true,
+            clipboard: 1,
+            keyboard: String::new(),
+            display: 0,
+            dpi: 0,
+            remote_access: false,
+        }
+    }
+}
+
+/// "X11 server display mode".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum XDisplayMode {
+    /// Each X window is a desktop window.
+    #[default]
+    Multiwindow,
+    /// One window holds the X desktop.
+    Windowed,
+    Fullscreen,
+}
+
+impl XDisplayMode {
+    pub const ALL: [XDisplayMode; 3] = [Self::Multiwindow, Self::Windowed, Self::Fullscreen];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Multiwindow => "Multiwindow mode: X windows on the desktop",
+            Self::Windowed => "Windowed mode: one window for the X desktop",
+            Self::Fullscreen => "Fullscreen mode",
+        }
+    }
 }
 
 /// Configuration › Security "Disable sessions" / "Disable embedded

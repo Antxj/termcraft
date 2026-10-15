@@ -113,7 +113,13 @@ pub fn chosen(view: &ViewSettings) -> Vec<&'static str> {
         .collect()
 }
 
-pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &mut Vec<Action>) {
+pub fn show(
+    ui: &mut egui::Ui,
+    view: &ViewSettings,
+    sessions: &[Session],
+    x_display: Option<u16>,
+    out: &mut Vec<Action>,
+) {
     let style = view.toolbar_style;
     let cx = PopupCtx { view, sessions };
     let left: [(&str, &str, &str, Kind); BUTTONS.len()] = [
@@ -190,12 +196,19 @@ pub fn show(ui: &mut egui::Ui, view: &ViewSettings, sessions: &[Session], out: &
             Kind::Popup(|ui, _, out| menus::help_menu(ui, out)),
         ),
     ];
+    let x_hint = match x_display {
+        Some(d) => format!("X server is running on :{d} (click to stop it)"),
+        None => "X server is stopped (click to start it)".to_string(),
+    };
     let right: [(&str, &str, &str, Kind); 2] = [
         (
             icon::DESKTOP,
             "X server",
-            "X server is stopped",
-            Kind::Action(None),
+            x_hint.as_str(),
+            Kind::Action(Some(Action::Run(match x_display {
+                None => tc_commands::Command::XServerStart {},
+                Some(_) => tc_commands::Command::XServerStop {},
+            }))),
         ),
         (
             icon::POWER,

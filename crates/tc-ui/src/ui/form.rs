@@ -66,7 +66,10 @@ pub(crate) fn placeholder(ui: &mut egui::Ui, c: &Ctl, rect: Rect) {
         .add_enabled_ui(false, |ui| match c.kind {
             Kind::Check => ui.put(rect, egui::Checkbox::new(&mut false, caption)),
             Kind::Combo | Kind::Edit | Kind::Spin | Kind::File | Kind::Folder | Kind::Memo => {
-                if !caption.is_empty() {
+                if caption.is_empty() {
+                } else if c.label_above {
+                    label_over(ui, rect, caption);
+                } else {
                     bound_label(ui, rect, caption);
                 }
                 ui.put(rect, egui::TextEdit::singleline(&mut String::new()))
@@ -144,6 +147,17 @@ pub(crate) fn bound_label(ui: &egui::Ui, rect: Rect, caption: &str) {
     ui.painter().text(
         Pos2::new(rect.left() - 6.0, rect.center().y),
         egui::Align2::RIGHT_CENTER,
+        caption.trim(),
+        egui::TextStyle::Body.resolve(ui.style()),
+        ui.visuals().text_color(),
+    );
+}
+
+/// A bound label above its control (`BoundLabel.Layout = sclTop…`).
+pub(crate) fn label_over(ui: &egui::Ui, rect: Rect, caption: &str) {
+    ui.painter().text(
+        Pos2::new(rect.left(), rect.top() - 2.0),
+        egui::Align2::LEFT_BOTTOM,
         caption.trim(),
         egui::TextStyle::Body.resolve(ui.style()),
         ui.visuals().text_color(),

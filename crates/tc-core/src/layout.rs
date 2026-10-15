@@ -36,6 +36,8 @@ pub struct Ctl {
     pub items: &'static [&'static str],
     /// The panel it sits on (`""` = directly on the page).
     pub panel: &'static str,
+    /// The bound label sits above the control (else on its left).
+    pub label_above: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

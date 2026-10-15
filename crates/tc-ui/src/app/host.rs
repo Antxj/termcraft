@@ -35,6 +35,26 @@ impl Host for Core {
         Ok(())
     }
 
+    fn x_server_start(&mut self) -> Result<serde_json::Value, CommandError> {
+        if let Some(display) = self.x_display() {
+            return Err(CommandError::Failed(format!(
+                "the X server is already running on :{display}"
+            )));
+        }
+        let x = &self.settings.x_server;
+        let (process, name) = crate::external::start_x_server(x).map_err(CommandError::Failed)?;
+        let display = x.display;
+        self.x_server = Some(super::XServer { process, display });
+        Ok(serde_json::json!({ "display": format!(":{display}"), "server": name }))
+    }
+
+    fn x_server_stop(&mut self) -> Result<(), CommandError> {
+        match self.x_server.take() {
+            Some(_) => Ok(()),
+            None => Err(CommandError::Failed("the X server is not running".into())),
+        }
+    }
+
     fn tab_send(&mut self, tab: Option<u64>, text: &str) -> Result<(), CommandError> {
         let i = self.tab_index(tab)?;
         self.tabs[i].send(text.as_bytes());

@@ -52,6 +52,7 @@ fn test_env(dir: &std::path::Path) -> TabEnv {
         save_key_passphrases: false,
         log_dir: None,
         disable_log: false,
+        x_display: 0,
         use_windows_path: true,
         theme: Default::default(),
         home: None,

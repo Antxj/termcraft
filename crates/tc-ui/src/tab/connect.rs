@@ -370,7 +370,7 @@ impl Tab {
             .and_then(|v| v.trim().parse::<usize>().ok())
             .and_then(remote_desktop);
         let x11 = if *x11_forwarding || desktop.is_some() {
-            x11_display()
+            x11_display(self.x_display)
         } else {
             (None, None)
         };

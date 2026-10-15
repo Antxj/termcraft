@@ -13,6 +13,8 @@ pub struct MenuCtx<'a> {
     pub recording: bool,
     pub has_tab: bool,
     pub active_tab: Option<u64>,
+    /// Display of the X server TermCraft started.
+    pub x_display: Option<u16>,
 }
 
 pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
@@ -21,8 +23,22 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
         ui.menu_button("Sessions", |ui| sessions_menu(ui, cx.sessions, out));
         ui.menu_button("View", |ui| view_menu(ui, cx.view, out));
         ui.menu_button("X server", |ui| {
-            item(ui, "Start X server", None, out);
-            item(ui, "XDMCP session", None, out);
+            match cx.x_display {
+                None => item(
+                    ui,
+                    "Start X server",
+                    Some(Action::Run(Command::XServerStart {})),
+                    out,
+                ),
+                Some(_) => item(
+                    ui,
+                    "Stop X server",
+                    Some(Action::Run(Command::XServerStop {})),
+                    out,
+                ),
+            }
+            // A new XDMCP session (type 3).
+            item(ui, "XDMCP session", Some(Action::NewSessionOfType(3)), out);
         });
         ui.menu_button("Tools", |ui| tools_menu(ui, out));
         ui.menu_button("Games", |ui| games_menu(ui, out));
@@ -35,9 +51,9 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
                 out,
             );
             ui.separator();
-            item(ui, "Import configuration", None, out);
-            item(ui, "Export configuration", None, out);
-            item(ui, "Reset configuration", None, out);
+            item(ui, "Import configuration", Some(Action::ImportConfig), out);
+            item(ui, "Export configuration", Some(Action::ExportConfig), out);
+            item(ui, "Reset configuration", Some(Action::ResetConfig), out);
             ui.separator();
             item(
                 ui,
@@ -346,7 +362,7 @@ pub fn games_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
 }
 
 pub fn help_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
-    item(ui, "Documentation", None, out);
+    item(ui, "Documentation", Some(Action::Documentation), out);
     item(ui, "Check for updates", Some(Action::CheckUpdates), out);
     item(ui, "View TermCraft log file", None, out);
     ui.separator();

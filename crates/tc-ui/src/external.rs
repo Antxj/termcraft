@@ -394,19 +394,91 @@ pub fn xdmcp_args(x: &Xdmcp<'_>, nested: bool) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
+/// VcXsrv or Xming, where their installers put them.
+fn windows_x_server() -> Option<PathBuf> {
+    let pf = |var: &str, rel: &str| std::env::var_os(var).map(|p| PathBuf::from(p).join(rel));
+    [
+        pf("ProgramFiles", r"VcXsrv\vcxsrv.exe"),
+        pf("ProgramFiles(x86)", r"Xming\Xming.exe"),
+        find_in_path("vcxsrv.exe"),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|p| p.is_file())
+}
+
+/// VcXsrv / Xming arguments for the Configuration › X11 settings.
+pub fn x_server_args(
+    x: &tc_core::settings::XServerSettings,
+    vcxsrv: bool,
+) -> Result<Vec<String>, String> {
+    use tc_core::settings::XDisplayMode;
+    let mut args = vec![format!(":{}", x.display.min(99))];
+    match x.display_mode {
+        XDisplayMode::Multiwindow => args.push("-multiwindow".into()),
+        XDisplayMode::Windowed => {}
+        XDisplayMode::Fullscreen => args.push("-fullscreen".into()),
+    }
+    match x.clipboard {
+        0 => args.push("-noclipboard".into()),
+        2 => args.extend(["-clipboard".into(), "-noprimary".into()]),
+        _ => args.push("-clipboard".into()),
+    }
+    if vcxsrv {
+        args.push(if x.opengl_hardware { "-wgl" } else { "-nowgl" }.into());
+    }
+    if x.remote_access {
+        args.push("-ac".into());
+    }
+    if x.dpi > 0 {
+        args.extend(["-dpi".into(), x.dpi.clamp(48, 480).to_string()]);
+    }
+    let layout = x.keyboard.trim();
+    if !layout.is_empty() {
+        if !layout.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(format!("invalid keyboard layout {layout:?}"));
+        }
+        args.extend(["-xkblayout".into(), layout.to_string()]);
+    }
+    Ok(args)
+}
+
+/// Start the local X server. Returns the process (when TermCraft owns
+/// it) and what runs.
+pub fn start_x_server(
+    x: &tc_core::settings::XServerSettings,
+) -> Result<(Option<std::process::Child>, String), String> {
+    if cfg!(windows) {
+        let Some(server) = windows_x_server() else {
+            return Err("no X server found (install VcXsrv or Xming)".into());
+        };
+        let name = server
+            .file_name()
+            .map_or_else(|| "X server".into(), |n| n.to_string_lossy().into_owned());
+        let vcxsrv = name.eq_ignore_ascii_case("vcxsrv.exe");
+        let child = Command::new(&server)
+            .args(x_server_args(x, vcxsrv)?)
+            .spawn()
+            .map_err(|e| format!("{}: {e}", server.display()))?;
+        return Ok((Some(child), name));
+    }
+    if cfg!(target_os = "macos") {
+        return if start_xquartz() {
+            Ok((None, "XQuartz".into()))
+        } else {
+            Err("XQuartz is not installed".into())
+        };
+    }
+    match std::env::var("DISPLAY") {
+        Ok(d) if !d.trim().is_empty() => Ok((None, format!("the desktop's X server ({d})"))),
+        _ => Err("no X server: DISPLAY is not set".into()),
+    }
+}
+
 /// Start an X server that runs the XDMCP session.
 pub fn launch_xdmcp(x: &Xdmcp<'_>) -> Result<String, String> {
     if cfg!(windows) {
-        let pf = |var: &str, rel: &str| std::env::var_os(var).map(|p| PathBuf::from(p).join(rel));
-        let found = [
-            pf("ProgramFiles", r"VcXsrv\vcxsrv.exe"),
-            pf("ProgramFiles(x86)", r"Xming\Xming.exe"),
-            find_in_path("vcxsrv.exe"),
-        ]
-        .into_iter()
-        .flatten()
-        .find(|p| p.is_file());
-        let Some(server) = found else {
+        let Some(server) = windows_x_server() else {
             return Err("no X server found (install VcXsrv or Xming)".into());
         };
         spawn(&server, &xdmcp_args(x, false)?)?;
@@ -596,6 +668,43 @@ mod tests {
             ..q
         };
         assert!(xdmcp_args(&bad, false).is_err(), "no option injection");
+    }
+
+    #[test]
+    fn x_server_arguments() {
+        use tc_core::settings::{XDisplayMode, XServerSettings};
+        let x = XServerSettings::default();
+        assert_eq!(
+            x_server_args(&x, true).unwrap(),
+            [":0", "-multiwindow", "-clipboard", "-wgl"]
+        );
+        let x = XServerSettings {
+            display_mode: XDisplayMode::Fullscreen,
+            clipboard: 0,
+            display: 2,
+            dpi: 120,
+            remote_access: true,
+            keyboard: "br".into(),
+            ..XServerSettings::default()
+        };
+        assert_eq!(
+            x_server_args(&x, false).unwrap(),
+            [
+                ":2",
+                "-fullscreen",
+                "-noclipboard",
+                "-ac",
+                "-dpi",
+                "120",
+                "-xkblayout",
+                "br"
+            ]
+        );
+        let bad = XServerSettings {
+            keyboard: "us -query evil".into(),
+            ..XServerSettings::default()
+        };
+        assert!(x_server_args(&bad, true).is_err(), "no option injection");
     }
 
     #[test]
