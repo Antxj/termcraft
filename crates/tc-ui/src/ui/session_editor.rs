@@ -68,6 +68,7 @@ const BUTTONS_Y: f32 = 502.0;
 const ENABLES: &[(&str, &str)] = &[
     ("sCheckBox23", "sFilenameEdit2"),  // SSH "Use private key"
     ("sCheckBox34", "sFilenameEdit5"),  // SFTP "Use private key"
+    ("sCheckBox42", "sFilenameEdit6"),  // Mosh "Use SSH private key"
     ("sCheckBox1", "sEdit6"),           // WSL "Specify username"
     ("sCheckBox18", "sDirectoryEdit1"), // "Log terminal output to:"
     ("sRadioButton2", "Edit1"),         // Xdmcp "Specify server to connect to:"
@@ -129,11 +130,16 @@ enum Press {
     SubDialog(&'static str),
     CloseSubDialog,
     RestoreDefaults(&'static str),
+    /// Serial "Reset defaults": the advanced settings (not port and speed).
+    SerialDefaults,
     JumpHosts,
     Icon,
     Shortcut,
     CustomizeSyntax,
-    Browse { target: &'static str, folder: bool },
+    Browse {
+        target: &'static str,
+        folder: bool,
+    },
 }
 
 pub struct SessionEditor {
@@ -590,6 +596,13 @@ impl SessionEditor {
                     }
                 }
             }
+            Press::SerialDefaults => {
+                for id in ["3_8", "3_4", "3_5", "3_6", "3_7"] {
+                    if let Some(p) = self.param(id) {
+                        self.values.insert(p.id, p.default.to_string());
+                    }
+                }
+            }
             Press::JumpHosts => {
                 if let Some(ids) = jump_hosts::ids_for(self.type_index) {
                     self.jump_hosts = Some(JumpHostsDialog::new(self.jump_hosts(ids)));
@@ -796,6 +809,7 @@ impl SessionEditor {
                 folder: false,
             }),
             ("FormExpertSSH", "sBitBtn2") => Some(Press::RestoreDefaults("FormExpertSSH")),
+            ("", "sBitBtn2") if self.type_index == 8 => Some(Press::SerialDefaults),
             (s, "sBitBtn1") if !s.is_empty() => Some(Press::CloseSubDialog),
             _ => None,
         };
