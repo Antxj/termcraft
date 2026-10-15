@@ -1431,19 +1431,29 @@ mod tests {
         let mut editor = SessionEditor::new_of_type(10);
         editor.startup = "cd /tmp
 ls -l
-".into();
+"
+        .into();
         let session = editor.build().unwrap();
         assert_eq!(
-            session.options.get(tc_core::session::STARTUP_COMMANDS).map(String::as_str),
-            Some("cd /tmp
-ls -l")
+            session
+                .options
+                .get(tc_core::session::STARTUP_COMMANDS)
+                .map(String::as_str),
+            Some(
+                "cd /tmp
+ls -l"
+            )
         );
         // Other session types have no such field.
         let mut ssh = SessionEditor::new_of_type(0);
         ssh.values.insert("3_2", "h".into());
         ssh.startup = "x".into();
         let session = ssh.build().unwrap();
-        assert!(!session.options.contains_key(tc_core::session::STARTUP_COMMANDS));
+        assert!(
+            !session
+                .options
+                .contains_key(tc_core::session::STARTUP_COMMANDS)
+        );
     }
 
     #[test]

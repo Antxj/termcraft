@@ -70,7 +70,7 @@ impl Tab {
         let server = crate::mosh::server_command(&opt("3_8"), &opt("3_5"), locale);
         let key = Some(opt("3_9"))
             .filter(|k| !k.trim().is_empty())
-            .map(PathBuf::from);
+            .map(|k| local_path(&k));
         let prediction = crate::mosh::prediction(&opt("3_7"));
         let Some(client) = crate::mosh::find_client() else {
             self.message(
@@ -346,7 +346,7 @@ impl Tab {
                 } else {
                     hop.user
                 },
-                private_key: (!hop.key.is_empty()).then(|| PathBuf::from(hop.key)),
+                private_key: (!hop.key.is_empty()).then(|| local_path(&hop.key)),
                 host: hop.host,
             })
             .collect();
@@ -359,7 +359,7 @@ impl Tab {
             host: host.clone(),
             port: *port,
             user,
-            private_key: private_key.as_ref().map(PathBuf::from),
+            private_key: private_key.as_deref().map(local_path),
             gateways,
             known_hosts: self.known_hosts.clone(),
             compression: opt("3_7").is_some_and(schema::is_true),
@@ -453,7 +453,7 @@ impl Tab {
                 } else {
                     h.user.trim().to_string()
                 },
-                private_key: (!h.key.is_empty()).then(|| PathBuf::from(&h.key)),
+                private_key: (!h.key.is_empty()).then(|| local_path(&h.key)),
             })
             .collect();
         let Some(last) = endpoints.pop() else {

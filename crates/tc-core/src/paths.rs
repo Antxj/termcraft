@@ -21,6 +21,35 @@ pub fn windows_dir() -> std::path::PathBuf {
         )
 }
 
+/// MobaXterm's path placeholders in imported settings: `_MobaFolder_` (the
+/// folder of MobaXterm and its MobaXterm.ini), `_CurrentDrive_` (that
+/// folder's drive) and `_ProfileDir_` (the user's profile). Other text is
+/// unchanged.
+pub fn expand_mobaxterm_path(value: &str, moba_folder: &Path) -> String {
+    if !value.contains('_') {
+        return value.to_string();
+    }
+    let folder = moba_folder.display().to_string();
+    let folder = folder.trim_end_matches(['\\', '/']);
+    let drive = folder
+        .get(..2)
+        .filter(|d| d.ends_with(':'))
+        .unwrap_or_default()
+        .to_string();
+    let profile = directories::BaseDirs::new()
+        .map(|b| b.home_dir().display().to_string())
+        .unwrap_or_default();
+    let out = value
+        .replace("_MobaFolder_", folder)
+        .replace("_CurrentDrive_", &drive)
+        .replace("_ProfileDir_", &profile);
+    // MobaXterm paths are Windows paths.
+    if out != value && !cfg!(windows) {
+        return out.replace('\\', "/");
+    }
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
     pub config_dir: PathBuf,
@@ -87,5 +116,31 @@ impl Paths {
     /// Names of saved passwords (the secrets live in the OS keychain).
     pub fn passwords_index_file(&self) -> PathBuf {
         self.data_dir.join("saved_passwords.toml")
+    }
+}
+
+#[cfg(test)]
+mod placeholder_tests {
+    use super::*;
+
+    #[test]
+    fn mobaxterm_placeholders() {
+        let base = if cfg!(windows) {
+            Path::new(r"D:\Tools\MobaXterm")
+        } else {
+            Path::new("/opt/moba")
+        };
+        let key = expand_mobaxterm_path(r"_MobaFolder_\keys\id.ppk", base);
+        if cfg!(windows) {
+            assert_eq!(key, r"D:\Tools\MobaXterm\keys\id.ppk");
+            assert_eq!(expand_mobaxterm_path(r"_CurrentDrive_\x", base), r"D:\x");
+        } else {
+            assert_eq!(key, "/opt/moba/keys/id.ppk");
+        }
+        assert_eq!(expand_mobaxterm_path("plain/path", base), "plain/path");
+        assert_eq!(
+            expand_mobaxterm_path("_Std_Colors_0_", base),
+            "_Std_Colors_0_"
+        );
     }
 }

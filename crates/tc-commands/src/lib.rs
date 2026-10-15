@@ -413,9 +413,20 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             to_json(&removed)
         }
         Command::SessionImportMobaxterm { path } => {
-            let text = tc_import::read_text_lossy(std::path::Path::new(&path))
+            let file = std::path::Path::new(&path);
+            let text = tc_import::read_text_lossy(file)
                 .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
-            merge_import(host, tc_import::mobaxterm::parse(&text))
+            let mut report = tc_import::mobaxterm::parse(&text);
+            // `_MobaFolder_\key.ppk`: the folder of the imported file.
+            let folder = std::path::absolute(file)
+                .ok()
+                .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+                .unwrap_or_default();
+            tc_import::mobaxterm::resolve_paths(&mut report, &folder);
+            let missing = missing_files(&report.sessions);
+            let mut out = merge_import(host, report)?;
+            out["missing_files"] = json!(missing);
+            Ok(out)
         }
         Command::ConfigImportMobaxterm {
             path,
@@ -867,6 +878,34 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
 }
 
 /// Add imported sessions, skipping names that already exist.
+/// Sessions whose file settings (private keys …) name a file that does
+/// not exist here: `{session, file}`.
+fn missing_files(sessions: &[Session]) -> Vec<Value> {
+    let mut out = Vec::new();
+    for s in sessions {
+        let t = s.kind.type_index();
+        let files = tc_core::schema::type_params(t)
+            .iter()
+            .chain(tc_core::schema::network_params(t))
+            .filter(|p| p.widget == tc_core::schema::Widget::File);
+        for p in files {
+            let value = s
+                .kind
+                .typed_get(p.id)
+                .or_else(|| s.options.get(p.id).cloned())
+                .unwrap_or_default();
+            // Gateway keys hold one path per gateway.
+            for path in value.split(tc_core::jump_hosts::SEPARATOR) {
+                let path = path.trim();
+                if !path.is_empty() && !std::path::Path::new(path).is_file() {
+                    out.push(json!({ "session": s.name, "file": path }));
+                }
+            }
+        }
+    }
+    out
+}
+
 fn merge_import(
     host: &mut dyn Host,
     report: tc_import::mobaxterm::ImportReport,

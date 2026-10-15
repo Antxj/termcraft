@@ -37,6 +37,24 @@ pub struct Unsupported {
     pub reason: &'static str,
 }
 
+/// Replace MobaXterm's path placeholders (`_MobaFolder_` …) in the
+/// imported sessions, `folder` being the one of the imported file.
+pub fn resolve_paths(report: &mut ImportReport, folder: &std::path::Path) {
+    for s in &mut report.sessions {
+        for id in s.kind.typed_ids() {
+            if let Some(v) = s.kind.typed_get(id) {
+                let expanded = tc_core::paths::expand_mobaxterm_path(&v, folder);
+                if expanded != v {
+                    let _ = s.kind.typed_set(id, &expanded);
+                }
+            }
+        }
+        for v in s.options.values_mut() {
+            *v = tc_core::paths::expand_mobaxterm_path(v, folder);
+        }
+    }
+}
+
 pub fn parse(text: &str) -> ImportReport {
     let mut report = ImportReport::default();
     let mut in_bookmarks = false;

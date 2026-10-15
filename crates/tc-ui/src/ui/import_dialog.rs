@@ -126,12 +126,28 @@ pub fn summary(
 ) -> Vec<String> {
     let mut out = Vec::new();
     match sessions {
-        Some(Ok(v)) => out.push(format!(
-            "Sessions: {} imported, {} already there, {} not supported",
-            v["imported"],
-            v["skipped_existing"],
-            v["unsupported"].as_array().map_or(0, Vec::len)
-        )),
+        Some(Ok(v)) => {
+            out.push(format!(
+                "Sessions: {} imported, {} already there, {} not supported",
+                v["imported"],
+                v["skipped_existing"],
+                v["unsupported"].as_array().map_or(0, Vec::len)
+            ));
+            // Private keys left in the MobaXterm folder, for instance.
+            if let Some(missing) = v["missing_files"].as_array().filter(|m| !m.is_empty()) {
+                out.push(format!(
+                    "{} file(s) the sessions use are not here (copy them, or set them in each session):",
+                    missing.len()
+                ));
+                for m in missing.iter().take(8) {
+                    out.push(format!(
+                        "  {} — {}",
+                        m["session"].as_str().unwrap_or("?"),
+                        m["file"].as_str().unwrap_or("?")
+                    ));
+                }
+            }
+        }
         Some(Err(e)) => out.push(format!("Sessions: {e}")),
         None => {}
     }

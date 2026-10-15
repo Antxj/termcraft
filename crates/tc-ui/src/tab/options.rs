@@ -159,3 +159,17 @@ pub(super) fn session_proxy(session: Option<&Session>) -> Option<tc_ssh::proxy::
     };
     tc_ssh::proxy::from_options_with(ids, &|id| session.options.get(id).cloned())
 }
+
+/// A local file path from the session settings. A MobaXterm placeholder
+/// left by an older import (`_MobaFolder_\\key.ppk`) is the folder of
+/// TermCraft, where a MobaXterm.ini found next to it was imported from.
+pub(super) fn local_path(value: &str) -> PathBuf {
+    let program_dir = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(std::path::Path::to_path_buf))
+        .unwrap_or_default();
+    PathBuf::from(tc_core::paths::expand_mobaxterm_path(
+        value.trim(),
+        &program_dir,
+    ))
+}
