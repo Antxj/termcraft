@@ -393,7 +393,8 @@ fn session_menu(ui: &mut egui::Ui, s: &Session, out: &mut Vec<Action>) {
         }),
         out,
     );
-    item(ui, "Ping host", None, out);
+    let host = s.kind.typed_get("3_2").filter(|h| ping_target(h));
+    item(ui, "Ping host", host.map(Action::PingHost), out);
     ui.separator();
     item(ui, "New session", Some(Action::NewSession), out);
     item(
@@ -513,7 +514,12 @@ fn root_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
         for p in ["PuTTYCM", "SuperPuTTY", "MRemote", "Exceed", "SCRT", "RDM"] {
             item(ui, &format!("Import {p} sessions"), None, out);
         }
-        item(ui, "Import sessions from a CSV file", None, out);
+        item(
+            ui,
+            "Import sessions from a CSV file",
+            Some(Action::ImportCsv),
+            out,
+        );
         ui.separator();
         item(
             ui,
@@ -613,5 +619,28 @@ mod tests {
         s.options
             .insert("6_1".into(), "  prod database, ask Ana  ".into());
         assert_eq!(comment(&s).as_deref(), Some("prod database, ask Ana"));
+    }
+}
+
+/// A host name or address that can be given to `ping` (typed into a
+/// shell: letters, digits, `.`, `-`, `:` only).
+pub fn ping_target(host: &str) -> bool {
+    !host.is_empty()
+        && host.len() <= 253
+        && !host.starts_with('-')
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':'))
+}
+
+#[cfg(test)]
+mod ping_tests {
+    #[test]
+    fn ping_targets() {
+        assert!(super::ping_target("web01.lan"));
+        assert!(super::ping_target("fe80::1"));
+        assert!(!super::ping_target("a; rm -rf ~"));
+        assert!(!super::ping_target("-t"));
+        assert!(!super::ping_target(""));
     }
 }

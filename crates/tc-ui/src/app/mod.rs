@@ -528,6 +528,58 @@ impl TermCraftApp {
                 return ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
             Action::About => return self.show_about = true,
+            Action::ImportCsv => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("CSV file", &["csv", "txt"])
+                    .pick_file()
+                {
+                    let cmd = Command::SessionImportCsv {
+                        path: path.display().to_string(),
+                    };
+                    self.status = match tc_commands::execute(&mut self.core, cmd) {
+                        Ok(v) => format!(
+                            "Imported {} session(s), {} skipped",
+                            v["imported"].as_u64().unwrap_or(0),
+                            v["unsupported"].as_array().map_or(0, Vec::len)
+                        ),
+                        Err(e) => e.to_string(),
+                    };
+                }
+                return;
+            }
+            Action::PingHost(host) => {
+                if !crate::ui::sidebar::ping_target(&host) {
+                    return;
+                }
+                let command = if cfg!(windows) {
+                    format!("ping {host}")
+                } else {
+                    format!("ping -c 4 {host}")
+                };
+                let mut session = Session::new(
+                    format!("Ping {host}"),
+                    tc_core::session::SessionKind::LocalShell { program: None },
+                );
+                if cfg!(windows) {
+                    session.options.insert(
+                        "3_2".into(),
+                        tc_core::settings::LocalShell::option_value(Some(
+                            tc_core::settings::LocalShell::Cmd,
+                        ))
+                        .into(),
+                    );
+                }
+                session
+                    .options
+                    .insert(tc_core::session::STARTUP_COMMANDS.into(), command);
+                match self.core.check_session_allowed(Some(&session)) {
+                    Ok(()) => {
+                        self.core.open_tab(Some(session), false);
+                    }
+                    Err(e) => self.status = e.to_string(),
+                }
+                return;
+            }
             Action::ListProcesses | Action::ListHardware => {
                 let processes = matches!(action, Action::ListProcesses);
                 let (name, command) = tool_terminal(processes);

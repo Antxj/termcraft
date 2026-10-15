@@ -3,6 +3,7 @@
 //! from their own installations (see docs/CLEAN_ROOM.md). Importers are
 //! tolerant: anything not understood is reported, never guessed.
 
+pub mod csv;
 pub mod mobaxterm;
 pub mod mobaxterm_ini;
 pub mod putty;

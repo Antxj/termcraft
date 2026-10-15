@@ -53,6 +53,11 @@ pub enum Command {
     },
     /// Settings › "Reset configuration": every setting back to its default.
     ConfigReset {},
+    /// "Import sessions from a CSV file" (columns name, type, host, port,
+    /// username, folder; see `tc_import::csv`).
+    SessionImportCsv {
+        path: String,
+    },
     /// "Import PuTTY sessions" (registry on Windows, ~/.putty on Unix).
     SessionImportPutty {},
     /// "Import WSL sessions": one session per installed distribution.
@@ -265,6 +270,7 @@ impl Command {
             Self::ConfigExport { .. } => "config_export",
             Self::ConfigImport { .. } => "config_import",
             Self::ConfigReset {} => "config_reset",
+            Self::SessionImportCsv { .. } => "session_import_csv",
             Self::SessionImportPutty {} => "session_import_putty",
             Self::SessionImportWsl {} => "session_import_wsl",
             Self::SessionImportSshConfig { .. } => "session_import_ssh_config",
@@ -619,6 +625,19 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
                 ));
             }
             merge_import(host, tc_import::wsl::sessions(distros))
+        }
+        Command::SessionImportCsv { path } => {
+            let file = std::path::Path::new(&path);
+            let size = std::fs::metadata(file)
+                .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?
+                .len();
+            if size > 16 * 1024 * 1024 {
+                return Err(CommandError::InvalidArgs(format!("{path} is too large")));
+            }
+            let text = tc_import::read_text_lossy(file)
+                .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
+            let report = tc_import::csv::parse(&text).map_err(CommandError::InvalidArgs)?;
+            merge_import(host, report)
         }
         Command::SessionImportSshConfig { path } => {
             let path = match path {

@@ -128,6 +128,8 @@ refined against it.
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |
 | P1 | [x] | Import PuTTY sessions (Windows registry, `~/.putty/sessions` on Unix: SSH, Telnet, rlogin, serial) and WSL sessions | `tc-import` |
+| P2 | [x] | "Import sessions from a CSV file" (`session_import_csv`): a header row names the columns (type and host required; name, port, username, folder), `,` or `;`, quoted fields | `tc-import` |
+| P3 | [x] | Session menu › "Ping host": a terminal tab running the system ping (host name checked before it reaches the shell) | `tc-ui` |
 | P1 | [x] | "Export MobaXterm sessions" / "Save session to file" (.mxtsessions, folders kept, reserved characters escaped; round-trip tested). PuTTYCM / SuperPuTTY / mRemote / Exceed / SCRT / RDM / CSV importers pending | `tc-import` |
 | P2 | [x] | "Create a desktop shortcut" (session menu, `session_desktop_shortcut` command): "Shortcut options" Hide terminal on startup (`--hideterm`, starts minimized) / Close on exit (`--exitwhendone`); Windows `.lnk`, Linux `.desktop`, macOS `.command`, arguments quoted per platform, never overwrites | `tc-core` + `tc-commands` + `tc-ui` |
 | P2 | [x] | Links: `termcraft://session/<name>` (saved session) and `ssh://` / `termcraft://ssh/[user@]host[:port]` (quick connect) on the command line or from the OS, strictly validated (nothing is run); `url_handler_register` (Configuration › General button) registers termcraft:// for the current user (Windows HKCU, Linux desktop entry, macOS app bundle) | `tc-core` + `tc-ui` |

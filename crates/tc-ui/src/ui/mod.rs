@@ -62,6 +62,10 @@ pub enum Action {
     AdminShell(bool),
     /// Tools › "Wake On Lan".
     WakeOnLan,
+    /// "Import sessions from a CSV file" (asks for the file).
+    ImportCsv,
+    /// Session menu › "Ping host": a terminal tab pinging it.
+    PingHost(String),
     PasswordsSettings,
     /// Passwords settings on the Credentials tab.
     ManageCredentials,

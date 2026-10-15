@@ -86,6 +86,16 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "session_import_csv",
+        title: "Import sessions from a CSV file",
+        description: "One session per row. The first row names the columns: type and host \
+                      (required), name, port, username, folder; `,` or `;` separated, quotes \
+                      allowed. Types are the session settings names (SSH, Telnet, RDP, ...).",
+        input_schema: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string"}}}"#,
+        example_args: r#"{"path":"sessions.csv"}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "session_import_mobaxterm",
         title: "Import MobaXterm sessions",
         description: "Import sessions from an exported .mxtsessions file or a MobaXterm.ini. \
