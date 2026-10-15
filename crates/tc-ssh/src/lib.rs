@@ -95,6 +95,9 @@ pub struct ConnectParams {
     /// 3_36 "Use certificate with the private key": an OpenSSH
     /// certificate (`*-cert.pub`) for the private key (target only).
     pub certificate: Option<PathBuf>,
+    /// Environment variables asked for the shell (3_24 "Adapt locales on
+    /// remote server": LANG); servers may refuse them.
+    pub env: Vec<(String, String)>,
 }
 
 impl ConnectParams {
@@ -991,6 +994,9 @@ async fn run_shell(
             )
             .await
             .map_err(|e| format!("pty request failed: {e}"))?;
+        for (name, value) in &params.env {
+            let _ = channel.set_env(false, name.as_str(), value.as_str()).await;
+        }
         if params.agent_forwarding {
             let _ = channel.agent_forward(false).await;
         }

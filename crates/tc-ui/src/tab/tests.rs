@@ -553,3 +553,14 @@ fn remote_desktops() {
         assert!(remote_desktop(i).is_some(), "desktop {i}");
     }
 }
+
+#[test]
+fn posix_locales() {
+    assert_eq!(posix_locale("pt-BR").as_deref(), Some("pt_BR.UTF-8"));
+    assert_eq!(
+        posix_locale("en_US.ISO-8859-1").as_deref(),
+        Some("en_US.UTF-8")
+    );
+    assert_eq!(posix_locale("C"), None);
+    assert_eq!(posix_locale("x; rm"), None);
+}

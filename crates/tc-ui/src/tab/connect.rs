@@ -133,6 +133,7 @@ impl Tab {
             preserve_dates: false,
             algorithms: Default::default(),
             certificate: None,
+            env: Vec::new(),
         };
         self.mosh = Some(MoshStart {
             output: Vec::new(),
@@ -225,6 +226,7 @@ impl Tab {
             preserve_dates,
             algorithms: Default::default(),
             certificate: None,
+            env: Vec::new(),
         };
         self.sftp = SftpStatus::Connecting;
         self.backend = Backend::Ssh(SshSession::connect(params, self.repaint.clone()));
@@ -448,6 +450,13 @@ impl Tab {
                 .map(str::trim)
                 .filter(|c| !c.is_empty() && *c != "<>")
                 .map(local_path),
+            // 3_24 "Adapt locales on remote server".
+            env: opt("3_24")
+                .is_some_and(schema::is_true)
+                .then(super::options::local_locale)
+                .flatten()
+                .map(|l| vec![("LANG".to_string(), l)])
+                .unwrap_or_default(),
         };
         if params.remote_monitoring {
             self.monitor = Some(Box::default());

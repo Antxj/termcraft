@@ -109,6 +109,56 @@ pub(super) fn x11_display(offset: u16) -> (Option<String>, Option<&'static str>)
     )
 }
 
+/// The local locale as a POSIX name (`pt_BR.UTF-8`), for 3_24 "Adapt
+/// locales on remote server": `LANG` / `LC_ALL` here, the user's locale
+/// name on Windows (read once).
+pub(super) fn local_locale() -> Option<String> {
+    static LOCALE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    LOCALE
+        .get_or_init(|| {
+            let name = if cfg!(windows) {
+                windows_locale_name()?
+            } else {
+                std::env::var("LC_ALL")
+                    .ok()
+                    .filter(|v| !v.is_empty())
+                    .or_else(|| std::env::var("LANG").ok())?
+            };
+            posix_locale(&name)
+        })
+        .clone()
+}
+
+/// `pt-BR` / `pt_BR.UTF-8` / `C` → a POSIX UTF-8 locale name.
+pub(super) fn posix_locale(name: &str) -> Option<String> {
+    let base = name.trim().split(['.', '@']).next()?.replace('-', "_");
+    let valid = !base.is_empty()
+        && base.len() <= 16
+        && base.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !valid || base == "C" || base == "POSIX" {
+        return None;
+    }
+    Some(format!("{base}.UTF-8"))
+}
+
+/// `HKCU\Control Panel\International\LocaleName` (reg.exe, no shell).
+fn windows_locale_name() -> Option<String> {
+    let out = std::process::Command::new(tc_core::paths::system32("reg.exe"))
+        .args([
+            r"query",
+            r"HKCU\Control Panel\International",
+            "/v",
+            "LocaleName",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.lines()
+        .find(|l| l.trim_start().starts_with("LocaleName"))
+        .and_then(|l| l.split_whitespace().last())
+        .map(String::from)
+}
+
 /// SSH 3_14 "Remote environment": the command that starts the chosen
 /// desktop (`None` = "Interactive shell").
 pub(super) fn remote_desktop(index: usize) -> Option<&'static str> {

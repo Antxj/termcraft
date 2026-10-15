@@ -53,6 +53,7 @@ fn params(port: u16, known_hosts: &Path, command: &str) -> ConnectParams {
         preserve_dates: true,
         algorithms: Default::default(),
         certificate: None,
+        env: Vec::new(),
     }
 }
 

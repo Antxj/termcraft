@@ -1456,7 +1456,6 @@ fn to_deccol([r, g, b]: [u8; 3]) -> String {
 /// Session parameters shown but not applied yet (session type index, id).
 const NOT_APPLIED: &[(Option<usize>, &str)] = &[
     // SSH: protocol version, algorithm lists, certificates, locales.
-    (Some(0), "3_24"),
     (Some(0), "3_28"),
     (Some(0), "3_37"),
     (Some(0), "3_38"),
@@ -1613,7 +1612,7 @@ mod tests {
 
     #[test]
     fn unapplied_parameters_are_marked() {
-        assert!(!honoured(0, "3_24"), "SSH locales");
+        assert!(!honoured(0, "3_28"), "SSH protocol version");
         assert!(honoured(1, "3_31"), "same id, other type");
         assert!(!honoured(7, "4_44"), "every type");
         assert!(honoured(0, "3_32"), "trivial authentication is applied");
