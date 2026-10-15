@@ -178,6 +178,8 @@ refined against it.
 | P2 | [~] | X server › "Start X server" (menu, toolbar button, tray, `x_server_start` / `x_server_stop`, autostart): VcXsrv or Xming on Windows with the Configuration › X11 settings (display mode, OpenGL, clipboard, keyboard layout, display offset, DPI, remote access off by default), XQuartz on macOS, the desktop's own X server on Linux; stopped with TermCraft. "Run on monitor", Xorg version and the extension switches are not applied; a built-in X server is pending | `tc-ui` |
 | P2 | [x] | Settings › "Export configuration" / "Import configuration" / "Reset configuration" (`config_export`, `config_import`, `config_reset`; no passwords in the file) | `tc-commands` + `tc-ui` |
 | P3 | [x] | Help › "Documentation" and the tray's "Documentation" open the project documentation; X server › "XDMCP session" opens a new XDMCP session | `tc-ui` |
+| P2 | [x] | Tools › "List running processes" / "List hardware devices" (a terminal tab: Get-Process / Get-PnpDevice on Windows, ps / lspci / lsusb / system_profiler elsewhere), "Command Prompt (admin)" / "Windows Powershell (admin)" (UAC elevation, own console), "Wake On Lan" (one magic packet; `wake_on_lan`) | `tc-core` + `tc-ui` |
+| P3 | [x] | View › "Take a screenshot" (PNG of the window); Settings › "Manage shared sessions" | `tc-ui` |
 | P2 | [ ] | Windows: bundle and manage VcXsrv (MIT/X11 license) | `tc-x11` |
 | P2 | [x] | macOS: XQuartz for X11 forwarding: its launchd socket in $DISPLAY is used as is; without $DISPLAY an installed XQuartz is started and :0 used | `tc-ssh` + `tc-ui` |
 | P2 | [x] | Linux: X11 forwarding to the native X server or XWayland through $DISPLAY (Unix socket or TCP) | `tc-ssh` |

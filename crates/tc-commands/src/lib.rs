@@ -122,6 +122,17 @@ pub enum Command {
     /// Bring the window to the front (a second start shows the running
     /// window instead of opening another one).
     WindowShow {},
+    /// Tools › "Wake On Lan": send the magic packet that wakes the computer
+    /// with this MAC address.
+    WakeOnLan {
+        mac: String,
+        /// Broadcast (or unicast) IPv4 address; default 255.255.255.255.
+        #[serde(default)]
+        address: Option<String>,
+        /// UDP port; default 9.
+        #[serde(default)]
+        port: Option<u16>,
+    },
     /// "Start X server" (Configuration › X11 settings).
     XServerStart {},
     /// Stop the X server TermCraft started.
@@ -259,6 +270,7 @@ impl Command {
             Self::SessionUpdate { .. } => "session_update",
             Self::TabList {} => "tab_list",
             Self::WindowShow {} => "window_show",
+            Self::WakeOnLan { .. } => "wake_on_lan",
             Self::XServerStart {} => "x_server_start",
             Self::XServerStop {} => "x_server_stop",
             Self::TabOpen { .. } => "tab_open",
@@ -739,6 +751,20 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         Command::WindowShow {} => {
             host.window_show()?;
             Ok(json!({ "ok": true }))
+        }
+        Command::WakeOnLan { mac, address, port } => {
+            let bytes = tc_core::wol::parse_mac(&mac)
+                .ok_or_else(|| CommandError::InvalidArgs(format!("invalid MAC address {mac:?}")))?;
+            let address = match address.as_deref().map(str::trim) {
+                None | Some("") => std::net::Ipv4Addr::BROADCAST,
+                Some(a) => a.parse().map_err(|_| {
+                    CommandError::InvalidArgs(format!("invalid IPv4 address {a:?}"))
+                })?,
+            };
+            let port = port.unwrap_or(tc_core::wol::DEFAULT_PORT);
+            tc_core::wol::wake(bytes, address, port)
+                .map_err(|e| CommandError::Failed(format!("wake on LAN: {e}")))?;
+            Ok(json!({ "sent_to": format!("{address}:{port}") }))
         }
         Command::XServerStart {} => host.x_server_start(),
         Command::XServerStop {} => {

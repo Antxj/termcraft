@@ -61,7 +61,12 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
                 Some(Action::PasswordsSettings),
                 out,
             );
-            item(ui, "Manage shared sessions", None, out);
+            item(
+                ui,
+                "Manage shared sessions",
+                Some(Action::ManageShared),
+                out,
+            );
             ui.separator();
             item(ui, "Edit session presets", None, out);
         });
@@ -249,7 +254,7 @@ pub fn view_menu(ui: &mut egui::Ui, v: &ViewSettings, out: &mut Vec<Action>) {
     );
     item(ui, "Show/hide sidebar tab titles", None, out);
     ui.separator();
-    item(ui, "Take a screenshot", None, out);
+    item(ui, "Take a screenshot", Some(Action::Screenshot), out);
 }
 
 pub fn split_items(ui: &mut egui::Ui, current: SplitMode, out: &mut Vec<Action>) {
@@ -305,6 +310,11 @@ pub fn implemented_tool(name: &str) -> Option<Action> {
         "Ascii table" => Some(Action::AsciiTable),
         "SSH tunnels (port forwarding)" => Some(Action::Tunnels),
         "SSH key generator" => Some(Action::KeyGenerator),
+        "List running processes" => Some(Action::ListProcesses),
+        "List hardware devices" => Some(Action::ListHardware),
+        "Command Prompt (admin)" if cfg!(windows) => Some(Action::AdminShell(false)),
+        "Windows Powershell (admin)" if cfg!(windows) => Some(Action::AdminShell(true)),
+        "Wake On Lan" => Some(Action::WakeOnLan),
         _ => None,
     }
 }

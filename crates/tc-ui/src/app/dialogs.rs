@@ -136,6 +136,24 @@ impl TermCraftApp {
                 }
             }
         }
+        if let Some(dialog) = &mut self.wake_on_lan {
+            match dialog.show(ctx) {
+                crate::ui::wol_dialog::Outcome::Open => {}
+                crate::ui::wol_dialog::Outcome::Closed => self.wake_on_lan = None,
+                crate::ui::wol_dialog::Outcome::Send(cmd) => {
+                    let result = tc_commands::execute(&mut self.core, cmd);
+                    if let Some(dialog) = &mut self.wake_on_lan {
+                        dialog.message = Some(match result {
+                            Ok(v) => format!(
+                                "Magic packet sent to {}",
+                                v["sent_to"].as_str().unwrap_or("")
+                            ),
+                            Err(e) => e.to_string(),
+                        });
+                    }
+                }
+            }
+        }
         if self.show_tunnels {
             let mut open = true;
             crate::ui::tunnels_window::manager(

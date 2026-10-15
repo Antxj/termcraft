@@ -31,6 +31,7 @@ pub mod tabbar;
 pub mod text_editor;
 pub mod toolbar;
 pub mod tunnels_window;
+pub mod wol_dialog;
 
 use tc_commands::Command;
 use tc_core::settings::{SidebarTab, SplitMode, ToolbarStyle};
@@ -50,6 +51,17 @@ pub enum Action {
     About,
     /// Help › "Documentation": the project's documentation in the browser.
     Documentation,
+    /// View › "Take a screenshot" of the window (asks where to save it).
+    Screenshot,
+    /// Tools › "List running processes" / "List hardware devices": a
+    /// terminal tab showing them.
+    ListProcesses,
+    ListHardware,
+    /// Tools › "Command Prompt (admin)" / "Windows Powershell (admin)"
+    /// (`true` = PowerShell): asks Windows to run it elevated.
+    AdminShell(bool),
+    /// Tools › "Wake On Lan".
+    WakeOnLan,
     PasswordsSettings,
     /// Passwords settings on the Credentials tab.
     ManageCredentials,

@@ -44,6 +44,28 @@ struct Core {
     x_server: Option<XServer>,
 }
 
+/// Tools › "List running processes" / "List hardware devices": the tab
+/// name and the command it runs.
+fn tool_terminal(processes: bool) -> (&'static str, &'static str) {
+    let command = match (processes, cfg!(windows), cfg!(target_os = "macos")) {
+        (true, true, _) => {
+            "Get-Process | Sort-Object CPU -Descending | Format-Table -AutoSize Id, ProcessName, CPU, WS, Path"
+        }
+        (true, false, _) => "ps aux",
+        (false, true, _) => {
+            "Get-PnpDevice -PresentOnly | Sort-Object Class, FriendlyName | Format-Table -AutoSize Class, FriendlyName, Status"
+        }
+        (false, false, true) => "system_profiler SPHardwareDataType SPUSBDataType",
+        (false, false, false) => "lspci 2>/dev/null; lsusb 2>/dev/null; lsblk 2>/dev/null",
+    };
+    let name = if processes {
+        "Running processes"
+    } else {
+        "Hardware devices"
+    };
+    (name, command)
+}
+
 /// Help › "Documentation".
 const DOCUMENTATION: &str = "https://github.com/Antxj/termcraft#readme";
 
@@ -224,6 +246,10 @@ pub struct TermCraftApp {
     /// Shared sessions (read-only) and their management window.
     shared: crate::shared::SharedSessions,
     shared_window: Option<crate::ui::shared_window::SharedWindow>,
+    /// View › "Take a screenshot": where the next screenshot goes.
+    screenshot_to: Option<std::path::PathBuf>,
+    /// Tools › "Wake On Lan" dialog.
+    wake_on_lan: Option<crate::ui::wol_dialog::WolDialog>,
     /// "Connect as...": the session and the user being typed.
     connect_as: Option<(Box<tc_core::Session>, String)>,
     diff_tool: crate::ui::diff_window::DiffWindow,
@@ -343,6 +369,8 @@ impl TermCraftApp {
             tray: None,
             shared: Default::default(),
             shared_window: None,
+            screenshot_to: None,
+            wake_on_lan: None,
             connect_as: None,
             diff_tool: Default::default(),
             image_viewer: Default::default(),
@@ -498,6 +526,55 @@ impl TermCraftApp {
                 return ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!full));
             }
             Action::About => return self.show_about = true,
+            Action::ListProcesses | Action::ListHardware => {
+                let processes = matches!(action, Action::ListProcesses);
+                let (name, command) = tool_terminal(processes);
+                let mut session = Session::new(
+                    name,
+                    tc_core::session::SessionKind::LocalShell { program: None },
+                );
+                if cfg!(windows) {
+                    session.options.insert(
+                        "3_2".into(),
+                        tc_core::settings::LocalShell::option_value(Some(
+                            tc_core::settings::LocalShell::PowerShell,
+                        ))
+                        .into(),
+                    );
+                }
+                session
+                    .options
+                    .insert(tc_core::session::STARTUP_COMMANDS.into(), command.into());
+                match self.core.check_session_allowed(Some(&session)) {
+                    Ok(()) => {
+                        self.core.open_tab(Some(session), false);
+                    }
+                    Err(e) => self.status = e.to_string(),
+                }
+                return;
+            }
+            Action::AdminShell(powershell) => {
+                if let Err(e) = crate::external::run_elevated(powershell) {
+                    self.status = e;
+                }
+                return;
+            }
+            Action::WakeOnLan => {
+                return self.wake_on_lan = Some(Default::default());
+            }
+            Action::Screenshot => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("TermCraft screenshot.png")
+                    .add_filter("PNG image", &["png"])
+                    .save_file()
+                {
+                    self.screenshot_to = Some(path);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(
+                        egui::UserData::default(),
+                    ));
+                }
+                return;
+            }
             Action::Documentation => {
                 if let Err(e) = crate::external::open_url(DOCUMENTATION) {
                     self.status = format!("Documentation: {e}");
@@ -838,6 +915,37 @@ impl TermCraftApp {
         };
     }
 
+    /// The screenshot asked by View › "Take a screenshot", once it comes.
+    fn save_screenshot(&mut self, ctx: &egui::Context) {
+        if self.screenshot_to.is_none() {
+            return;
+        }
+        let shot = ctx.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        let Some(image) = shot else {
+            return;
+        };
+        let Some(path) = self.screenshot_to.take() else {
+            return;
+        };
+        let [w, h] = image.size;
+        let saved = image::save_buffer(
+            &path,
+            image.as_raw(),
+            u32::try_from(w).unwrap_or(0),
+            u32::try_from(h).unwrap_or(0),
+            image::ExtendedColorType::Rgba8,
+        );
+        self.status = match saved {
+            Ok(()) => format!("Screenshot saved to {}", path.display()),
+            Err(e) => format!("screenshot: {e}"),
+        };
+    }
+
     /// Run commands from other processes (control channel) and answer.
     fn serve_control(&mut self, ctx: &egui::Context) {
         let Some(control) = &self.control else {
@@ -1141,6 +1249,7 @@ impl eframe::App for TermCraftApp {
         self.serve_control(&ctx);
         self.serve_tray(&ctx);
         crate::ui::menus::set_disabled_tools(&self.core.settings.security.disabled_tools);
+        self.save_screenshot(&ctx);
         if std::mem::take(&mut self.core.show_requested) {
             show_window(&ctx, true);
         }

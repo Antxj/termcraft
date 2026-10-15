@@ -208,6 +208,15 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: false,
     },
     CommandSpec {
+        name: "wake_on_lan",
+        title: "Wake On Lan",
+        description: "Send one Wake-on-LAN magic packet for a MAC address (aa:bb:cc:dd:ee:ff) to \
+                      a broadcast or unicast IPv4 address (default 255.255.255.255, port 9).",
+        input_schema: r#"{"type":"object","required":["mac"],"properties":{"mac":{"type":"string"},"address":{"type":"string"},"port":{"type":"integer","minimum":1,"maximum":65535}}}"#,
+        example_args: r#"{"mac":"00:1a:2b:3c:4d:5e"}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "x_server_start",
         title: "Start X server",
         description: "Start the local X server with the Configuration › X11 settings (VcXsrv or \

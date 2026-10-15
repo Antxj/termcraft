@@ -264,6 +264,32 @@ pub fn launch_rdp(
     Err("no RDP client found (install FreeRDP or Remmina)".into())
 }
 
+/// Tools › "Command Prompt (admin)" / "Windows Powershell (admin)": Windows
+/// asks for elevation (UAC) and opens it in its own console.
+pub fn run_elevated(powershell: bool) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Err("elevated prompts are a Windows feature".into());
+    }
+    let ps = tc_core::paths::system32(r"WindowsPowerShell\v1.0\powershell.exe");
+    let target = if powershell {
+        ps.clone()
+    } else {
+        tc_core::paths::system32("cmd.exe")
+    };
+    // A path from %SystemRoot%, quoted for PowerShell.
+    let target = target.display().to_string().replace('\'', "''");
+    spawn(
+        &ps,
+        &[
+            "-NoProfile".into(),
+            "-WindowStyle".into(),
+            "Hidden".into(),
+            "-Command".into(),
+            format!("Start-Process -Verb RunAs -FilePath '{target}'"),
+        ],
+    )
+}
+
 /// Start the platform VNC viewer; returns a description of what ran.
 pub fn launch_vnc(host: &str, port: u16) -> Result<String, String> {
     check_value("host", host)?;

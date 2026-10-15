@@ -21,6 +21,7 @@ pub mod store;
 pub mod syntax;
 pub mod tunnel;
 pub mod url;
+pub mod wol;
 
 pub use macros::{Macro, MacroId, MacroStore};
 pub use paths::Paths;
