@@ -6,6 +6,7 @@ impl Tab {
     /// Drain backend events into the emulator. Returns true if anything changed.
     pub fn pump(&mut self) -> bool {
         self.pump_paste();
+        let rdp = self.pump_rdp();
         if let Some(title) = self.term.take_title()
             && !self.lock_title
             && !title.is_empty()
@@ -13,13 +14,69 @@ impl Tab {
             self.title = title;
         }
         self.upload_prompts.extend(self.edits.changed());
-        match &mut self.backend {
+        rdp | match &mut self.backend {
             Backend::None => false,
             Backend::Pty(_) => self.pump_pty(),
             Backend::Ssh(_) => self.pump_ssh(),
             Backend::Connecting(_) | Backend::Stream(_) => self.pump_stream(),
             Backend::Ftp(_) => self.pump_ftp(),
         }
+    }
+
+    /// Events of the built-in RDP session.
+    pub(super) fn pump_rdp(&mut self) -> bool {
+        let Some(view) = &self.rdp else {
+            return false;
+        };
+        let events: Vec<tc_rdp::RdpEvent> = view.session.events().try_iter().collect();
+        let changed = !events.is_empty();
+        for event in events {
+            match event {
+                tc_rdp::RdpEvent::Connected { width, height } => {
+                    let first = self.rdp.as_ref().is_some_and(|v| !v.connected);
+                    if let Some(v) = &mut self.rdp {
+                        v.connected = true;
+                    }
+                    if first {
+                        self.message(&format!(
+                            "\x1b[32mConnected: remote desktop {width}x{height}.\x1b[0m"
+                        ));
+                        self.status = Some("RDP".into());
+                        self.after_login();
+                    }
+                }
+                tc_rdp::RdpEvent::Frame => {}
+                tc_rdp::RdpEvent::UntrustedCertificate {
+                    fingerprint,
+                    reason,
+                } => {
+                    self.message(&format!(
+                        "\x1b[33mThe server certificate is not trusted: {reason}\x1b[0m"
+                    ));
+                    self.cert_prompt = Some(CertPrompt {
+                        fingerprint,
+                        reason,
+                        what: "RDP server",
+                    });
+                }
+                tc_rdp::RdpEvent::Closed(reason) => {
+                    let connected = self.rdp.take().is_some_and(|v| v.connected);
+                    if self.cert_prompt.is_some() {
+                        continue; // the certificate question is open
+                    }
+                    match reason {
+                        Some(e) => {
+                            self.message(&format!("\x1b[31mRDP: {e}\x1b[0m"));
+                            self.status = Some("connection failed".into());
+                            self.session_ended("connection failed");
+                        }
+                        None if connected => self.session_ended("remote desktop closed"),
+                        None => self.session_ended("connection closed"),
+                    }
+                }
+            }
+        }
+        changed
     }
 
     pub(super) fn pump_ftp(&mut self) -> bool {
@@ -52,6 +109,7 @@ impl Tab {
                     self.cert_prompt = Some(CertPrompt {
                         fingerprint: fingerprint.clone(),
                         reason: reason.clone(),
+                        what: "FTPS server",
                     });
                 }
                 SftpEvent::Failed { error, .. } => self.message(&format!("\x1b[33m{error}\x1b[0m")),

@@ -137,6 +137,9 @@ impl Tab {
                             match self.session.as_ref().map(|s| &s.kind) {
                                 Some(SessionKind::Mosh { .. }) => self.connect_mosh(user),
                                 Some(SessionKind::Sftp { .. }) => self.connect_sftp(user),
+                                Some(SessionKind::Rdp { .. }) if self.pending_rdp_waiting() => {
+                                    self.rdp_login(user);
+                                }
                                 _ => self.connect_ssh(user),
                             }
                         }

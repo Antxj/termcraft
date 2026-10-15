@@ -72,6 +72,23 @@ impl Default for RdpOptions {
 }
 
 impl RdpOptions {
+    /// What only the system client does (device redirection, audio,
+    /// admin console, remote command): the built-in client is not used.
+    pub fn needs_system_client(&self) -> Option<&'static str> {
+        let reasons = [
+            (self.admin, "admin console"),
+            (self.command.is_some(), "remote command"),
+            (self.drives, "drive redirection"),
+            (self.printers, "printer redirection"),
+            (self.ports, "port redirection"),
+            (self.microphone, "microphone"),
+            (self.smartcards, "smart cards"),
+            (self.webauthn, "WebAuthn"),
+            (self.audio != 0, "audio"),
+        ];
+        reasons.iter().find(|(on, _)| *on).map(|(_, what)| *what)
+    }
+
     /// From the session options (`get` = the stored value of an id; the
     /// schema default when `None`).
     pub fn from_options(get: &dyn Fn(&str) -> Option<String>) -> Self {

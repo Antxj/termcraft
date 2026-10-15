@@ -698,7 +698,10 @@ impl TermCraftApp {
                             .color(ui.visuals().warn_fg_color),
                     );
                     ui.vertical(|ui| {
-                        ui.label("The certificate of this FTPS server could not be verified:");
+                        ui.label(format!(
+                            "The certificate of this {} could not be verified:",
+                            prompt.what
+                        ));
                         ui.monospace(format!("    {}", prompt.reason));
                         ui.label("Its fingerprint is:");
                         ui.monospace(format!("    {}", prompt.fingerprint));

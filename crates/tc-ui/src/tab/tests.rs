@@ -56,6 +56,7 @@ fn test_env(dir: &std::path::Path) -> TabEnv {
         log_name: String::new(),
         x_display: 0,
         no_rdp_reconnect: false,
+        rdp_builtin: true,
         use_windows_path: true,
         theme: Default::default(),
         home: None,

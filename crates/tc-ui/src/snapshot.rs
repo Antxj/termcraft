@@ -121,6 +121,9 @@ impl Snapshot {
                     if answer_keys && tab.host_key.is_some() {
                         tab.answer_host_key(true, false);
                     }
+                    if answer_keys && tab.cert_prompt.is_some() {
+                        tab.answer_certificate(true, false);
+                    }
                     if tab.awaiting_secret()
                         && let Some(pw) = self.password.take()
                     {

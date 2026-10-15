@@ -555,9 +555,21 @@ impl Tab {
             self.gateway_tunnel = Some(tunnel);
         }
         let local = "127.0.0.1";
-        let external = !matches!(via.target, GatewayTarget::Telnet);
+        let external = match &via.target {
+            GatewayTarget::Telnet => false,
+            GatewayTarget::Rdp(_) => !self.rdp_builtin_ok(),
+            GatewayTarget::Vnc => true,
+        };
         match via.target {
             GatewayTarget::Telnet => self.open_telnet(local.into(), local_port),
+            GatewayTarget::Rdp(user) if self.rdp_builtin_ok() => {
+                self.open_rdp(
+                    via.host.clone(),
+                    via.port,
+                    user,
+                    Some((local.to_string(), local_port)),
+                );
+            }
             GatewayTarget::Rdp(user) => {
                 let temp = std::env::temp_dir().join("termcraft-rdp");
                 let mut options = crate::external::RdpOptions::from_options(&|id| {
@@ -742,7 +754,134 @@ impl Tab {
 
     /// A password (typed or saved) for a pending FTP / S3 login; given back
     /// when no such login waits (it is then for the SSH connection).
+    /// The RDP options of the session.
+    fn rdp_options(&self) -> crate::external::RdpOptions {
+        crate::external::RdpOptions::from_options(&|id| {
+            self.session
+                .as_ref()
+                .and_then(|s| s.options.get(id).cloned())
+        })
+    }
+
+    /// The built-in client is used (setting on, nothing only the system
+    /// client does).
+    pub(super) fn rdp_builtin_ok(&self) -> bool {
+        if !self.rdp_builtin {
+            return false;
+        }
+        match self.rdp_options().needs_system_client() {
+            Some(what) => {
+                crate::app_log::write(&format!(
+                    "RDP: the system client is used ({what} is not in the built-in client)"
+                ));
+                false
+            }
+            None => true,
+        }
+    }
+
+    /// RDP in the tab: the login, then the password (saved or asked).
+    pub(super) fn open_rdp(
+        &mut self,
+        host: String,
+        port: u16,
+        user: Option<String>,
+        via: Option<(String, u16)>,
+    ) {
+        let user = user.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
+        let Some(user) = user else {
+            self.pending_rdp = Some(self.rdp_params(host, port, String::new(), via));
+            self.term.feed(b"login as: ");
+            self.line = Some(LineInput::Login(String::new()));
+            return;
+        };
+        let params = self.rdp_params(host, port, user, via);
+        self.ask_rdp_password(params);
+    }
+
+    pub(super) fn pending_rdp_waiting(&self) -> bool {
+        self.pending_rdp.is_some()
+    }
+
+    /// "login as:" answered for an RDP session.
+    pub(super) fn rdp_login(&mut self, user: String) {
+        if let Some(mut params) = self.pending_rdp.take() {
+            let (domain, name) = split_domain(&user);
+            params.user = name;
+            params.domain = domain;
+            self.ask_rdp_password(params);
+        }
+    }
+
+    fn ask_rdp_password(&mut self, params: tc_rdp::RdpParams) {
+        let target = Target {
+            protocol: "rdp".into(),
+            username: match &params.domain {
+                Some(d) => format!("{d}\\{}", params.user),
+                None => params.user.clone(),
+            },
+            server: format!("{}:{}", params.host, params.port),
+        };
+        let prompt = format!("{}@{}'s password:", target.username, params.host);
+        self.pending_rdp = Some(params);
+        self.on_secret_needed(prompt, SecretKind::Password, target);
+    }
+
+    fn rdp_params(
+        &self,
+        host: String,
+        port: u16,
+        user: String,
+        via: Option<(String, u16)>,
+    ) -> tc_rdp::RdpParams {
+        let (domain, user) = split_domain(&user);
+        let (width, height) = match self.rdp_options().size {
+            crate::external::RdpSize::Fixed(w, h) => (
+                u16::try_from(w).unwrap_or(1024),
+                u16::try_from(h).unwrap_or(768),
+            ),
+            _ => self.area_px,
+        };
+        tc_rdp::RdpParams {
+            pinned: tc_net::ftps::trusted(&self.rdp_certificates(), &host, port),
+            host,
+            port,
+            user,
+            domain,
+            password: String::new().into(),
+            width,
+            height,
+            keyboard_layout: 0,
+            via,
+        }
+    }
+
+    pub(super) fn rdp_certificates(&self) -> PathBuf {
+        self.known_hosts.with_file_name("rdp_certificates")
+    }
+
+    pub(super) fn start_rdp(&mut self, params: tc_rdp::RdpParams) {
+        self.message(&format!(
+            "\x1b[90mConnecting to {}:{} (RDP) …\x1b[0m",
+            params.host, params.port
+        ));
+        if self.rdp_options().clipboard {
+            self.message(
+                "\x1b[90mThe built-in RDP client does not share the clipboard yet; \
+                 Ctrl+V types the local clipboard.\x1b[0m",
+            );
+        }
+        self.last_rdp = Some(params.clone());
+        let session = tc_rdp::RdpSession::connect(params, self.repaint.clone());
+        self.rdp = Some(crate::rdp_view::RdpView::new(session));
+    }
+
     pub(super) fn pending_login(&mut self, secret: String) -> Option<String> {
+        if let Some(mut rdp) = self.pending_rdp.take() {
+            rdp.password = secret.into();
+            self.start_rdp(rdp);
+            return None;
+        }
         if let Some(mut ftp) = self.pending_ftp.take() {
             ftp.password = secret;
             self.start_ftp(ftp);
@@ -864,6 +1003,30 @@ impl Tab {
         let Some(prompt) = self.cert_prompt.take() else {
             return;
         };
+        if prompt.what == "RDP server" {
+            let Some(mut params) = self.last_rdp.take() else {
+                return;
+            };
+            if !accept {
+                self.message("\x1b[90m[connection cancelled]\x1b[0m");
+                return;
+            }
+            if remember
+                && let Err(e) = tc_net::ftps::trust(
+                    &self.rdp_certificates(),
+                    &params.host,
+                    params.port,
+                    &prompt.fingerprint,
+                )
+            {
+                self.message(&format!(
+                    "\x1b[33mcould not save the certificate: {e}\x1b[0m"
+                ));
+            }
+            params.pinned = Some(prompt.fingerprint);
+            self.start_rdp(params);
+            return;
+        }
         let Some(mut params) = self.last_ftp.take() else {
             return;
         };
@@ -902,5 +1065,13 @@ impl Tab {
             params,
             self.repaint.clone(),
         )));
+    }
+}
+
+/// `DOMAIN\\user` (or `user@domain`, kept whole for NLA) → domain, user.
+pub(super) fn split_domain(user: &str) -> (Option<String>, String) {
+    match user.split_once('\\') {
+        Some((d, u)) if !d.is_empty() => (Some(d.to_string()), u.to_string()),
+        _ => (None, user.to_string()),
     }
 }

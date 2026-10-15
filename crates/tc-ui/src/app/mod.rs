@@ -180,6 +180,7 @@ impl Core {
             save_key_passphrases: self.settings.passwords.save_key_passphrases,
             x_display: self.settings.x_server.display,
             no_rdp_reconnect: self.settings.security.disable_rdp_reconnect,
+            rdp_builtin: self.settings.general.rdp_builtin,
             log_dir: Some(self.settings.terminal.log_dir.trim())
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),

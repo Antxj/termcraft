@@ -19,6 +19,14 @@ derived from a fixed seed, so a `known_hosts` entry stays valid across runs.
 cargo run -p tc-devserver -- --port 2222
 ```
 
+With the `rdp` feature it is also an RDP test server (NLA with the same
+user and password, a self-signed certificate made at start, one solid-color
+desktop); it prints the port it listens on:
+
+```sh
+cargo run -p tc-devserver --features rdp -- --rdp
+```
+
 Test credentials (dev only, override with `TC_DEV_USER` / `TC_DEV_PASSWORD`):
 
 | User | Password |

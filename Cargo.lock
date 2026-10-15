@@ -6676,6 +6676,7 @@ dependencies = [
  "tc-import",
  "tc-net",
  "tc-pty",
+ "tc-rdp",
  "tc-servers",
  "tc-ssh",
  "tc-term",

@@ -20,6 +20,7 @@ fn params(port: u16, password: &str, pinned: Option<String>) -> RdpParams {
         height: 200,
         pinned,
         keyboard_layout: 0,
+        via: None,
     }
 }
 

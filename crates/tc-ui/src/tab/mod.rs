@@ -62,6 +62,8 @@ pub struct TabEnv {
     pub x_display: u16,
     /// Configuration › Security "Disable RDP \"reconnect\"".
     pub no_rdp_reconnect: bool,
+    /// RDP sessions in the built-in client (General setting).
+    pub rdp_builtin: bool,
     /// "Use Windows PATH" in the local Bash / Zsh.
     pub use_windows_path: bool,
     /// Configured terminal colors and cursor, if any.
@@ -143,10 +145,12 @@ fn via_gateway(session: Option<&Session>) -> Option<ViaGateway> {
     })
 }
 
-/// An FTPS certificate that did not verify.
+/// A TLS certificate that did not verify (FTPS or RDP server).
 pub struct CertPrompt {
     pub fingerprint: String,
     pub reason: String,
+    /// "FTPS server" / "RDP server".
+    pub what: &'static str,
 }
 
 /// "Find in terminal" bar of a tab.
@@ -256,6 +260,15 @@ pub struct Tab {
     /// See [`TabEnv::x_display`].
     x_display: u16,
     no_rdp_reconnect: bool,
+    rdp_builtin: bool,
+    /// The built-in RDP session of this tab.
+    pub rdp: Option<crate::rdp_view::RdpView>,
+    /// An RDP login waiting for its password / the last one (reconnect,
+    /// certificate answer).
+    pending_rdp: Option<tc_rdp::RdpParams>,
+    last_rdp: Option<tc_rdp::RdpParams>,
+    /// Size of the tab's area in pixels (the RDP desktop "fits" it).
+    pub area_px: (u16, u16),
     term_type: Option<String>,
     /// FTP connection waiting for its password prompt.
     pending_ftp: Option<tc_net::ftp::FtpParams>,
@@ -392,6 +405,11 @@ impl Tab {
             ssh_settings: env.ssh.clone(),
             x_display: env.x_display,
             no_rdp_reconnect: env.no_rdp_reconnect,
+            rdp_builtin: env.rdp_builtin,
+            rdp: None,
+            pending_rdp: None,
+            last_rdp: None,
+            area_px: (1024, 768),
             term_type: None,
             pending_ftp: None,
             pending_s3: None,
@@ -534,6 +552,9 @@ impl Tab {
             Some(SessionKind::Telnet { host, port }) => tab.open_telnet(host, port),
             Some(SessionKind::Serial { port_name, baud }) => tab.open_serial(port_name, baud),
             Some(SessionKind::Ftp { host, port, user }) => tab.open_ftp(host, port, user),
+            Some(SessionKind::Rdp { host, port, user }) if tab.rdp_builtin_ok() => {
+                tab.open_rdp(host, port, user, None);
+            }
             Some(SessionKind::Rdp { host, port, user }) => {
                 let temp = std::env::temp_dir().join("termcraft-rdp");
                 let mut options = crate::external::RdpOptions::from_options(&|id| {
@@ -676,6 +697,7 @@ impl Tab {
 
     pub fn is_alive(&self) -> bool {
         !matches!(self.backend, Backend::None)
+            || self.rdp.is_some()
             || self.line.is_some()
             || self.gateway_tunnel.is_some()
             || self.proxy_forward.is_some()

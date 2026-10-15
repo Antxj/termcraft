@@ -278,10 +278,15 @@ pub(super) fn terminals(
                     crate::ui::monitor_bar::show(&mut pane, bar, tab.monitor.as_deref());
                     pane = ui.new_child(egui::UiBuilder::new().max_rect(term_rect));
                 }
-                outputs.push((
-                    id,
-                    term_view::show(&mut pane, tab, font_size, is_active, opts),
-                ));
+                let px = pane.available_rect_before_wrap().size();
+                tab.area_px = (px.x.max(200.0) as u16, px.y.max(200.0) as u16);
+                let output = match &mut tab.rdp {
+                    Some(view) if view.connected => {
+                        crate::rdp_view::show(&mut pane, view, is_active)
+                    }
+                    _ => term_view::show(&mut pane, tab, font_size, is_active, opts),
+                };
+                outputs.push((id, output));
                 if split != S::Single && is_active {
                     pane.painter().rect_stroke(
                         *rect,

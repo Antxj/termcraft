@@ -343,6 +343,9 @@ pub struct GeneralSettings {
     pub mobaxterm_import_offered: bool,
     /// Misc › "Open the following tab at startup".
     pub startup_tab: StartupTab,
+    /// RDP sessions open inside TermCraft (the built-in client) unless
+    /// they ask for what only the system client does.
+    pub rdp_builtin: bool,
     /// General › "Default text editor program": edits remote files
     /// instead of the built-in editor (empty = the built-in one).
     pub text_editor: String,
@@ -425,6 +428,7 @@ impl Default for GeneralSettings {
             mobaxterm_import_offered: false,
             startup_tab: StartupTab::default(),
             text_editor: String::new(),
+            rdp_builtin: true,
             new_tab_position: NewTabPosition::default(),
             plus_opens_home: false,
             exit_on_last_tab: false,

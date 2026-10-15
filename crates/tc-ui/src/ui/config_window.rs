@@ -1502,6 +1502,14 @@ fn termcraft_tab(
         ui.checkbox(&mut s.terminal.copy_on_select, "Copy on select")
             .on_hover_text("Selected text is copied to the clipboard (also in Expert settings)");
     });
+    ui.checkbox(
+        &mut s.general.rdp_builtin,
+        "Show RDP sessions inside TermCraft (built-in client)",
+    )
+    .on_hover_text(
+        "Off, or when a session redirects drives, printers, audio … : the system RDP client \
+         (mstsc, FreeRDP) opens instead",
+    );
 }
 
 #[cfg(test)]

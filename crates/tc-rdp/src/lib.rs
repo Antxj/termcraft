@@ -44,6 +44,9 @@ pub struct RdpParams {
     pub pinned: Option<String>,
     /// Windows keyboard layout id (0 = the server's default).
     pub keyboard_layout: u32,
+    /// Connect to this address instead (a tunnel to `host:port`); the
+    /// certificate is still the one of `host`.
+    pub via: Option<(String, u16)>,
 }
 
 /// What the session reports to the app.
@@ -269,9 +272,13 @@ async fn connect(
     p: &RdpParams,
     send: &dyn Fn(RdpEvent),
 ) -> Result<Option<(ConnectionResult, Upgraded)>, String> {
+    let (address, port) = p
+        .via
+        .as_ref()
+        .map_or((p.host.as_str(), p.port), |(h, port)| (h.as_str(), *port));
     let tcp = tokio::time::timeout(
         CONNECT_TIMEOUT,
-        tokio::net::TcpStream::connect((p.host.as_str(), p.port)),
+        tokio::net::TcpStream::connect((address, port)),
     )
     .await
     .map_err(|_| format!("{}:{}: no answer", p.host, p.port))?
