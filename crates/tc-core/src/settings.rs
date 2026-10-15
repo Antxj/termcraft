@@ -222,6 +222,8 @@ pub struct GeneralSettings {
     pub home_location: HomeLocation,
     /// "Terminal home directory" when the location is "<Custom>".
     pub home_dir: String,
+    /// The first start already offered to import a MobaXterm.ini.
+    pub mobaxterm_import_offered: bool,
 }
 
 impl Default for GeneralSettings {
@@ -230,6 +232,7 @@ impl Default for GeneralSettings {
             auto_backup: true,
             home_location: HomeLocation::default(),
             home_dir: String::new(),
+            mobaxterm_import_offered: false,
         }
     }
 }
@@ -555,6 +558,9 @@ pub struct TerminalSettings {
     pub fixed_grid: bool,
     pub fixed_cols: u16,
     pub fixed_rows: u16,
+    /// Default terminal colors and cursor (`None` = TermCraft's own);
+    /// sessions with their own colors keep them.
+    pub colors: Option<TerminalColors>,
     pub scrollback_lines: usize,
     /// "Close prompt": confirm before exiting with sessions open.
     pub confirm_exit: bool,
@@ -581,6 +587,19 @@ pub struct TerminalSettings {
     pub custom_syntaxes: [crate::syntax::CustomSyntax; crate::syntax::SLOTS],
     /// "Expert settings".
     pub expert: ExpertTerminal,
+}
+
+/// Terminal colors and cursor, as RGB.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TerminalColors {
+    pub foreground: [u8; 3],
+    pub background: [u8; 3],
+    pub cursor: [u8; 3],
+    /// The 8 normal then the 8 bright ANSI colors.
+    pub ansi: [[u8; 3]; 16],
+    /// 0 block, 1 underline, 2 vertical line.
+    pub cursor_type: u8,
+    pub cursor_blink: bool,
 }
 
 /// Configuration › Terminal › "Expert settings" (reference
@@ -819,6 +838,7 @@ impl Default for TerminalSettings {
             fixed_grid: false,
             fixed_cols: 80,
             fixed_rows: 24,
+            colors: None,
             scrollback_lines: 10_000,
             confirm_exit: true,
             paste_right_click: true,

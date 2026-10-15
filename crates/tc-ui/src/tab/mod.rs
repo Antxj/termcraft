@@ -54,6 +54,8 @@ pub struct TabEnv {
     pub log_dir: Option<PathBuf>,
     /// "Use Windows PATH" in the local Bash / Zsh.
     pub use_windows_path: bool,
+    /// Configured terminal colors and cursor, if any.
+    pub theme: Option<tc_term::Theme>,
     /// "Home directory location": `HOME` of the local Bash / Zsh.
     pub home: Option<PathBuf>,
 }
@@ -423,7 +425,7 @@ impl Tab {
             sftp_sudo: false,
             sftp_reopen_cwd: None,
         };
-        let settings = crate::term_settings::for_session(tab.session.as_ref());
+        let settings = crate::term_settings::for_session(tab.session.as_ref(), env.theme.as_ref());
         tab.term.theme = settings.theme;
         tab.font_size = settings.font_px;
         tab.font_name = settings.font_name;

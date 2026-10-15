@@ -123,6 +123,16 @@ impl Host for FileHost {
         Ok(&self.vault)
     }
 
+    fn settings(&mut self) -> Result<&mut Settings, CommandError> {
+        Ok(&mut self.settings)
+    }
+
+    fn persist_settings(&mut self) -> Result<(), CommandError> {
+        self.settings
+            .save(&self.paths.settings_file())
+            .map_err(|e| CommandError::Failed(e.to_string()))
+    }
+
     fn known_hosts_file(&self) -> Result<std::path::PathBuf, CommandError> {
         Ok(self.paths.known_hosts_file())
     }

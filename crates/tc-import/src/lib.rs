@@ -4,6 +4,7 @@
 //! tolerant: anything not understood is reported, never guessed.
 
 pub mod mobaxterm;
+pub mod mobaxterm_ini;
 pub mod putty;
 pub mod ssh_config;
 pub mod wsl;

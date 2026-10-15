@@ -39,9 +39,14 @@ and the programs TermCraft can work with.
 
 Click **Start local terminal** for a shell on your own computer.
 
-Already use MobaXterm? Export your sessions there
-(*Sessions › Export sessions*), then in TermCraft right-click
-*User sessions › Import MobaXterm sessions*.
+Already use MobaXterm? Put TermCraft next to your portable MobaXterm (or
+just start it on a computer with MobaXterm installed): at first start it
+offers to bring over your sessions, settings (font, colors, terminal, SSH…)
+and trusted host keys. Your `MobaXterm.ini` is only read, never changed.
+You can also do it later: right-click *User sessions › Import MobaXterm
+sessions* and choose a `MobaXterm.ini` or an exported `.mxtsessions` file.
+Saved passwords cannot be imported (MobaXterm encrypts them); TermCraft asks
+for each one the first time.
 
 ## Session types
 

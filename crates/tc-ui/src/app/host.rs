@@ -64,6 +64,14 @@ impl Host for Core {
         Ok(&self.vault)
     }
 
+    fn settings(&mut self) -> Result<&mut tc_core::Settings, CommandError> {
+        Ok(&mut self.settings)
+    }
+
+    fn persist_settings(&mut self) -> Result<(), CommandError> {
+        self.save_settings().map_err(CommandError::Failed)
+    }
+
     fn known_hosts_file(&self) -> Result<std::path::PathBuf, CommandError> {
         Ok(self.paths.known_hosts_file())
     }

@@ -100,6 +100,53 @@ pub fn remove(path: &Path, line: usize, fingerprint: &str) -> std::io::Result<bo
     Ok(true)
 }
 
+/// Append OpenSSH `known_hosts` lines that are not there yet (same hosts
+/// and key). Returns how many were added.
+pub fn add(path: &Path, lines: &[String]) -> std::io::Result<usize> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
+    let key_of = |l: &str| {
+        let mut f = l.split_whitespace();
+        Some((
+            f.next()?.to_string(),
+            f.next()?.to_string(),
+            f.next()?.to_string(),
+        ))
+    };
+    let mut have: std::collections::HashSet<_> = text.lines().filter_map(key_of).collect();
+    let mut out = text.clone();
+    if !out.is_empty() && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    let mut added = 0;
+    for line in lines {
+        let line = line.trim();
+        // One entry per line, nothing that could add another one.
+        if line.contains(['\n', '\r']) || parse(line).len() != 1 {
+            continue;
+        }
+        if let Some(k) = key_of(line)
+            && have.insert(k)
+        {
+            out.push_str(line);
+            out.push('\n');
+            added += 1;
+        }
+    }
+    if added > 0 {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, out)?;
+        std::fs::rename(&tmp, path)?;
+    }
+    Ok(added)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +179,21 @@ mod tests {
         let left = load(&path).unwrap();
         assert_eq!(left.len(), 2);
         assert!(left.iter().all(|h| h.hosts != "[h.test]:2222"));
+    }
+
+    #[test]
+    fn add_skips_duplicates_and_junk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub/known_hosts");
+        let line = format!("srv.test ssh-ed25519 {KEY}");
+        let lines = [
+            line.clone(),
+            line.clone(),
+            "not a key line".to_string(),
+            format!("a.test ssh-ed25519 {KEY}\nb.test ssh-ed25519 {KEY}"),
+        ];
+        assert_eq!(add(&path, &lines).unwrap(), 1);
+        assert_eq!(add(&path, &lines).unwrap(), 0, "already there");
+        assert_eq!(load(&path).unwrap().len(), 1);
     }
 }

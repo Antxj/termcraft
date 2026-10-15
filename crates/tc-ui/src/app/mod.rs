@@ -70,6 +70,7 @@ impl Core {
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
             use_windows_path: self.settings.terminal.use_windows_path,
+            theme: crate::term_settings::default_theme(self.settings.terminal.colors.as_ref()),
             home: self.settings.general.terminal_home(),
         }
     }
@@ -112,8 +113,7 @@ pub struct TermCraftApp {
     updates: Updates,
     quick_connect: String,
     home_search: String,
-    import_path: String,
-    show_import: bool,
+    import: crate::ui::import_dialog::ImportDialog,
     show_about: bool,
     passwords: crate::ui::passwords_window::PasswordsUi,
     /// "Hotkeys edition" window.
@@ -237,8 +237,7 @@ impl TermCraftApp {
             updates,
             quick_connect: String::new(),
             home_search: String::new(),
-            import_path: String::new(),
-            show_import: false,
+            import: Default::default(),
             show_about: false,
             passwords: Default::default(),
             show_hotkeys: false,
@@ -282,6 +281,21 @@ impl TermCraftApp {
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
         };
+        // First start with an empty session list: offer a MobaXterm.ini
+        // found next to the program (or of an installed MobaXterm), once.
+        if app.snapshot.is_none()
+            && !app.core.settings.general.mobaxterm_import_offered
+            && app.core.store.sessions.is_empty()
+        {
+            let program_dir = std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(std::path::Path::to_path_buf));
+            if let Some(ini) = tc_import::mobaxterm_ini::find(program_dir.as_deref()) {
+                app.import.offer(&ini);
+            }
+            app.core.settings.general.mobaxterm_import_offered = true;
+            let _ = app.core.save_settings();
+        }
         if app.snapshot.as_ref().is_none_or(|s| s.tray.is_some()) {
             app.tray = crate::tray::Tray::new(&cc.egui_ctx, &app.core.store.sessions);
         }
@@ -469,7 +483,7 @@ impl TermCraftApp {
             }
             Action::Tunnels => return self.show_tunnels = true,
             Action::CheckUpdates => return self.updates.check(ctx),
-            Action::ImportDialog => return self.show_import = true,
+            Action::ImportDialog => return self.import.show_dialog(),
             Action::ExportSessions(one) => return self.export_sessions(one),
             Action::DesktopShortcut(name) => {
                 self.shortcut_dialog = Some((name, Default::default()));
@@ -1048,6 +1062,15 @@ impl eframe::App for TermCraftApp {
                 Some("credentials") => self.passwords.open_credentials(),
                 Some("hotkeys") => self.show_hotkeys = true,
                 Some("keygen") => self.keygen.open = true,
+                // The first-start offer, for a MobaXterm.ini next to the program.
+                Some("import_offer") => {
+                    let dir = std::env::current_exe()
+                        .ok()
+                        .and_then(|e| e.parent().map(std::path::Path::to_path_buf));
+                    if let Some(ini) = tc_import::mobaxterm_ini::find(dir.as_deref()) {
+                        self.import.offer(&ini);
+                    }
+                }
                 Some("known_hosts") => self.known_hosts.open(),
                 Some("jump_hosts") => self.editor = Some(SessionEditor::jump_hosts_preview()),
                 Some("expert") => self.show_expert = true,

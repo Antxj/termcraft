@@ -119,6 +119,7 @@ refined against it.
 | P0 | [x] | Save / load sessions (TOML) | `tc-core` |
 | P0 | [x] | Session settings dialog 1:1: 15 type buttons, Basic block, Advanced / Terminal / Network / Bookmark tabs, all 252 parameters from the generated schema (all 15 types editable) | `tc-ui` |
 | P0 | [x] | Import MobaXterm sessions: SSH, Telnet, Rsh, RDP, VNC, FTP, SFTP, Serial, Shell, File, Browser, Mosh, Xdmcp, Aws S3, WSL (every type); lossless (every non-default parameter kept in `options`) | `tc-import` |
+| P1 | [x] | Import a whole MobaXterm.ini (`config_import_mobaxterm`): global settings (font, colors, cursor, terminal, SSH, display, popup terminal; each applied key reported, unclear ones left alone with the reason) and the trusted SSH host keys (PuTTY format → OpenSSH `known_hosts`, checked against the fingerprints the file keeps). Saved passwords are never read. Offered once at first start when a MobaXterm.ini sits next to TermCraft or belongs to an installed MobaXterm; the file is only read | `tc-import` + `tc-ui` |
 | P1 | [x] | Folders tree, rename / duplicate / delete from context menu, drag a session onto a folder (or another session) to move it, New folder / Rename folder / Delete folder (empty folders kept); session_folder_add / _rename / _remove commands | `tc-core` + `tc-ui` |
 | P1 | [x] | Quick connect (`user@host:port`, filters the session tree) | `tc-commands` |
 | P1 | [x] | Import `~/.ssh/config` (Host aliases, HostName / User / Port / IdentityFile, single-hop ProxyJump as gateway) | `tc-import` |

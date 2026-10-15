@@ -50,6 +50,16 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: true,
     },
     CommandSpec {
+        name: "config_import_mobaxterm",
+        title: "Import MobaXterm settings",
+        description: "Apply the global settings of a MobaXterm.ini (font, colors, terminal, SSH, \
+                      display, popup terminal) and add its trusted SSH host keys to the known \
+                      hosts. Saved passwords are never read. Returns what was applied.",
+        input_schema: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string"},"settings":{"type":"boolean","default":true},"host_keys":{"type":"boolean","default":true}}}"#,
+        example_args: r#"{"path":"C:/Users/me/MobaXterm/MobaXterm.ini"}"#,
+        mutating: true,
+    },
+    CommandSpec {
         name: "session_import_mobaxterm",
         title: "Import MobaXterm sessions",
         description: "Import sessions from an exported .mxtsessions file or a MobaXterm.ini. \

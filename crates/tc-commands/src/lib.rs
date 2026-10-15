@@ -27,6 +27,17 @@ pub enum Command {
     SessionImportMobaxterm {
         path: String,
     },
+    /// "Import MobaXterm settings": the global settings and trusted SSH host
+    /// keys of a MobaXterm.ini (never its saved passwords).
+    ConfigImportMobaxterm {
+        path: String,
+        /// Apply its global settings.
+        #[serde(default = "yes")]
+        settings: bool,
+        /// Add its SSH host keys to the known hosts.
+        #[serde(default = "yes")]
+        host_keys: bool,
+    },
     /// "Import PuTTY sessions" (registry on Windows, ~/.putty on Unix).
     SessionImportPutty {},
     /// "Import WSL sessions": one session per installed distribution.
@@ -207,6 +218,7 @@ impl Command {
             Self::SessionAdd { .. } => "session_add",
             Self::SessionRemove { .. } => "session_remove",
             Self::SessionImportMobaxterm { .. } => "session_import_mobaxterm",
+            Self::ConfigImportMobaxterm { .. } => "config_import_mobaxterm",
             Self::SessionImportPutty {} => "session_import_putty",
             Self::SessionImportWsl {} => "session_import_wsl",
             Self::SessionImportSshConfig { .. } => "session_import_ssh_config",
@@ -354,6 +366,13 @@ pub trait Host {
         Err(CommandError::Unsupported("tunnels run in the GUI"))
     }
     /// The known_hosts file the SSH client trusts.
+    /// The app settings (to change them; then [`Host::persist_settings`]).
+    fn settings(&mut self) -> Result<&mut tc_core::Settings, CommandError> {
+        Err(CommandError::Unsupported("settings are not available here"))
+    }
+    fn persist_settings(&mut self) -> Result<(), CommandError> {
+        Ok(())
+    }
     fn known_hosts_file(&self) -> Result<std::path::PathBuf, CommandError> {
         Err(CommandError::Unsupported("no known_hosts file"))
     }
@@ -364,6 +383,10 @@ pub trait Host {
     fn update_check(&mut self) -> Result<Value, CommandError> {
         Err(CommandError::Unsupported("updater not wired"))
     }
+}
+
+fn yes() -> bool {
+    true
 }
 
 pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError> {
@@ -393,6 +416,59 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             let text = tc_import::read_text_lossy(std::path::Path::new(&path))
                 .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
             merge_import(host, tc_import::mobaxterm::parse(&text))
+        }
+        Command::ConfigImportMobaxterm {
+            path,
+            settings,
+            host_keys,
+        } => {
+            use tc_import::mobaxterm_ini;
+            let file = std::path::Path::new(&path);
+            let size = std::fs::metadata(file)
+                .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?
+                .len();
+            if size > 16 * 1024 * 1024 {
+                return Err(CommandError::InvalidArgs(format!("{path} is too large")));
+            }
+            let text = tc_import::read_text_lossy(file)
+                .map_err(|e| CommandError::Failed(format!("{path}: {e}")))?;
+            let ini = mobaxterm_ini::parse(&text);
+            if !ini.contains_key("Misc") {
+                return Err(CommandError::InvalidArgs(format!(
+                    "{path} is not a MobaXterm.ini (no [Misc] section)"
+                )));
+            }
+            let report = if settings {
+                let report = mobaxterm_ini::apply_settings(&ini, host.settings()?);
+                host.persist_settings()?;
+                report
+            } else {
+                Default::default()
+            };
+            let keys = if host_keys {
+                mobaxterm_ini::host_keys(&ini)
+            } else {
+                Default::default()
+            };
+            let added = if keys.lines.is_empty() {
+                0
+            } else {
+                tc_core::known_hosts::add(&host.known_hosts_file()?, &keys.lines)
+                    .map_err(|e| CommandError::Failed(format!("known hosts: {e}")))?
+            };
+            let not_applied: Vec<Value> = report
+                .not_applied
+                .iter()
+                .map(|(key, why)| json!({ "setting": key, "why": why }))
+                .collect();
+            Ok(json!({
+                "settings_applied": report.applied,
+                "settings_not_applied": not_applied,
+                "host_keys_added": added,
+                "host_keys_found": keys.lines.len(),
+                "host_keys_verified": keys.verified,
+                "host_keys_skipped": keys.skipped,
+            }))
         }
         Command::SessionFolderAdd { path } => {
             let path = host

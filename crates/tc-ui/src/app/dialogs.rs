@@ -310,22 +310,32 @@ impl TermCraftApp {
             }
         }
 
-        if self.show_import {
-            let mut open = true;
-            egui::Window::new("Import MobaXterm sessions")
-                .open(&mut open)
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    ui.label("Path to an exported .mxtsessions file or MobaXterm.ini:");
-                    ui.text_edit_singleline(&mut self.import_path);
-                    if ui.button("Import").clicked() && !self.import_path.trim().is_empty() {
-                        out.push(Action::Run(Command::SessionImportMobaxterm {
-                            path: self.import_path.trim().trim_matches('"').to_string(),
-                        }));
-                        self.show_import = false;
-                    }
-                });
-            self.show_import &= open;
+        if let Some(req) = self.import.show(ctx) {
+            let run = |core: &mut Core, cmd: Command| {
+                tc_commands::execute(core, cmd).map_err(|e| e.to_string())
+            };
+            let sessions = req.sessions.then(|| {
+                run(
+                    &mut self.core,
+                    Command::SessionImportMobaxterm {
+                        path: req.path.clone(),
+                    },
+                )
+            });
+            let config = (req.settings || req.host_keys).then(|| {
+                run(
+                    &mut self.core,
+                    Command::ConfigImportMobaxterm {
+                        path: req.path.clone(),
+                        settings: req.settings,
+                        host_keys: req.host_keys,
+                    },
+                )
+            });
+            self.import.report(crate::ui::import_dialog::summary(
+                sessions.as_ref(),
+                config.as_ref(),
+            ));
         }
 
         if self.show_about {
