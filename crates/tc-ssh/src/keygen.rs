@@ -91,6 +91,32 @@ pub fn load(text: &str, passphrase: Option<&str>) -> Result<PrivateKey, LoadErro
     Ok(key)
 }
 
+/// The algorithm and SHA-256 fingerprint of a private key file's public
+/// part, without its passphrase (OpenSSH keys keep it in clear; PPK files
+/// have "Public-Lines").
+pub fn describe_public(text: &str) -> Option<String> {
+    let public = if text.trim_start().starts_with("PuTTY-User-Key-File-") {
+        let mut lines = text.lines().map(str::trim_end);
+        let mut blob = None;
+        while let Some(line) = lines.next() {
+            if let Some(n) = line.strip_prefix("Public-Lines: ") {
+                let n: usize = n.trim().parse().ok().filter(|n| *n <= 1000)?;
+                let b64: String = lines.by_ref().take(n).collect();
+                blob = base64::engine::general_purpose::STANDARD.decode(b64).ok();
+                break;
+            }
+        }
+        ssh_key::PublicKey::from_bytes(&blob?).ok()?
+    } else {
+        PrivateKey::from_openssh(text).ok()?.public_key().clone()
+    };
+    Some(format!(
+        "{} {}",
+        public.algorithm(),
+        public.fingerprint(HashAlg::Sha256)
+    ))
+}
+
 /// "Public key for pasting into OpenSSH authorized_keys file".
 pub fn public_line(key: &PrivateKey) -> String {
     key.public_key().to_openssh().unwrap_or_default()
@@ -391,6 +417,17 @@ fn rand_bytes<const N: usize>() -> [u8; N] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_part_without_the_passphrase() {
+        let key = generate(KeyKind::Ed25519, "me").unwrap();
+        let expected = format!("ssh-ed25519 {}", fingerprint(&key));
+        let text = to_openssh(&key, Some("pw")).unwrap();
+        assert_eq!(describe_public(&text), Some(expected.clone()));
+        let ppk = to_ppk(&key, Some("pw")).unwrap();
+        assert_eq!(describe_public(&ppk), Some(expected));
+        assert_eq!(describe_public("not a key"), None);
+    }
 
     #[test]
     fn ed25519_round_trips_through_openssh_and_ppk() {

@@ -438,6 +438,32 @@ fn control(
             );
         }
         ("OngletSSH", "sCheckBox45") => check(ui, &mut s.ssh.internal_agent),
+        ("OngletSSH", "sBitBtn19") => {
+            let enabled = s.ssh.internal_agent && !s.ssh.agent_keys.is_empty();
+            if ui
+                .add_enabled_ui(enabled, |ui| ui.put(rect, egui::Button::new(caption)))
+                .inner
+                .clicked()
+            {
+                let lines: Vec<String> = s
+                    .ssh
+                    .agent_keys
+                    .iter()
+                    .map(|k| {
+                        let about = std::fs::read_to_string(k.trim())
+                            .ok()
+                            .and_then(|t| tc_ssh::keygen::describe_public(&t))
+                            .unwrap_or_else(|| "cannot be read".into());
+                        format!("{}\n    {about}", k.trim())
+                    })
+                    .collect();
+                rfd::MessageDialog::new()
+                    .set_title("Keys of the TermCraft agent")
+                    .set_description(lines.join("\n\n"))
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+            }
+        }
         ("OngletSSH", "sListBox1") => agent_keys(ui, rect, caption, s, state),
         ("OngletSSH", "sBitBtn17") => {
             if button(ui, "+")
