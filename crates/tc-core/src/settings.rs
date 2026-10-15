@@ -333,6 +333,9 @@ pub struct GeneralSettings {
     pub text_editor: String,
     /// Misc › "Open new tab beside current tab".
     pub new_tab_position: NewTabPosition,
+    /// Misc › "Open the following tab when pressing the \"+\" button":
+    /// `true` = the Home tab, else a local terminal.
+    pub plus_opens_home: bool,
     /// Misc › not "Do not exit when last tab is closed".
     pub exit_on_last_tab: bool,
     /// Misc › "Allow multiple instances": a new start opens another window
@@ -408,6 +411,7 @@ impl Default for GeneralSettings {
             startup_tab: StartupTab::default(),
             text_editor: String::new(),
             new_tab_position: NewTabPosition::default(),
+            plus_opens_home: false,
             exit_on_last_tab: false,
             multiple_instances: false,
         }

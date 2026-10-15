@@ -729,6 +729,19 @@ fn control(
                 s.general.startup_tab = StartupTab::ALL[index];
             }
         }
+        ("sTabSheet2", "sComboEdit2") => {
+            let mut index = usize::from(!s.general.plus_opens_home);
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-plus-tab",
+                &["<Home>", "<Terminal>"],
+                &mut index,
+            ) {
+                s.general.plus_opens_home = index == 0;
+            }
+        }
         ("sTabSheet2", "CmbNewTabPosition") => {
             use tc_core::settings::NewTabPosition;
             let mut index = NewTabPosition::ALL

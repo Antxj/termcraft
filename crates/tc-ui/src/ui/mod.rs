@@ -66,6 +66,8 @@ pub enum Action {
     WakeOnLan,
     /// "Import sessions from a CSV file" (asks for the file).
     ImportCsv,
+    /// The Home tab (no terminal tab active).
+    ShowHome,
     /// Settings › "Edit session presets" (the editor in preset mode).
     EditPresets,
     /// Keep this preset for its session type / drop the preset of a type.

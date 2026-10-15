@@ -40,11 +40,19 @@ const TAB_MAX_WIDTH: f32 = 220.0;
 /// Width of the "Quick connect" box shown here while the sidebar is hidden.
 const QUICK_CONNECT_WIDTH: f32 = 180.0;
 
+/// The Home tab: pinned before the terminal tabs, and what "+" opens.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Home {
+    pub pinned: bool,
+    pub on_plus: bool,
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     tabs: &[TabView],
     active: Option<u64>,
     view: &ViewSettings,
+    home: Home,
     quick_connect: Option<&mut String>,
     out: &mut Vec<Action>,
 ) {
@@ -73,15 +81,29 @@ pub fn show(
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
+                                if home.pinned && !tabs.is_empty() {
+                                    let shown = active.is_none();
+                                    let button = ui
+                                        .add(egui::Button::selectable(shown, icon::HOUSE))
+                                        .on_hover_text("Home");
+                                    if button.clicked() {
+                                        out.push(Action::ShowHome);
+                                    }
+                                }
                                 for (i, tab) in tabs.iter().enumerate() {
                                     let selected = active == Some(tab.id);
                                     chrome_tab(ui, i, tab, tabs, selected, view, &palette, out);
                                 }
+                                let hint = if home.on_plus { "Home" } else { "New terminal" };
                                 let new = ui
                                     .add(egui::Button::new(icon::PLUS).frame(false))
-                                    .on_hover_text("New terminal");
+                                    .on_hover_text(hint);
                                 if new.clicked() {
-                                    out.push(Action::Run(Command::TabOpen { session: None }));
+                                    out.push(if home.on_plus {
+                                        Action::ShowHome
+                                    } else {
+                                        Action::Run(Command::TabOpen { session: None })
+                                    });
                                 }
                             });
                         });

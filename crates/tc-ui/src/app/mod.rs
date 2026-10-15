@@ -817,6 +817,7 @@ impl TermCraftApp {
                 let presets = &self.core.settings.session_presets;
                 return self.editor = Some(SessionEditor::new_of_type(index).with_presets(presets));
             }
+            Action::ShowHome => return self.core.active = None,
             Action::EditPresets => {
                 let presets = &self.core.settings.session_presets;
                 return self.editor = Some(SessionEditor::presets_editor(presets));
@@ -1610,14 +1611,19 @@ impl eframe::App for TermCraftApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(ui.visuals().panel_fill))
             .show(ui, |ui| {
-                tabbar::show(ui, &tab_views, core.active, &view, quick, &mut out);
+                let home = tabbar::Home {
+                    pinned: core.settings.general.startup_tab
+                        == tc_core::settings::StartupTab::HomePinned,
+                    on_plus: core.settings.general.plus_opens_home,
+                };
+                tabbar::show(ui, &tab_views, core.active, &view, home, quick, &mut out);
                 if multiexec.on {
                     multiexec_banner(ui, multiexec, &mut core.tabs);
                 }
                 if recording.is_some() && recording_banner(ui) {
                     out.push(Action::StopRecording);
                 }
-                if core.tabs.is_empty() {
+                if core.tabs.is_empty() || core.active.is_none() {
                     let recent = recent_sessions(&core.store, 9);
                     home::show(ui, home_search, &core.store.sessions, &recent, &mut out);
                     return;
