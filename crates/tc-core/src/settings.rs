@@ -547,6 +547,31 @@ pub struct PasswordSettings {
     pub disable_show: bool,
 }
 
+/// Configuration › Terminal "Log type".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LogType {
+    /// The text, without escape sequences.
+    #[default]
+    Printable,
+    /// Everything the session sent, escape sequences included.
+    All,
+    /// The text, each line starting with the date and time.
+    Timestamped,
+}
+
+impl LogType {
+    pub const ALL: [LogType; 3] = [Self::Printable, Self::All, Self::Timestamped];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Printable => "Printable output",
+            Self::All => "All session output",
+            Self::Timestamped => "Printable output with timestamps",
+        }
+    }
+}
+
 /// "Skin selection" (Configuration › Display).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -784,6 +809,11 @@ pub struct TerminalSettings {
     /// Configuration › Security "Disable log": no terminal is logged, even
     /// sessions that ask for it.
     pub disable_log: bool,
+    /// "Log type".
+    pub log_type: LogType,
+    /// "Log filename": a pattern with `{date}`, `{time}` and `{session}`;
+    /// empty = `{date}_{time}_{session}`.
+    pub log_name: String,
 }
 
 /// Terminal colors and cursor, as RGB.
@@ -1030,6 +1060,8 @@ impl Default for TerminalSettings {
     fn default() -> Self {
         Self {
             disable_log: false,
+            log_type: LogType::default(),
+            log_name: String::new(),
             font_size: 14.0,
             font_name: String::new(),
             font_bold: false,

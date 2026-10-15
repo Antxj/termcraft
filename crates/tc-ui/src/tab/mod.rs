@@ -54,6 +54,9 @@ pub struct TabEnv {
     pub log_dir: Option<PathBuf>,
     /// Configuration › Security "Disable log".
     pub disable_log: bool,
+    /// Configuration › Terminal "Log type" and "Log filename".
+    pub log_type: tc_core::settings::LogType,
+    pub log_name: String,
     /// Configuration › X11 "Display offset": the local display of X11
     /// forwarding on Windows.
     pub x_display: u16,
@@ -480,7 +483,8 @@ impl Tab {
         if !env.disable_log
             && let Some(folder) = log_folder(tab.session.as_ref(), env.log_dir.as_deref())
         {
-            match crate::term_log::TermLog::create(&folder, &tab.title) {
+            match crate::term_log::TermLog::create(&folder, &tab.title, env.log_type, &env.log_name)
+            {
                 Ok(log) => tab.log = Some(log),
                 Err(e) => tab.message(&format!(
                     "\x1b[33mcannot log to {}: {e}\x1b[0m",

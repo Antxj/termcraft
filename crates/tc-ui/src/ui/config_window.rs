@@ -344,6 +344,27 @@ fn control(
                 });
         }
         ("OngletTerminal", "CheckPath") => check(ui, &mut s.terminal.use_windows_path),
+        ("OngletTerminal", "sComboBox10") => {
+            use tc_core::settings::LogType;
+            let mut index = LogType::ALL
+                .iter()
+                .position(|t| *t == s.terminal.log_type)
+                .unwrap_or(0);
+            let labels: Vec<&str> = LogType::ALL.iter().map(|t| t.label()).collect();
+            if choice(ui, rect, caption, "cfg-log-type", &labels, &mut index) {
+                s.terminal.log_type = LogType::ALL[index];
+            }
+        }
+        ("OngletTerminal", "BtnLogFilename") => {
+            bound_label(ui, rect, caption);
+            ui.put(
+                rect,
+                egui::TextEdit::singleline(&mut s.terminal.log_name).hint_text("<default>"),
+            )
+            .on_hover_text(
+                "{date}, {time} and {session} are replaced; default {date}_{time}_{session}",
+            );
+        }
         ("OngletMisc", "sSpeedButton2") if cfg!(windows) => {
             if button(ui, caption) {
                 let answer = rfd::MessageDialog::new()

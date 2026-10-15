@@ -182,6 +182,8 @@ impl Core {
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
             disable_log: self.settings.terminal.disable_log,
+            log_type: self.settings.terminal.log_type,
+            log_name: self.settings.terminal.log_name.clone(),
             use_windows_path: self.settings.terminal.use_windows_path,
             theme: crate::term_settings::default_theme(self.settings.terminal.colors.as_ref()),
             home: self.settings.general.terminal_home(),
