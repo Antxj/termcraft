@@ -5,6 +5,8 @@ pub mod diff;
 pub mod hotkeys;
 pub mod jump_hosts;
 pub mod known_hosts;
+pub mod layout;
+mod layout_gen;
 pub mod macros;
 pub mod monitor;
 pub mod paths;

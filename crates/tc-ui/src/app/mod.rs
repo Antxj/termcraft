@@ -41,13 +41,29 @@ struct Core {
 impl Core {
     /// A new tab for `session`, with its "Execute macro at session start".
     fn new_tab(&self, id: u64, session: Option<Session>) -> Tab {
-        let start_macro = session
+        let macro_keys = session
             .as_ref()
             .and_then(|s| s.options.get("4_38"))
             .map(|name| name.trim())
             .filter(|name| !name.is_empty() && *name != NO_MACRO)
             .and_then(|name| self.macros.macros.iter().find(|m| m.name == name))
             .map(|m| m.keys.clone());
+        // Shell / WSL "Execute the following commands at startup".
+        let commands = session
+            .as_ref()
+            .filter(|s| matches!(s.kind.type_index(), 10 | 14))
+            .and_then(|s| s.options.get(tc_core::session::STARTUP_COMMANDS))
+            .map(|text| {
+                text.lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| format!("{l}\r"))
+                    .collect::<String>()
+            })
+            .filter(|keys| !keys.is_empty());
+        let start_macro = match (commands, macro_keys) {
+            (Some(c), Some(m)) => Some(c + &m),
+            (c, m) => c.or(m),
+        };
         let mut tab = Tab::open(id, session, &self.tab_env());
         tab.start_macro = start_macro;
         tab
@@ -1089,7 +1105,12 @@ impl eframe::App for TermCraftApp {
                         .nth(1)
                         .and_then(|i| i.parse().ok())
                         .unwrap_or(0);
-                    self.editor = Some(SessionEditor::new_of_type(index));
+                    let mut editor = SessionEditor::new_of_type(index);
+                    // `new_session:<type>:<tab or sub-dialog>`.
+                    if let Some(what) = w.split(':').nth(2) {
+                        editor.preview(what);
+                    }
+                    self.editor = Some(editor);
                 }
                 Some("master_settings") => self
                     .passwords

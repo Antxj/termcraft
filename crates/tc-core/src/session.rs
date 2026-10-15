@@ -435,6 +435,10 @@ impl SessionKind {
     }
 }
 
+/// TermCraft's own option: commands typed in a local shell / WSL session
+/// once it starts ("Execute the following commands at startup").
+pub const STARTUP_COMMANDS: &str = "startup_commands";
+
 #[cfg(test)]
 mod tests {
     use super::*;

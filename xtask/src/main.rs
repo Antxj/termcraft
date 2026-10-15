@@ -14,6 +14,7 @@ mod brand;
 mod dfm;
 mod icons;
 mod inventory;
+mod layout;
 mod package;
 mod pe;
 mod schema;
@@ -39,7 +40,8 @@ enum Cmd {
     },
     /// Generate docs/inventory/*.md from the reference app.
     Inventory { input: Option<PathBuf> },
-    /// Generate crates/tc-core/src/schema_gen.rs (session parameter schema).
+    /// Generate crates/tc-core/src/schema_gen.rs and layout_gen.rs (session
+    /// parameter schema and dialog layout).
     Schema { input: Option<PathBuf> },
     /// SVG icons for the README (docs/icons/).
     Icons,
@@ -187,9 +189,12 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Schema { input } => {
-            let code = schema::generate(&load(input)?)?;
+            let reference = load(input)?;
             let out = root().join("crates/tc-core/src/schema_gen.rs");
-            std::fs::write(&out, code)?;
+            std::fs::write(&out, schema::generate(&reference)?)?;
+            println!("wrote {}", out.display());
+            let out = root().join("crates/tc-core/src/layout_gen.rs");
+            std::fs::write(&out, layout::generate(&reference)?)?;
             println!("wrote {}", out.display());
             Ok(())
         }

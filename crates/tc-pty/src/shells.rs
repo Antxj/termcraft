@@ -180,7 +180,10 @@ mod tests {
         if cfg!(windows) {
             // By full path, never looked up in the current folder.
             let cmd = locate(ShellKind::Cmd).unwrap().program;
-            assert!(cmd.to_ascii_lowercase().ends_with(r"\system32\cmd.exe"), "{cmd}");
+            assert!(
+                cmd.to_ascii_lowercase().ends_with(r"\system32\cmd.exe"),
+                "{cmd}"
+            );
             assert!(Path::new(&cmd).is_absolute());
             assert!(locate(ShellKind::PowerShell).is_some());
             if let Some(bash) = locate(ShellKind::Bash) {
