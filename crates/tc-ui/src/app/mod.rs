@@ -299,6 +299,8 @@ pub struct TermCraftApp {
     editor: Option<SessionEditor>,
     snapshot: Option<crate::snapshot::Snapshot>,
     status: String,
+    /// The last status message written to the log file.
+    logged_status: String,
 }
 
 impl TermCraftApp {
@@ -404,6 +406,7 @@ impl TermCraftApp {
             editor: None,
             snapshot: crate::snapshot::Snapshot::from_env(),
             status,
+            logged_status: String::new(),
         };
         // "Automatically start X server at TermCraft start up".
         if app.snapshot.is_none() && app.core.settings.x_server.autostart {
@@ -629,6 +632,16 @@ impl TermCraftApp {
                 }
                 return;
             }
+            Action::ViewLog => {
+                match crate::app_log::path().filter(|p| p.is_file()) {
+                    Some(path) => match self.text_editor.open_file(&path, None) {
+                        Ok(()) => self.text_editor.open = true,
+                        Err(e) => self.status = e,
+                    },
+                    None => self.status = "the log file is empty".into(),
+                }
+                return;
+            }
             Action::Documentation => {
                 if let Err(e) = crate::external::open_url(DOCUMENTATION) {
                     self.status = format!("Documentation: {e}");
@@ -796,9 +809,40 @@ impl TermCraftApp {
                 }
                 return;
             }
-            Action::NewSession => return self.editor = Some(SessionEditor::new_session()),
+            Action::NewSession => {
+                let presets = &self.core.settings.session_presets;
+                return self.editor = Some(SessionEditor::new_session().with_presets(presets));
+            }
             Action::NewSessionOfType(index) => {
-                return self.editor = Some(SessionEditor::new_of_type(index));
+                let presets = &self.core.settings.session_presets;
+                return self.editor = Some(SessionEditor::new_of_type(index).with_presets(presets));
+            }
+            Action::EditPresets => {
+                let presets = &self.core.settings.session_presets;
+                return self.editor = Some(SessionEditor::presets_editor(presets));
+            }
+            Action::SavePreset(session) => {
+                let mut preset = *session;
+                preset.name.clear();
+                preset.folder.clear();
+                preset.last_used = None;
+                let presets = &mut self.core.settings.session_presets;
+                presets.retain(|p| p.kind.type_index() != preset.kind.type_index());
+                presets.push(preset);
+                if let Err(e) = self.core.save_settings() {
+                    self.status = format!("could not save settings: {e}");
+                }
+                return;
+            }
+            Action::RemovePreset(index) => {
+                self.core
+                    .settings
+                    .session_presets
+                    .retain(|p| p.kind.type_index() != index);
+                if let Err(e) = self.core.save_settings() {
+                    self.status = format!("could not save settings: {e}");
+                }
+                return;
             }
             Action::EditSession(id) => {
                 self.editor = self.core.store.get(id).map(SessionEditor::edit);
@@ -1305,6 +1349,10 @@ impl eframe::App for TermCraftApp {
         self.serve_tray(&ctx);
         crate::ui::menus::set_disabled_tools(&self.core.settings.security.disabled_tools);
         self.save_screenshot(&ctx);
+        if self.status != self.logged_status {
+            crate::app_log::write(&self.status);
+            self.logged_status.clone_from(&self.status);
+        }
         if std::mem::take(&mut self.core.show_requested) {
             show_window(&ctx, true);
         }

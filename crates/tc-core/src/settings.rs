@@ -22,6 +22,9 @@ pub struct Settings {
     pub security: SecuritySettings,
     /// Configuration › X11: the X server TermCraft starts.
     pub x_server: XServerSettings,
+    /// Settings › "Edit session presets": the starting values of new
+    /// sessions, at most one per session type.
+    pub session_presets: Vec<crate::Session>,
 }
 
 /// Configuration › X11: the local X server (VcXsrv or Xming on Windows,

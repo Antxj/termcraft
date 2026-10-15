@@ -95,6 +95,11 @@ impl Paths {
         self.config_dir.join("settings.toml")
     }
 
+    /// The TermCraft log (Help › "View TermCraft log file").
+    pub fn log_file(&self) -> PathBuf {
+        self.data_dir.join("termcraft.log")
+    }
+
     /// OpenSSH-format known_hosts used by the native SSH client.
     pub fn known_hosts_file(&self) -> PathBuf {
         self.data_dir.join("known_hosts")

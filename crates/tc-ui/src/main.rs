@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod app_log;
 mod control_server;
 mod credentials;
 mod external;
@@ -51,6 +52,10 @@ fn main() -> eframe::Result<()> {
         return Ok(());
     }
     let settings = tc_core::Settings::load(&paths.settings_file()).unwrap_or_default();
+    if std::env::var_os("TERMCRAFT_SNAPSHOT").is_none() {
+        app_log::init(&paths.log_file());
+        app_log::log_panics();
+    }
     // A second start shows the running window ("Allow multiple instances"
     // off): two windows would overwrite each other's sessions file.
     if startup.commands.is_empty()
@@ -81,6 +86,7 @@ fn main() -> eframe::Result<()> {
         viewport,
         ..Default::default()
     };
+    app_log::write(&format!("TermCraft {} started", env!("CARGO_PKG_VERSION")));
     eframe::run_native(
         "TermCraft",
         options,

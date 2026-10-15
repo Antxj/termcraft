@@ -51,6 +51,8 @@ pub enum Action {
     About,
     /// Help › "Documentation": the project's documentation in the browser.
     Documentation,
+    /// Help › "View TermCraft log file" (in the text editor).
+    ViewLog,
     /// View › "Take a screenshot" of the window (asks where to save it).
     Screenshot,
     /// Tools › "List running processes" / "List hardware devices": a
@@ -64,6 +66,11 @@ pub enum Action {
     WakeOnLan,
     /// "Import sessions from a CSV file" (asks for the file).
     ImportCsv,
+    /// Settings › "Edit session presets" (the editor in preset mode).
+    EditPresets,
+    /// Keep this preset for its session type / drop the preset of a type.
+    SavePreset(Box<tc_core::Session>),
+    RemovePreset(usize),
     /// Session menu › "Ping host": a terminal tab pinging it.
     PingHost(String),
     PasswordsSettings,

@@ -391,6 +391,11 @@ fn control(
                 }
             }
         }
+        ("OngletMisc", "sSpeedButton15") => {
+            if button(ui, caption) {
+                out.push(Action::EditPresets);
+            }
+        }
         ("OngletMisc", "sFilenameEdit1") => {
             bound_label(ui, rect, caption);
             let g = &mut s.general;

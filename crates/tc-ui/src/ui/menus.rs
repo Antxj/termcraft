@@ -68,7 +68,7 @@ pub fn menu_bar(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
                 out,
             );
             ui.separator();
-            item(ui, "Edit session presets", None, out);
+            item(ui, "Edit session presets", Some(Action::EditPresets), out);
         });
         ui.menu_button("Macros", |ui| {
             if cx.recording {
@@ -384,7 +384,7 @@ pub fn games_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
 pub fn help_menu(ui: &mut egui::Ui, out: &mut Vec<Action>) {
     item(ui, "Documentation", Some(Action::Documentation), out);
     item(ui, "Check for updates", Some(Action::CheckUpdates), out);
-    item(ui, "View TermCraft log file", None, out);
+    item(ui, "View TermCraft log file", Some(Action::ViewLog), out);
     ui.separator();
     item(ui, "About TermCraft", Some(Action::About), out);
 }

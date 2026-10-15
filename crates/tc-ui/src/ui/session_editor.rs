@@ -170,9 +170,53 @@ pub struct SessionEditor {
     /// Saved macro names, for "Execute macro at session start".
     pub macros: Vec<String>,
     manage_credentials: bool,
+    /// Settings › "Edit session presets": OK keeps the values as the preset
+    /// of the type instead of saving a session.
+    preset_mode: bool,
+    /// The presets new sessions start from (set by the app).
+    presets: Vec<Session>,
 }
 
 impl SessionEditor {
+    /// A new session starts from the preset of its type, if any.
+    pub fn with_presets(mut self, presets: &[Session]) -> Self {
+        self.presets = presets.to_vec();
+        if self.is_new {
+            self.apply_preset();
+        }
+        self
+    }
+
+    /// Settings › "Edit session presets".
+    pub fn presets_editor(presets: &[Session]) -> Self {
+        let mut editor = Self::new_session().with_presets(presets);
+        editor.preset_mode = true;
+        editor
+    }
+
+    /// Load the preset of the current type into the fields.
+    fn apply_preset(&mut self) {
+        let Some(preset) = self
+            .presets
+            .iter()
+            .find(|p| p.kind.type_index() == self.type_index)
+            .cloned()
+        else {
+            return;
+        };
+        for p in self.params().collect::<Vec<_>>() {
+            if let Some(v) = preset
+                .kind
+                .typed_get(p.id)
+                .or_else(|| preset.options.get(p.id).cloned())
+            {
+                self.values.insert(p.id, v);
+            }
+        }
+        if let Some(s) = preset.options.get(tc_core::session::STARTUP_COMMANDS) {
+            self.startup.clone_from(s);
+        }
+    }
     pub fn new_session() -> Self {
         let kind = SessionKind::default_for(0).expect("SSH is supported");
         Self::from_session(Session::new(String::new(), kind), true)
@@ -250,6 +294,8 @@ impl SessionEditor {
             syntaxes: Vec::new(),
             macros: Vec::new(),
             manage_credentials: false,
+            preset_mode: false,
+            presets: Vec::new(),
         };
         editor.load_values();
         editor.startup = editor
@@ -317,6 +363,9 @@ impl SessionEditor {
         self.type_index = index;
         self.sub_dialog = None;
         self.load_values();
+        if self.is_new {
+            self.apply_preset();
+        }
         for p in self.params().collect::<Vec<_>>() {
             if !p.default.is_empty() || p.widget != Widget::Text {
                 continue;
@@ -366,10 +415,15 @@ impl SessionEditor {
         } else {
             options.remove(tc_core::session::STARTUP_COMMANDS);
         }
-        if kind.typed_ids().contains(&"3_2") && kind.target().is_none() {
+        if self.preset_mode {
+            // A preset has no host of its own to require.
+        } else if kind.typed_ids().contains(&"3_2") && kind.target().is_none() {
             return Err("Remote host is required".into());
         }
-        if matches!(kind, SessionKind::Serial { .. }) && kind.target().is_none() {
+        if !self.preset_mode
+            && matches!(kind, SessionKind::Serial { .. })
+            && kind.target().is_none()
+        {
             return Err("Serial port is required".into());
         }
         let name = match self.name.trim() {
@@ -431,7 +485,12 @@ impl SessionEditor {
         let mut presses = Vec::new();
         let mut open = true;
         let mut close = false;
-        egui::Window::new("Session settings")
+        let title = if self.preset_mode {
+            "Session presets"
+        } else {
+            "Session settings"
+        };
+        egui::Window::new(title)
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -511,8 +570,27 @@ impl SessionEditor {
                         egui::Label::new(egui::RichText::new(e).color(ui.visuals().error_fg_color)),
                     );
                 }
+                if self.preset_mode {
+                    let reset = ui
+                        .put(
+                            Rect::from_min_size(o + vec2(154.0, BUTTONS_Y), vec2(130.0, 32.0)),
+                            egui::Button::new("Reset this preset"),
+                        )
+                        .on_hover_text("New sessions of this type start from the defaults again");
+                    if reset.clicked() {
+                        out.push(Action::RemovePreset(self.type_index));
+                        self.presets
+                            .retain(|p| p.kind.type_index() != self.type_index);
+                        self.load_values();
+                        self.startup.clear();
+                    }
+                }
                 if ui.put(at(304.0), egui::Button::new("OK")).clicked() {
                     match self.build() {
+                        Ok(session) if self.preset_mode => {
+                            out.push(Action::SavePreset(Box::new(session)));
+                            close = true;
+                        }
                         Ok(session) => {
                             let id = session.id.to_string();
                             if self.is_new {
@@ -1333,6 +1411,39 @@ fn honoured(type_index: usize, id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presets_are_starting_values() {
+        let mut preset = Session::new("", SessionKind::default_for(0).unwrap());
+        preset.kind.typed_set("3_4", "ops").unwrap();
+        preset.options.insert("3_7".into(), "-1".into());
+        let presets = vec![preset];
+        // A preset needs no host.
+        let editor = SessionEditor::presets_editor(&presets);
+        assert!(editor.build().is_ok());
+        // New SSH sessions start from it; other types do not.
+        let mut editor = SessionEditor::new_session().with_presets(&presets);
+        editor.values.insert("3_2", "web.lan".into());
+        let s = editor.build().unwrap();
+        assert!(matches!(&s.kind, SessionKind::Ssh { user: Some(u), .. } if u == "ops"));
+        assert_eq!(s.options.get("3_7").map(String::as_str), Some("-1"));
+        editor.set_type(1);
+        assert_eq!(
+            editor.values.get("3_4").map(String::as_str),
+            Some("ops"),
+            "carried over"
+        );
+        // The settings file keeps them.
+        let settings = tc_core::Settings {
+            session_presets: presets,
+            ..Default::default()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.toml");
+        settings.save(&file).unwrap();
+        let back = tc_core::Settings::load(&file).unwrap();
+        assert_eq!(back.session_presets.len(), 1);
+    }
 
     #[test]
     fn unapplied_parameters_are_marked() {
