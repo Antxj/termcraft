@@ -50,6 +50,9 @@ pub struct XServerSettings {
     /// "X11 remote access": `true` = any host may connect (no access
     /// control). Off by default.
     pub remote_access: bool,
+    /// "X11 extensions" turned on (Composite, Damage, Randr, Xfixes,
+    /// Xtest, Xinerama); the others keep the server's default.
+    pub extensions: Vec<String>,
 }
 
 impl Default for XServerSettings {
@@ -63,6 +66,7 @@ impl Default for XServerSettings {
             display: 0,
             dpi: 0,
             remote_access: false,
+            extensions: Vec::new(),
         }
     }
 }

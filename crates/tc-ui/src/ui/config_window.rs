@@ -766,6 +766,24 @@ fn control(
         ("OngletSSH", "sCheckBox61") => check(ui, &mut s.ssh.show_banner),
         // -------------------------------------------------------------- X11
         ("OngletX11", "sCheckBox3") => check(ui, &mut s.x_server.autostart),
+        (
+            "OngletX11",
+            "sCheckBox28" | "sCheckBox29" | "sCheckBox32" | "sCheckBox34" | "sCheckBox36"
+            | "sCheckBox35",
+        ) => {
+            let name = caption.to_string();
+            let list = &mut s.x_server.extensions;
+            let mut on = list.contains(&name);
+            if ui
+                .put(rect, egui::Checkbox::new(&mut on, caption))
+                .changed()
+            {
+                list.retain(|e| *e != name);
+                if on {
+                    list.push(name);
+                }
+            }
+        }
         ("OngletX11", "sComboBox6") => {
             use tc_core::settings::XDisplayMode;
             let mut index = XDisplayMode::ALL

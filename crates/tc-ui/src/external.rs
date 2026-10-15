@@ -465,6 +465,15 @@ pub fn x_server_args(
     if x.dpi > 0 {
         args.extend(["-dpi".into(), x.dpi.clamp(48, 480).to_string()]);
     }
+    for ext in &x.extensions {
+        match ext.as_str() {
+            "Xinerama" => args.push("+xinerama".into()),
+            "Composite" | "Damage" | "Randr" | "Xfixes" | "Xtest" => {
+                args.extend(["+extension".into(), ext.to_uppercase()]);
+            }
+            _ => {}
+        }
+    }
     let layout = x.keyboard.trim();
     if !layout.is_empty() {
         if !layout.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -732,6 +741,15 @@ mod tests {
                 "br"
             ]
         );
+        let ext = XServerSettings {
+            extensions: vec!["Randr".into(), "Xinerama".into(), "-ac".into()],
+            ..XServerSettings::default()
+        };
+        assert!(x_server_args(&ext, true).unwrap().ends_with(&[
+            "+extension".to_string(),
+            "RANDR".into(),
+            "+xinerama".into()
+        ]));
         let bad = XServerSettings {
             keyboard: "us -query evil".into(),
             ..XServerSettings::default()
