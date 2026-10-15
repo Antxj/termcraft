@@ -60,6 +60,8 @@ pub struct TabEnv {
     /// Configuration › X11 "Display offset": the local display of X11
     /// forwarding on Windows.
     pub x_display: u16,
+    /// Configuration › Security "Disable RDP \"reconnect\"".
+    pub no_rdp_reconnect: bool,
     /// "Use Windows PATH" in the local Bash / Zsh.
     pub use_windows_path: bool,
     /// Configured terminal colors and cursor, if any.
@@ -253,6 +255,7 @@ pub struct Tab {
     ssh_settings: tc_core::settings::SshSettings,
     /// See [`TabEnv::x_display`].
     x_display: u16,
+    no_rdp_reconnect: bool,
     term_type: Option<String>,
     /// FTP connection waiting for its password prompt.
     pending_ftp: Option<tc_net::ftp::FtpParams>,
@@ -388,6 +391,7 @@ impl Tab {
             paste_right_click: env.paste_right_click,
             ssh_settings: env.ssh.clone(),
             x_display: env.x_display,
+            no_rdp_reconnect: env.no_rdp_reconnect,
             term_type: None,
             pending_ftp: None,
             pending_s3: None,
@@ -532,11 +536,12 @@ impl Tab {
             Some(SessionKind::Ftp { host, port, user }) => tab.open_ftp(host, port, user),
             Some(SessionKind::Rdp { host, port, user }) => {
                 let temp = std::env::temp_dir().join("termcraft-rdp");
-                let options = crate::external::RdpOptions::from_options(&|id| {
+                let mut options = crate::external::RdpOptions::from_options(&|id| {
                     tab.session
                         .as_ref()
                         .and_then(|s| s.options.get(id).cloned())
                 });
+                options.no_reconnect = tab.no_rdp_reconnect;
                 let result =
                     crate::external::launch_rdp(&host, port, user.as_deref(), &options, &temp);
                 tab.external_result("RDP", &host, port, result);

@@ -108,6 +108,11 @@ pub struct SecuritySettings {
     /// X11: 0 = the user chooses, 1 = no remote access to the X server,
     /// 2 = no X server.
     pub x11_policy: u8,
+    /// "Disable RDP \"reconnect\"": RDP sessions do not reconnect by
+    /// themselves.
+    pub disable_rdp_reconnect: bool,
+    /// "Disable X11 autostart": the X server never starts with TermCraft.
+    pub disable_x11_autostart: bool,
 }
 
 impl SecuritySettings {

@@ -179,6 +179,7 @@ impl Core {
             local_shell: self.settings.terminal.local_shell,
             save_key_passphrases: self.settings.passwords.save_key_passphrases,
             x_display: self.settings.x_server.display,
+            no_rdp_reconnect: self.settings.security.disable_rdp_reconnect,
             log_dir: Some(self.settings.terminal.log_dir.trim())
                 .filter(|d| !d.is_empty())
                 .map(std::path::PathBuf::from),
@@ -410,7 +411,11 @@ impl TermCraftApp {
             logged_status: String::new(),
         };
         // "Automatically start X server at TermCraft start up".
-        if app.snapshot.is_none() && app.core.settings.x_server.autostart {
+        if app.snapshot.is_none()
+            && app.core.settings.x_server.autostart
+            && !app.core.settings.security.disable_x11_autostart
+            && app.core.settings.security.x11_policy < 2
+        {
             app.startup.push(Command::XServerStart {});
         }
         // "Open the following tab at startup: <Terminal>".

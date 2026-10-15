@@ -885,6 +885,29 @@ fn control(
             }
         }
         ("OngletCustom", "sCheckBox13") => check(ui, &mut s.terminal.disable_log),
+        ("OngletCustom", "ChkDisableRdpReconnect") => {
+            check(ui, &mut s.security.disable_rdp_reconnect);
+        }
+        ("OngletCustom", "ChkDisableXAuto") => check(ui, &mut s.security.disable_x11_autostart),
+        ("OngletCustom", "CmbCyg") => {
+            // "Disable all local terminals" = the Shell and WSL session types.
+            let local = ["Shell", "WSL"];
+            let off = local
+                .iter()
+                .all(|t| s.security.disabled_sessions.iter().any(|d| d == t));
+            let mut index = usize::from(off);
+            let labels = ["Enable local terminals", "Disable all local terminals"];
+            if choice(ui, rect, caption, "cfg-sec-local", &labels, &mut index) {
+                s.security
+                    .disabled_sessions
+                    .retain(|d| !local.contains(&d.as_str()));
+                if index == 1 {
+                    s.security
+                        .disabled_sessions
+                        .extend(local.iter().map(|t| (*t).to_string()));
+                }
+            }
+        }
         ("OngletCustom", "CmbForceMasterPassword") => {
             let values = [0u8, 8, 12];
             let labels = [
@@ -1056,6 +1079,8 @@ fn security_preset(s: &mut Settings, button: &str) {
     s.terminal.disable_log = restricted;
     p.master_min_len = if high { 12 } else { 0 };
     s.security.disable_macros = restricted;
+    s.security.disable_rdp_reconnect = restricted;
+    s.security.disable_x11_autostart = restricted;
     s.security.x11_policy = u8::from(high);
     s.security.disabled_sessions.clear();
     if restricted {

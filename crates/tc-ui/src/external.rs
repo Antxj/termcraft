@@ -50,6 +50,8 @@ pub struct RdpOptions {
     pub size: RdpSize,
     /// 3_27 "Autoscale": scale the remote desktop to the window.
     pub autoscale: bool,
+    /// Configuration › Security "Disable RDP \"reconnect\"".
+    pub no_reconnect: bool,
 }
 
 /// 3_11 "Display resolution".
@@ -116,6 +118,7 @@ impl RdpOptions {
             audio: u8::try_from(index("3_17").min(2)).unwrap_or(0),
             size,
             autoscale: flag("3_27"),
+            no_reconnect: false,
         }
     }
 }
@@ -168,6 +171,9 @@ pub fn rdp_file(host: &str, port: u16, user: Option<&str>, o: &RdpOptions) -> St
         }
     }
     line(format!("smart sizing:i:{}", i(o.autoscale)));
+    if o.no_reconnect {
+        line("autoreconnection enabled:i:0".into());
+    }
     s
 }
 

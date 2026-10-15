@@ -531,11 +531,12 @@ impl Tab {
             GatewayTarget::Telnet => self.open_telnet(local.into(), local_port),
             GatewayTarget::Rdp(user) => {
                 let temp = std::env::temp_dir().join("termcraft-rdp");
-                let options = crate::external::RdpOptions::from_options(&|id| {
+                let mut options = crate::external::RdpOptions::from_options(&|id| {
                     self.session
                         .as_ref()
                         .and_then(|s| s.options.get(id).cloned())
                 });
+                options.no_reconnect = self.no_rdp_reconnect;
                 let result = crate::external::launch_rdp(
                     local,
                     local_port,
