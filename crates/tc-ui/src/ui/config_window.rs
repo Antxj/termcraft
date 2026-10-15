@@ -885,6 +885,45 @@ fn control(
             }
         }
         ("OngletCustom", "sCheckBox13") => check(ui, &mut s.terminal.disable_log),
+        ("OngletCustom", "CmbForceMasterPassword") => {
+            let values = [0u8, 8, 12];
+            let labels = [
+                "none",
+                "standard (8 characters min)",
+                "strong (12 characters min)",
+            ];
+            let mut index = values
+                .iter()
+                .position(|v| *v == s.passwords.master_min_len)
+                .unwrap_or(0);
+            if choice(ui, rect, caption, "cfg-master-min", &labels, &mut index) {
+                s.passwords.master_min_len = values[index];
+            }
+        }
+        ("OngletCustom", "sComboBox2") => {
+            let mut index = usize::from(s.security.disable_macros);
+            if choice(
+                ui,
+                rect,
+                caption,
+                "cfg-sec-macros",
+                &["Enable all macros", "Disable all macros"],
+                &mut index,
+            ) {
+                s.security.disable_macros = index == 1;
+            }
+        }
+        ("OngletCustom", "ComboX11RemoteAccess") => {
+            let labels = [
+                "let user choose X11 security settings",
+                "disable remote access",
+                "disable X11 server",
+            ];
+            let mut index = usize::from(s.security.x11_policy.min(2));
+            if choice(ui, rect, caption, "cfg-sec-x11", &labels, &mut index) {
+                s.security.x11_policy = u8::try_from(index).unwrap_or(0);
+            }
+        }
         ("OngletCustom", "ChkListClients") => {
             let items: Vec<(&str, &str)> = tc_core::schema::SESSION_TYPES
                 .iter()
@@ -1015,6 +1054,9 @@ fn security_preset(s: &mut Settings, button: &str) {
         MasterPrompt::NewComputer
     };
     s.terminal.disable_log = restricted;
+    p.master_min_len = if high { 12 } else { 0 };
+    s.security.disable_macros = restricted;
+    s.security.x11_policy = u8::from(high);
     s.security.disabled_sessions.clear();
     if restricted {
         s.security.disabled_servers = vec!["http".into(), "tftp".into()];

@@ -918,6 +918,11 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
             Ok(json!({ "ok": true }))
         }
         Command::MacroRun { id, tab } => {
+            if host.settings().is_ok_and(|s| s.security.disable_macros) {
+                return Err(CommandError::Failed(
+                    "macros are disabled (Settings › Configuration › Security)".into(),
+                ));
+            }
             let keys = host
                 .macros()?
                 .get(id)

@@ -766,6 +766,13 @@ impl PasswordsUi {
                 m.error = Some("The two passwords do not match".into());
                 return;
             }
+            let min = usize::from(settings.master_min_len);
+            if m.new.chars().count() < min {
+                m.error = Some(format!(
+                    "The master password needs {min} characters at least"
+                ));
+                return;
+            }
             let current = (exists && !m.current.is_empty()).then(|| m.current.as_str());
             if exists && current.is_none() {
                 m.error = Some("Enter your current master password".into());

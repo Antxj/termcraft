@@ -102,6 +102,12 @@ pub struct SecuritySettings {
     pub disabled_servers: Vec<String>,
     /// Tools (their Tools menu captions) that are greyed out.
     pub disabled_tools: Vec<String>,
+    /// Macros do not run (not at session start either) and none is
+    /// recorded.
+    pub disable_macros: bool,
+    /// X11: 0 = the user chooses, 1 = no remote access to the X server,
+    /// 2 = no X server.
+    pub x11_policy: u8,
 }
 
 impl SecuritySettings {
@@ -552,6 +558,9 @@ pub struct PasswordSettings {
     /// Configuration › Security "Disable \"show passwords\"": saved
     /// secrets are never shown or copied from the password manager.
     pub disable_show: bool,
+    /// "Master password complexity requirements": the shortest master
+    /// password accepted (0 = any).
+    pub master_min_len: u8,
 }
 
 /// Configuration › Terminal "Log type".
@@ -1131,6 +1140,7 @@ mod tests {
             disabled_sessions: vec!["Telnet".into()],
             disabled_servers: vec!["tftp".into()],
             disabled_tools: vec!["Diff tool".into()],
+            ..Default::default()
         };
         assert!(!s.session_allowed("Telnet") && s.session_allowed("SSH"));
         assert!(!s.server_allowed("TFTP") && s.server_allowed("http"));

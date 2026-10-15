@@ -138,6 +138,7 @@ impl Core {
     fn new_tab(&self, id: u64, session: Option<Session>) -> Tab {
         let macro_keys = session
             .as_ref()
+            .filter(|_| !self.settings.security.disable_macros)
             .and_then(|s| s.options.get("4_38"))
             .map(|name| name.trim())
             .filter(|name| !name.is_empty() && *name != NO_MACRO)
@@ -955,6 +956,11 @@ impl TermCraftApp {
             Action::Split(mode) => view.split = mode,
             Action::ToggleMultiExec => return self.multiexec.on = !self.multiexec.on,
             Action::StartRecording => {
+                if self.core.settings.security.disable_macros {
+                    self.status =
+                        "macros are disabled (Settings › Configuration › Security)".into();
+                    return;
+                }
                 if let Some(id) = self.core.active {
                     self.recording = Some((id, String::new()));
                 }

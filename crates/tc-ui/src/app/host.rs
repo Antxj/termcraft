@@ -41,8 +41,16 @@ impl Host for Core {
                 "the X server is already running on :{display}"
             )));
         }
-        let x = &self.settings.x_server;
-        let (process, name) = crate::external::start_x_server(x).map_err(CommandError::Failed)?;
+        let policy = self.settings.security.x11_policy;
+        if policy >= 2 {
+            return Err(CommandError::Failed(
+                "the X server is disabled (Settings › Configuration › Security)".into(),
+            ));
+        }
+        let mut x = self.settings.x_server.clone();
+        // "Disable remote access" wins over the X11 tab.
+        x.remote_access &= policy == 0;
+        let (process, name) = crate::external::start_x_server(&x).map_err(CommandError::Failed)?;
         let display = x.display;
         self.x_server = Some(super::XServer { process, display });
         Ok(serde_json::json!({ "display": format!(":{display}"), "server": name }))
