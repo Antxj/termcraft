@@ -4,6 +4,23 @@ use std::path::{Path, PathBuf};
 /// to the executable. In portable mode all state lives beside the binary.
 pub const PORTABLE_MARKER: &str = "termcraft.portable";
 
+/// A Windows program by its full path in `%SystemRoot%\System32`: never
+/// looked up in the current folder or `PATH`, where a file with the same
+/// name could stand in for it.
+pub fn system32(name: &str) -> std::path::PathBuf {
+    windows_dir().join("System32").join(name)
+}
+
+/// `%SystemRoot%` (`C:\Windows` when unset).
+pub fn windows_dir() -> std::path::PathBuf {
+    std::env::var_os("SystemRoot")
+        .filter(|r| !r.is_empty())
+        .map_or_else(
+            || std::path::PathBuf::from(r"C:\Windows"),
+            std::path::PathBuf::from,
+        )
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
     pub config_dir: PathBuf,

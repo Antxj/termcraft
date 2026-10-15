@@ -123,7 +123,7 @@ pub fn register(exe: &std::path::Path) -> Result<String, String> {
             ],
         ];
         for args in steps {
-            let ok = std::process::Command::new("reg")
+            let ok = std::process::Command::new(crate::paths::system32("reg.exe"))
                 .args(args)
                 .output()
                 .map_err(|e| e.to_string())?

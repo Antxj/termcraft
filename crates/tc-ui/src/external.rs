@@ -62,7 +62,14 @@ pub fn launch_rdp(
         std::fs::create_dir_all(temp_dir).map_err(|e| e.to_string())?;
         let file = temp_dir.join(format!("{host}-{port}.rdp").replace([':', '/', '\\'], "_"));
         std::fs::write(&file, rdp_file(host, port, user)).map_err(|e| e.to_string())?;
-        spawn(Path::new("mstsc.exe"), &[file.display().to_string()])?;
+        let mstsc = tc_core::paths::system32("mstsc.exe");
+        if !mstsc.is_file() {
+            return Err(format!(
+                "the Windows Remote Desktop client is not installed ({} is missing)",
+                mstsc.display()
+            ));
+        }
+        spawn(&mstsc, &[file.display().to_string()])?;
         return Ok("Windows Remote Desktop (mstsc)".into());
     }
     if cfg!(target_os = "macos") {
@@ -226,13 +233,14 @@ pub fn launch_xdmcp(x: &Xdmcp<'_>) -> Result<String, String> {
 
 /// The system "open" command: Explorer, `open` or `xdg-open`. They take the
 /// target as one argument, without a shell, so nothing in it is executed.
-fn opener() -> &'static str {
+fn opener() -> PathBuf {
     if cfg!(windows) {
-        "explorer.exe"
+        // explorer.exe lives in %SystemRoot% itself.
+        tc_core::paths::windows_dir().join("explorer.exe")
     } else if cfg!(target_os = "macos") {
-        "open"
+        "open".into()
     } else {
-        "xdg-open"
+        "xdg-open".into()
     }
 }
 
@@ -252,7 +260,7 @@ pub fn open_path(path: &str) -> Result<String, String> {
         .strip_prefix(r"\\?\")
         .map(str::to_string)
         .unwrap_or(full);
-    spawn(Path::new(opener()), &[full])?;
+    spawn(&opener(), &[full])?;
     Ok("the default application".into())
 }
 
@@ -262,7 +270,7 @@ pub fn open_path(path: &str) -> Result<String, String> {
 pub fn open_in_text_editor(path: &Path) -> Result<String, String> {
     let file = path.display().to_string();
     if cfg!(windows) {
-        spawn(Path::new("notepad.exe"), &[file])?;
+        spawn(&tc_core::paths::system32("notepad.exe"), &[file])?;
         return Ok("Notepad".into());
     }
     if cfg!(target_os = "macos") {
@@ -308,7 +316,7 @@ pub fn web_url(url: &str) -> Result<String, String> {
 /// "Browser" session: open the page in the default browser.
 pub fn open_url(url: &str) -> Result<String, String> {
     let url = web_url(url)?;
-    spawn(Path::new(opener()), &[url])?;
+    spawn(&opener(), &[url])?;
     Ok("the default browser".into())
 }
 

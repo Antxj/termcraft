@@ -91,19 +91,34 @@ fn simple(program: impl Into<String>) -> ShellCommand {
     }
 }
 
+/// A Windows program by its full path in `%SystemRoot%\System32`
+/// (`C:\Windows` when unset): never looked up in the current folder or
+/// `PATH`, where a file with the same name could stand in for it.
+pub fn system32(name: &str) -> std::path::PathBuf {
+    let root = std::env::var_os("SystemRoot")
+        .filter(|r| !r.is_empty())
+        .map_or_else(
+            || std::path::PathBuf::from(r"C:\Windows"),
+            std::path::PathBuf::from,
+        );
+    root.join("System32").join(name)
+}
+
 /// Find `kind` on this machine; `None` if it is not installed.
 pub fn locate(kind: ShellKind) -> Option<ShellCommand> {
     if cfg!(windows) {
         return match kind {
             ShellKind::Bash => windows_unix_shell("bash"),
             ShellKind::Zsh => windows_unix_shell("zsh"),
-            ShellKind::Cmd => Some(simple("cmd.exe")),
-            ShellKind::PowerShell => Some(simple(if find_in_path("pwsh.exe").is_some() {
-                "pwsh.exe"
-            } else {
-                "powershell.exe"
-            })),
-            ShellKind::Wsl => find_in_path("wsl.exe").map(|p| simple(p.display().to_string())),
+            ShellKind::Cmd => Some(simple(system32("cmd.exe").display().to_string())),
+            // PowerShell 7 when installed, else Windows PowerShell.
+            ShellKind::PowerShell => Some(simple(
+                find_in_path("pwsh.exe")
+                    .unwrap_or_else(|| system32(r"WindowsPowerShell\v1.0\powershell.exe"))
+                    .display()
+                    .to_string(),
+            )),
+            ShellKind::Wsl => wsl_exe().map(|p| simple(p.display().to_string())),
         };
     }
     let login = |p: PathBuf| ShellCommand {
@@ -123,6 +138,13 @@ pub fn locate(kind: ShellKind) -> Option<ShellCommand> {
     }
 }
 
+/// `wsl.exe`: in System32 when WSL is installed, else on `PATH`.
+fn wsl_exe() -> Option<PathBuf> {
+    Some(system32("wsl.exe"))
+        .filter(|p| p.is_file())
+        .or_else(|| find_in_path("wsl.exe"))
+}
+
 /// `wsl.exe` for a WSL session: distribution ("Default" = the default
 /// one), user and start folder.
 pub fn wsl_command(
@@ -130,7 +152,7 @@ pub fn wsl_command(
     user: Option<&str>,
     start_dir: Option<&str>,
 ) -> Option<ShellCommand> {
-    let program = find_in_path("wsl.exe")?.display().to_string();
+    let program = wsl_exe()?.display().to_string();
     let mut args = Vec::new();
     let distro = distro.trim();
     if !distro.is_empty() && !distro.eq_ignore_ascii_case("default") {
@@ -156,7 +178,10 @@ mod tests {
     #[test]
     fn locates_platform_shells() {
         if cfg!(windows) {
-            assert_eq!(locate(ShellKind::Cmd).unwrap().program, "cmd.exe");
+            // By full path, never looked up in the current folder.
+            let cmd = locate(ShellKind::Cmd).unwrap().program;
+            assert!(cmd.to_ascii_lowercase().ends_with(r"\system32\cmd.exe"), "{cmd}");
+            assert!(Path::new(&cmd).is_absolute());
             assert!(locate(ShellKind::PowerShell).is_some());
             if let Some(bash) = locate(ShellKind::Bash) {
                 assert!(!is_wsl_launcher(Path::new(&bash.program)), "{bash:?}");

@@ -11,7 +11,7 @@ pub fn distributions() -> &'static [String] {
         if !cfg!(windows) {
             return Vec::new();
         }
-        let mut cmd = std::process::Command::new("wsl.exe");
+        let mut cmd = std::process::Command::new(tc_core::paths::system32("wsl.exe"));
         cmd.args(["-l", "-q"]);
         #[cfg(windows)]
         {

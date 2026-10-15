@@ -896,7 +896,7 @@ fn print_text(text: &str, tab_id: u64) -> Result<(), String> {
         std::fs::create_dir_all(&dir)
             .and_then(|()| std::fs::write(&file, text))
             .map_err(|e| e.to_string())?;
-        return std::process::Command::new("notepad.exe")
+        return std::process::Command::new(tc_core::paths::system32("notepad.exe"))
             .arg("/p")
             .arg(&file)
             .spawn()
