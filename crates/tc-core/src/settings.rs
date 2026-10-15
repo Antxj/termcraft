@@ -325,6 +325,9 @@ pub struct GeneralSettings {
     pub mobaxterm_import_offered: bool,
     /// Misc › "Open the following tab at startup".
     pub startup_tab: StartupTab,
+    /// General › "Default text editor program": edits remote files
+    /// instead of the built-in editor (empty = the built-in one).
+    pub text_editor: String,
     /// Misc › "Open new tab beside current tab".
     pub new_tab_position: NewTabPosition,
     /// Misc › not "Do not exit when last tab is closed".
@@ -400,6 +403,7 @@ impl Default for GeneralSettings {
             home_dir: String::new(),
             mobaxterm_import_offered: false,
             startup_tab: StartupTab::default(),
+            text_editor: String::new(),
             new_tab_position: NewTabPosition::default(),
             exit_on_last_tab: false,
             multiple_instances: false,
@@ -675,6 +679,9 @@ pub struct ViewSettings {
     pub sidebar_tab: SidebarTab,
     pub show_tab_numbers: bool,
     pub show_close_button: bool,
+    /// View › "Show/hide sidebar tab titles": the vertical titles under
+    /// the sidebar tab icons.
+    pub sidebar_titles: bool,
     pub theme: Theme,
     pub split: SplitMode,
     /// "Rounded tabs".
@@ -716,6 +723,7 @@ impl Default for ViewSettings {
             sidebar_tab: SidebarTab::default(),
             show_tab_numbers: false,
             show_close_button: true,
+            sidebar_titles: true,
             theme: Theme::default(),
             split: SplitMode::default(),
             rounded_tabs: true,

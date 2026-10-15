@@ -185,7 +185,17 @@ impl TermCraftApp {
             .iter_mut()
             .flat_map(|t| std::mem::take(&mut t.open_in_editor))
             .collect();
+        // "Default text editor program", when one is set.
+        let program = Some(self.core.settings.general.text_editor.trim())
+            .filter(|p| !p.is_empty())
+            .map(std::path::PathBuf::from);
         for (local, remote) in opens {
+            if let Some(program) = &program {
+                if let Err(e) = crate::external::open_with(program, &local) {
+                    self.status = e;
+                }
+                continue;
+            }
             if let Err(e) = self.text_editor.open_file(&local, Some(&remote))
                 && let Err(e2) = crate::external::open_in_text_editor(&local)
             {

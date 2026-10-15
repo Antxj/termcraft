@@ -208,6 +208,23 @@ pub const CATALOG: &[CommandSpec] = &[
         mutating: false,
     },
     CommandSpec {
+        name: "tab_open_folder",
+        title: "Open a terminal in a folder",
+        description: "Open a local terminal tab whose working directory is this folder (GUI only).",
+        input_schema: r#"{"type":"object","required":["path"],"properties":{"path":{"type":"string"}}}"#,
+        example_args: r#"{"path":"C:/Users/me/projects"}"#,
+        mutating: true,
+    },
+    CommandSpec {
+        name: "explorer_menu",
+        title: "Windows right-click menu entries",
+        description: "Add \"Open TermCraft here\" to the Explorer folder menus for the current user \
+                      (HKCU), or remove it with remove = true. Windows only.",
+        input_schema: r#"{"type":"object","properties":{"remove":{"type":"boolean"}}}"#,
+        example_args: "{}",
+        mutating: true,
+    },
+    CommandSpec {
         name: "wake_on_lan",
         title: "Wake On Lan",
         description: "Send one Wake-on-LAN magic packet for a MAC address (aa:bb:cc:dd:ee:ff) to \

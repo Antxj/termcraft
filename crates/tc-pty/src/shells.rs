@@ -39,6 +39,8 @@ pub struct ShellCommand {
     pub program: String,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// Working directory; `None` = the user's home.
+    pub cwd: Option<PathBuf>,
 }
 
 fn find_in_path(exe: &str) -> Option<PathBuf> {
@@ -73,6 +75,7 @@ fn windows_unix_shell(name: &str) -> Option<ShellCommand> {
             program: p.display().to_string(),
             args: vec!["--login".into(), "-i".into()],
             env,
+            cwd: None,
         });
     }
     let in_path = find_in_path(&exe).filter(|p| !is_wsl_launcher(p))?;
@@ -80,6 +83,7 @@ fn windows_unix_shell(name: &str) -> Option<ShellCommand> {
         program: in_path.display().to_string(),
         args: vec!["--login".into(), "-i".into()],
         env: Vec::new(),
+        cwd: None,
     })
 }
 
@@ -88,6 +92,7 @@ fn simple(program: impl Into<String>) -> ShellCommand {
         program: program.into(),
         args: Vec::new(),
         env: Vec::new(),
+        cwd: None,
     }
 }
 
@@ -125,6 +130,7 @@ pub fn locate(kind: ShellKind) -> Option<ShellCommand> {
         program: p.display().to_string(),
         args: vec!["-l".into()],
         env: Vec::new(),
+        cwd: None,
     };
     match kind {
         ShellKind::Bash => existing([PathBuf::from("/bin/bash"), PathBuf::from("/usr/bin/bash")])
@@ -168,6 +174,7 @@ pub fn wsl_command(
         program,
         args,
         env: Vec::new(),
+        cwd: None,
     })
 }
 

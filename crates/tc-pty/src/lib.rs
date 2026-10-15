@@ -36,6 +36,7 @@ impl PtySession {
             program: program.map(String::from).unwrap_or_else(default_shell),
             args: args.iter().map(|a| a.to_string()).collect(),
             env: Vec::new(),
+            cwd: None,
         };
         Self::spawn_command(&shell, rows, cols, on_output)
     }
@@ -59,8 +60,13 @@ impl PtySession {
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        if let Some(home) = home_dir() {
-            cmd.cwd(home);
+        match shell.cwd.as_ref().filter(|d| d.is_dir()) {
+            Some(dir) => cmd.cwd(dir),
+            None => {
+                if let Some(home) = home_dir() {
+                    cmd.cwd(home);
+                }
+            }
         }
 
         let child = pair

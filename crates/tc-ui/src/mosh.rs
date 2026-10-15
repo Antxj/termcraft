@@ -107,6 +107,7 @@ pub fn client_command(
             ("MOSH_KEY".into(), connect.key.clone()),
             ("MOSH_PREDICTION_DISPLAY".into(), prediction.into()),
         ],
+        cwd: None,
     }
 }
 

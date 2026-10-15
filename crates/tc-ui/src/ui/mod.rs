@@ -155,6 +155,7 @@ pub enum Action {
     StopRecording,
     RenameMacro(MacroId),
     ToggleCloseButton,
+    ToggleSidebarTitles,
 }
 
 /// A menu entry: enabled when it has an action, greyed out with a hint otherwise.

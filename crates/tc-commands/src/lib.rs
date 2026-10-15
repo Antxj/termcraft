@@ -122,6 +122,16 @@ pub enum Command {
     /// Bring the window to the front (a second start shows the running
     /// window instead of opening another one).
     WindowShow {},
+    /// A local terminal in this folder ("Open TermCraft here").
+    TabOpenFolder {
+        path: String,
+    },
+    /// General › "Windows right-click menu entries": add (or, with
+    /// `remove`, take away) "Open TermCraft here" in Explorer.
+    ExplorerMenu {
+        #[serde(default)]
+        remove: bool,
+    },
     /// Tools › "Wake On Lan": send the magic packet that wakes the computer
     /// with this MAC address.
     WakeOnLan {
@@ -271,6 +281,8 @@ impl Command {
             Self::TabList {} => "tab_list",
             Self::WindowShow {} => "window_show",
             Self::WakeOnLan { .. } => "wake_on_lan",
+            Self::TabOpenFolder { .. } => "tab_open_folder",
+            Self::ExplorerMenu { .. } => "explorer_menu",
             Self::XServerStart {} => "x_server_start",
             Self::XServerStop {} => "x_server_stop",
             Self::TabOpen { .. } => "tab_open",
@@ -751,6 +763,42 @@ pub fn execute(host: &mut dyn Host, cmd: Command) -> Result<Value, CommandError>
         Command::WindowShow {} => {
             host.window_show()?;
             Ok(json!({ "ok": true }))
+        }
+        Command::TabOpenFolder { path } => {
+            // Explorer quotes a drive root as "C:\" and the backslash
+            // escapes the quote: C:" arrives.
+            let mut folder = path.trim().trim_end_matches('"').to_string();
+            if folder.ends_with(':') {
+                folder.push('\\');
+            }
+            let dir = std::path::Path::new(&folder);
+            if !dir.is_dir() {
+                return Err(CommandError::InvalidArgs(format!("{path} is not a folder")));
+            }
+            let name = dir
+                .file_name()
+                .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
+            let mut session = Session::new(
+                name,
+                tc_core::session::SessionKind::LocalShell { program: None },
+            );
+            // Shell 3_3 "Startup directory".
+            session
+                .options
+                .insert("3_3".into(), dir.display().to_string());
+            Ok(json!({ "tab": host.tab_open(Some(session))? }))
+        }
+        Command::ExplorerMenu { remove } => {
+            let done = if remove {
+                tc_core::explorer::unregister()
+            } else {
+                let exe = tc_core::shortcut::gui_exe().ok_or_else(|| {
+                    CommandError::Failed("the TermCraft program was not found".into())
+                })?;
+                tc_core::explorer::register(&exe)
+            }
+            .map_err(CommandError::Failed)?;
+            Ok(json!({ "done": done }))
         }
         Command::WakeOnLan { mac, address, port } => {
             let bytes = tc_core::wol::parse_mac(&mac)

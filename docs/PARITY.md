@@ -179,7 +179,9 @@ refined against it.
 | P2 | [x] | Settings › "Export configuration" / "Import configuration" / "Reset configuration" (`config_export`, `config_import`, `config_reset`; no passwords in the file) | `tc-commands` + `tc-ui` |
 | P3 | [x] | Help › "Documentation" and the tray's "Documentation" open the project documentation; X server › "XDMCP session" opens a new XDMCP session | `tc-ui` |
 | P2 | [x] | Tools › "List running processes" / "List hardware devices" (a terminal tab: Get-Process / Get-PnpDevice on Windows, ps / lspci / lsusb / system_profiler elsewhere), "Command Prompt (admin)" / "Windows Powershell (admin)" (UAC elevation, own console), "Wake On Lan" (one magic packet; `wake_on_lan`) | `tc-core` + `tc-ui` |
-| P3 | [x] | View › "Take a screenshot" (PNG of the window); Settings › "Manage shared sessions" | `tc-ui` |
+| P3 | [x] | View › "Take a screenshot" (PNG of the window), "Show/hide sidebar tab titles"; Terminal › "Detach tab"; Settings › "Manage shared sessions" | `tc-ui` |
+| P2 | [x] | General › "Default text editor program" (remote files open in it instead of the built-in editor) and "Windows right-click menu entries" ("Open TermCraft here" on folders, HKCU; `explorer_menu`, `tab_open_folder`, `--folder <dir>`) | `tc-core` + `tc-ui` |
+| P1 | [x] | Shell sessions: 3_3 "Startup directory" is the terminal's working directory | `tc-pty` + `tc-ui` |
 | P2 | [ ] | Windows: bundle and manage VcXsrv (MIT/X11 license) | `tc-x11` |
 | P2 | [x] | macOS: XQuartz for X11 forwarding: its launchd socket in $DISPLAY is used as is; without $DISPLAY an installed XQuartz is started and :0 used | `tc-ssh` + `tc-ui` |
 | P2 | [x] | Linux: X11 forwarding to the native X server or XWayland through $DISPLAY (Unix socket or TCP) | `tc-ssh` |

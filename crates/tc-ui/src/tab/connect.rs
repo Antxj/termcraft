@@ -279,6 +279,7 @@ impl Tab {
                 program: p.to_string(),
                 args: Vec::new(),
                 env: Vec::new(),
+                cwd: None,
             },
             None => match tc_pty::shells::locate(shell_kind(shell)) {
                 Some(c) => c,
@@ -296,11 +297,20 @@ impl Tab {
                         program: tc_pty::default_shell(),
                         args: Vec::new(),
                         env: Vec::new(),
+                        cwd: None,
                     }
                 }
             },
         };
         let mut command = command;
+        // Shell 3_3 "Startup directory".
+        command.cwd = self
+            .session
+            .as_ref()
+            .and_then(|s| s.options.get("3_3"))
+            .map(|d| d.trim())
+            .filter(|d| !d.is_empty() && *d != "<>")
+            .map(local_path);
         // Git for Windows and MSYS2 read MSYS2_PATH_TYPE in /etc/profile.
         if cfg!(windows) && program.is_none() && matches!(shell, LocalShell::Bash | LocalShell::Zsh)
         {

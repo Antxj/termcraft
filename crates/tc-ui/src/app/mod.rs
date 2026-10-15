@@ -876,6 +876,7 @@ impl TermCraftApp {
                 return;
             }
             Action::ToggleCloseButton => view.show_close_button = !view.show_close_button,
+            Action::ToggleSidebarTitles => view.sidebar_titles = !view.sidebar_titles,
         }
         if let Err(e) = self.core.save_settings() {
             self.status = format!("could not save settings: {e}");

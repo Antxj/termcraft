@@ -112,7 +112,12 @@ fn terminal_menu(ui: &mut egui::Ui, cx: &MenuCtx<'_>, out: &mut Vec<Action>) {
         cx.active_tab.map(Action::RenameTab),
         out,
     );
-    item(ui, "Detach tab", None, out);
+    item(
+        ui,
+        "Detach tab",
+        cx.active_tab.map(|id| Action::DetachTab(id, true)),
+        out,
+    );
     item(
         ui,
         "Save terminal text",
@@ -252,7 +257,12 @@ pub fn view_menu(ui: &mut egui::Ui, v: &ViewSettings, out: &mut Vec<Action>) {
         Some(Action::ToggleTheme),
         out,
     );
-    item(ui, "Show/hide sidebar tab titles", None, out);
+    item(
+        ui,
+        "Show/hide sidebar tab titles",
+        Some(Action::ToggleSidebarTitles),
+        out,
+    );
     ui.separator();
     item(ui, "Take a screenshot", Some(Action::Screenshot), out);
 }

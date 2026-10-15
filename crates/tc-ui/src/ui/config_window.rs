@@ -344,6 +344,54 @@ fn control(
                 });
         }
         ("OngletTerminal", "CheckPath") => check(ui, &mut s.terminal.use_windows_path),
+        ("OngletMisc", "sSpeedButton2") if cfg!(windows) => {
+            if button(ui, caption) {
+                let answer = rfd::MessageDialog::new()
+                    .set_title("Windows right-click menu entries")
+                    .set_description(
+                        "Add \"Open TermCraft here\" to the Explorer menus of folders (for \
+                         your account only)?",
+                    )
+                    .set_buttons(rfd::MessageButtons::YesNoCancelCustom(
+                        "Add".into(),
+                        "Remove".into(),
+                        "Cancel".into(),
+                    ))
+                    .show();
+                let remove = match answer {
+                    rfd::MessageDialogResult::Custom(c) if c == "Add" => Some(false),
+                    rfd::MessageDialogResult::Custom(c) if c == "Remove" => Some(true),
+                    rfd::MessageDialogResult::Yes => Some(false),
+                    rfd::MessageDialogResult::No => Some(true),
+                    _ => None,
+                };
+                if let Some(remove) = remove {
+                    out.push(Action::Run(tc_commands::Command::ExplorerMenu { remove }));
+                }
+            }
+        }
+        ("OngletMisc", "sFilenameEdit1") => {
+            bound_label(ui, rect, caption);
+            let g = &mut s.general;
+            let browse = Rect::from_min_size(
+                egui::pos2(rect.right() - rect.height(), rect.top()),
+                vec2(rect.height(), rect.height()),
+            );
+            let field =
+                Rect::from_min_max(rect.min, egui::pos2(browse.left() - 2.0, rect.bottom()));
+            ui.put(
+                field,
+                egui::TextEdit::singleline(&mut g.text_editor).hint_text("built-in text editor"),
+            )
+            .on_hover_text("The program that opens remote files for editing");
+            if ui
+                .put(browse, egui::Button::new(icon::FOLDER_OPEN))
+                .clicked()
+                && let Some(path) = rfd::FileDialog::new().pick_file()
+            {
+                g.text_editor = path.display().to_string();
+            }
+        }
         ("OngletTerminal", "sCheckBox57") => check(ui, &mut s.terminal.backspace_ctrl_h),
         // -------------------------------------------------------------- SSH
         ("OngletSSH", "sCheckBox27") => check(ui, &mut s.ssh.browser),

@@ -2,6 +2,7 @@
 
 pub mod backup;
 pub mod diff;
+pub mod explorer;
 pub mod hotkeys;
 pub mod jump_hosts;
 pub mod known_hosts;

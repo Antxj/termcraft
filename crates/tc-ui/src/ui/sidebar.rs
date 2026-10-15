@@ -37,7 +37,13 @@ fn strip_button(ui: &mut egui::Ui, glyph: &str, selected: bool, hint: &str) -> e
 
 /// A sidebar tab: icon on top, title written top to bottom, accent bar on
 /// the selected one (reference vertical tabs).
-fn strip_tab(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egui::Response {
+fn strip_tab(
+    ui: &mut egui::Ui,
+    glyph: &str,
+    title: &str,
+    selected: bool,
+    show_title: bool,
+) -> egui::Response {
     let palette = crate::skin::current(ui.ctx());
     let font = FontId::proportional(12.5);
     let color = if selected {
@@ -46,7 +52,11 @@ fn strip_tab(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egu
         palette.weak_text
     };
     let galley = ui.painter().layout_no_wrap(title.to_string(), font, color);
-    let height = 30.0 + galley.size().x + 10.0;
+    let height = if show_title {
+        30.0 + galley.size().x + 10.0
+    } else {
+        32.0
+    };
     let (rect, response) = ui.allocate_exact_size(vec2(STRIP_WIDTH, height), Sense::click());
     let painter = ui.painter();
     if selected {
@@ -63,6 +73,9 @@ fn strip_tab(ui: &mut egui::Ui, glyph: &str, title: &str, selected: bool) -> egu
         FontId::proportional(17.0),
         if selected { palette.accent } else { color },
     );
+    if !show_title {
+        return response.on_hover_text(title);
+    }
     // Rotated a quarter turn clockwise: the text runs downwards.
     let pos = egui::pos2(rect.center().x + galley.size().y / 2.0, rect.top() + 30.0);
     painter.add(
@@ -79,7 +92,7 @@ pub fn strip(ui: &mut egui::Ui, view: &ViewSettings, out: &mut Vec<Action>) {
     }
     for (tab, glyph, title) in TABS {
         let selected = view.sidebar_visible && view.sidebar_tab == tab;
-        if strip_tab(ui, glyph, title, selected).clicked() {
+        if strip_tab(ui, glyph, title, selected, view.sidebar_titles).clicked() {
             if !view.sidebar_visible {
                 out.push(Action::ToggleSidebar);
             }

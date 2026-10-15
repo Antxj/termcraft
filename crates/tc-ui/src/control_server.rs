@@ -175,6 +175,8 @@ pub fn commands_from_args(
                     .ok_or_else(|| format!("unsupported link {link:?}"))?;
                 out.push(url_command(target));
             }
+            // "Open TermCraft here" (Explorer menu).
+            "folder" => out.push(Command::TabOpenFolder { path: value()? }),
             "hideterm" => startup.minimized = true,
             "exitwhendone" => startup.exit_when_done = true,
             _ => return Err(format!("unknown option {arg}")),
@@ -186,6 +188,16 @@ pub fn commands_from_args(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn folder_option() {
+        let args = ["--folder".to_string(), "C:/work".to_string()];
+        let startup = commands_from_args(&args, &|_| None).unwrap();
+        assert!(matches!(
+            startup.commands.as_slice(),
+            [Command::TabOpenFolder { path }] if path == "C:/work"
+        ));
+    }
 
     #[test]
     fn options_become_commands() {
