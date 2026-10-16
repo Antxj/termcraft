@@ -50,6 +50,8 @@ pub struct RdpOptions {
     pub size: RdpSize,
     /// 3_27 "Autoscale": scale the remote desktop to the window.
     pub autoscale: bool,
+    /// 3_10 "Enhanced graphics" (built-in client: desktop composition).
+    pub enhanced_graphics: bool,
     /// Configuration › Security "Disable RDP \"reconnect\"".
     pub no_reconnect: bool,
 }
@@ -135,6 +137,7 @@ impl RdpOptions {
             audio: u8::try_from(index("3_17").min(2)).unwrap_or(0),
             size,
             autoscale: flag("3_27"),
+            enhanced_graphics: flag("3_10"),
             no_reconnect: false,
         }
     }

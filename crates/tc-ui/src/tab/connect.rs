@@ -905,6 +905,7 @@ impl Tab {
             via,
             // 3_20 "Share local / remote clipboards".
             clipboard: self.rdp_options().clipboard,
+            enhanced_graphics: self.rdp_options().enhanced_graphics,
         }
     }
 

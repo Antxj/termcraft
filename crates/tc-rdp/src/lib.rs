@@ -56,6 +56,9 @@ pub struct RdpParams {
     pub via: Option<(String, u16)>,
     /// Share the clipboard (text).
     pub clipboard: bool,
+    /// 3_10 "Enhanced graphics": desktop composition (transparency,
+    /// smooth window effects) on the remote side.
+    pub enhanced_graphics: bool,
 }
 
 /// What the session reports to the app.
@@ -253,7 +256,16 @@ fn connector_config(p: &RdpParams) -> ironrdp_connector::Config {
         keyboard_functional_keys_count: 12,
         keyboard_layout: p.keyboard_layout,
         ime_file_name: String::new(),
-        bitmap: None,
+        // Lossless pictures (planar / interleaved bitmaps): sharp text and
+        // exact colours, like the system client on a LAN. RemoteFX is
+        // lossy, so it is not offered.
+        bitmap: ironrdp_pdu::rdp::capability_sets::client_codecs_capabilities(&["remotefx:off"])
+            .ok()
+            .map(|codecs| ironrdp_connector::BitmapConfig {
+                lossy_compression: false,
+                color_depth: 32,
+                codecs,
+            }),
         dig_product_id: String::new(),
         client_dir: "C:\\Windows\\System32\\mstscax.dll".to_owned(),
         platform: platform(),
@@ -261,7 +273,11 @@ fn connector_config(p: &RdpParams) -> ironrdp_connector::Config {
         request_data: None,
         autologon: false,
         enable_audio_playback: false,
-        performance_flags: PerformanceFlags::default(),
+        performance_flags: if p.enhanced_graphics {
+            PerformanceFlags::default() | PerformanceFlags::ENABLE_DESKTOP_COMPOSITION
+        } else {
+            PerformanceFlags::default()
+        },
         license_cache: None,
         timezone_info: TimezoneInfo::default(),
         enable_server_pointer: false,

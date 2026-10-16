@@ -1527,7 +1527,6 @@ const NOT_APPLIED: &[(Option<usize>, &str)] = &[
     // graphics, expert settings.
     (Some(4), "3_18"),
     (Some(4), "3_28"),
-    (Some(4), "3_10"),
     (Some(4), "3_32"),
     // Every type: custom macro, font charset / antialiasing / ligatures,
     // advanced terminal settings.

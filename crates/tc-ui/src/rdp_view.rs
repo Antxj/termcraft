@@ -28,6 +28,8 @@ pub struct RdpView {
     pub follow_window: bool,
     /// 3_27 "Autoscale": the picture fills the tab (also scaled up).
     pub autoscale: bool,
+    /// Texture filter in use (nearest when one screen pixel per pixel).
+    filter: TextureOptions,
     /// Size last asked of the server, and a new one waiting to settle.
     requested: (u16, u16),
     resize: Option<(std::time::Instant, (u16, u16))>,
@@ -46,6 +48,7 @@ impl RdpView {
             remote_clipboard: None,
             follow_window,
             autoscale: true,
+            filter: TextureOptions::LINEAR,
             requested: size,
             resize: None,
         }
@@ -180,9 +183,14 @@ fn types_text(key: Key) -> bool {
 }
 
 /// The image rectangle: centered and scaled to fit `area` ("Autoscale"
-/// also scales it up; else it is only scaled down).
-pub fn fit(area: Rect, width: u16, height: u16, upscale: bool) -> Rect {
-    let (w, h) = (f32::from(width.max(1)), f32::from(height.max(1)));
+/// also scales it up; else it is only scaled down). `ppp` = physical
+/// pixels per point: at scale 1 one remote pixel is one screen pixel.
+pub fn fit(area: Rect, width: u16, height: u16, upscale: bool, ppp: f32) -> Rect {
+    let ppp = if ppp > 0.0 { ppp } else { 1.0 };
+    let (w, h) = (
+        f32::from(width.max(1)) / ppp,
+        f32::from(height.max(1)) / ppp,
+    );
     let scale = (area.width() / w).min(area.height() / h);
     let scale = if upscale { scale } else { scale.min(1.0) };
     Rect::from_center_size(area.center(), vec2(w * scale, h * scale))
@@ -202,9 +210,12 @@ pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
     if let Some(text) = view.remote_clipboard.take() {
         ui.ctx().copy_text(text);
     }
+    // The remote desktop is asked in screen pixels (the interface zoom
+    // does not shrink it).
+    let ppp = ui.ctx().pixels_per_point();
     let size = (
-        area.width().max(200.0) as u16,
-        area.height().max(200.0) as u16,
+        (area.width() * ppp).max(200.0) as u16,
+        (area.height() * ppp).max(200.0) as u16,
     );
     if let Some((width, height)) = view.follow(size, std::time::Instant::now()) {
         view.session.send(RdpInput::Resize { width, height });
@@ -230,6 +241,25 @@ pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
         );
         return out;
     }
+    let mut image = fit(area, width, height, view.autoscale, ppp);
+    // Exactly one screen pixel per remote pixel: no filtering at all, and
+    // the picture starts on a whole screen pixel (else it is blurred).
+    let exact = (image.width() * ppp - f32::from(width)).abs() < 0.5
+        && (image.height() * ppp - f32::from(height)).abs() < 0.5;
+    if exact {
+        let min = (image.min.to_vec2() * ppp).round() / ppp;
+        image = Rect::from_min_size(min.to_pos2(), image.size());
+    }
+    let filter = if exact {
+        TextureOptions::NEAREST
+    } else {
+        TextureOptions::LINEAR
+    };
+    if filter != view.filter {
+        view.filter = filter;
+        view.generation = u64::MAX;
+        view.texture = None; // re-uploaded with the other filter
+    }
     if generation != view.generation {
         let mut f = view.session.frame();
         let dirty = f.take_dirty();
@@ -251,11 +281,7 @@ pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
                     [usize::from(w), usize::from(h)],
                     &pixels,
                 );
-                t.set_partial(
-                    [usize::from(x), usize::from(y)],
-                    part,
-                    TextureOptions::LINEAR,
-                );
+                t.set_partial([usize::from(x), usize::from(y)], part, filter);
             }
             _ => {
                 let image = egui::ColorImage::from_rgba_unmultiplied(
@@ -264,17 +290,15 @@ pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
                 );
                 drop(f);
                 match &mut view.texture {
-                    Some(t) => t.set(image, TextureOptions::LINEAR),
+                    Some(t) => t.set(image, filter),
                     None => {
-                        view.texture =
-                            Some(ui.ctx().load_texture("rdp", image, TextureOptions::LINEAR));
+                        view.texture = Some(ui.ctx().load_texture("rdp", image, filter));
                     }
                 }
             }
         }
         view.generation = generation;
     }
-    let image = fit(area, width, height, view.autoscale);
     if let Some(t) = &view.texture {
         ui.painter().image(
             t.id(),
@@ -446,6 +470,7 @@ mod tests {
                 keyboard_layout: 0,
                 via: None,
                 clipboard: false,
+                enhanced_graphics: false,
             },
             std::sync::Arc::new(|| {}),
         );
@@ -473,16 +498,23 @@ mod tests {
     #[test]
     fn picture_fits_and_maps_back() {
         let area = Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0));
-        let big = fit(area, 1600, 1200, false);
+        let big = fit(area, 1600, 1200, false, 1.0);
         assert_eq!(big.size(), vec2(800.0, 600.0));
         assert_eq!(
             remote_pos(big, 1600, 1200, Pos2::new(400.0, 300.0)),
             (800, 600)
         );
-        let small = fit(area, 400, 300, false);
+        let small = fit(area, 400, 300, false, 1.0);
         assert_eq!(small.size(), vec2(400.0, 300.0), "not scaled up");
-        let filled = fit(area, 400, 300, true);
+        let filled = fit(area, 400, 300, true, 1.0);
         assert_eq!(filled.size(), vec2(800.0, 600.0), "Autoscale fills the tab");
+        // Interface zoom 125 %: 1000x750 screen pixels fill 800x600 points.
+        let zoomed = fit(area, 1000, 750, false, 1.25);
+        assert_eq!(
+            zoomed.size(),
+            vec2(800.0, 600.0),
+            "one screen pixel per pixel"
+        );
         assert_eq!(remote_pos(small, 400, 300, Pos2::new(0.0, 0.0)), (0, 0));
     }
 
@@ -501,6 +533,7 @@ mod tests {
                 keyboard_layout: 0,
                 via: None,
                 clipboard: false,
+                enhanced_graphics: false,
             },
             std::sync::Arc::new(|| {}),
         );

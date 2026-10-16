@@ -22,6 +22,7 @@ fn params(port: u16, password: &str, pinned: Option<String>) -> RdpParams {
         keyboard_layout: 0,
         via: None,
         clipboard: true,
+        enhanced_graphics: false,
     }
 }
 
@@ -69,11 +70,8 @@ fn certificate_question_then_login_picture_and_input() {
             let f = s.frame();
             let mid =
                 (usize::from(f.height) / 2 * usize::from(f.width) + usize::from(f.width) / 2) * 4;
-            // The codec is lossy (RemoteFX): close enough.
-            let close = f
-                .rgba
-                .get(mid..mid + 3)
-                .is_some_and(|px| px.iter().zip(color).all(|(a, b)| a.abs_diff(b) <= 8));
+            // Lossless pictures (RemoteFX is not offered): exact colours.
+            let close = f.rgba.get(mid..mid + 3).is_some_and(|px| px == color);
             if close && f.rgba[mid + 3] == 0xFF {
                 break;
             }
