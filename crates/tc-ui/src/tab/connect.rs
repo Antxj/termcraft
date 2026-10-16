@@ -788,15 +788,53 @@ impl Tab {
         user: Option<String>,
         via: Option<(String, u16)>,
     ) {
+        self.message(&format!(
+            "\x1b[1mRemote desktop (RDP)\x1b[0m \x1b[90m{host}:{port}, built-in client\x1b[0m"
+        ));
         let user = user.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
         let Some(user) = user else {
+            let server = format!("{host}:{port}");
             self.pending_rdp = Some(self.rdp_params(host, port, String::new(), via));
-            self.term.feed(b"login as: ");
-            self.line = Some(LineInput::Login(String::new()));
+            self.rdp_login = Some(RdpLogin {
+                server,
+                user: String::new(),
+                password: Default::default(),
+                ask_user: true,
+                saved_rejected: false,
+            });
             return;
         };
+        // "[name]": a named credential (user and password).
+        let (user, error) = self.credentials.use_named_as("rdp", &user, &host, port);
+        if let Some(e) = error {
+            self.message(&format!("\x1b[33m{e}\x1b[0m"));
+        }
         let params = self.rdp_params(host, port, user, via);
         self.ask_rdp_password(params);
+    }
+
+    /// The RDP login window: OK (`Some`) or Cancel (`None`).
+    pub fn answer_rdp_login(&mut self, answer: Option<(String, String)>) {
+        self.rdp_login = None;
+        let Some((user, password)) = answer else {
+            self.pending_rdp = None;
+            self.message("\x1b[90m[login cancelled]\x1b[0m");
+            self.session_ended("login cancelled");
+            return;
+        };
+        let Some(mut params) = self.pending_rdp.take() else {
+            return;
+        };
+        if params.user.is_empty() {
+            let (domain, name) = split_domain(user.trim());
+            params.user = name;
+            params.domain = domain;
+        }
+        let target = rdp_target(&params);
+        self.credentials
+            .on_typed(SecretKind::Password, target, password.clone());
+        params.password = password.into();
+        self.start_rdp(params);
     }
 
     pub(super) fn pending_rdp_waiting(&self) -> bool {
@@ -813,18 +851,30 @@ impl Tab {
         }
     }
 
+    /// The saved password, else the login window.
     fn ask_rdp_password(&mut self, params: tc_rdp::RdpParams) {
-        let target = Target {
-            protocol: "rdp".into(),
-            username: match &params.domain {
-                Some(d) => format!("{d}\\{}", params.user),
-                None => params.user.clone(),
-            },
-            server: format!("{}:{}", params.host, params.port),
-        };
-        let prompt = format!("{}@{}'s password:", target.username, params.host);
-        self.pending_rdp = Some(params);
-        self.on_secret_needed(prompt, SecretKind::Password, target);
+        let target = rdp_target(&params);
+        match self.credentials.on_prompt(SecretKind::Password, &target) {
+            crate::credentials::PromptAction::AutoFill(password) => {
+                self.message(&format!(
+                    "\x1b[90mUsing saved password for {}\x1b[0m",
+                    target.key()
+                ));
+                let mut params = params;
+                params.password = password.into();
+                self.start_rdp(params);
+            }
+            crate::credentials::PromptAction::Ask { saved_rejected } => {
+                self.rdp_login = Some(RdpLogin {
+                    server: format!("{}:{}", params.host, params.port),
+                    user: target.username.clone(),
+                    password: Default::default(),
+                    ask_user: false,
+                    saved_rejected,
+                });
+                self.pending_rdp = Some(params);
+            }
+        }
     }
 
     fn rdp_params(
@@ -1063,6 +1113,18 @@ impl Tab {
             params,
             self.repaint.clone(),
         )));
+    }
+}
+
+/// The password store entry of an RDP login.
+fn rdp_target(p: &tc_rdp::RdpParams) -> Target {
+    Target {
+        protocol: "rdp".into(),
+        username: match &p.domain {
+            Some(d) => format!("{d}\\{}", p.user),
+            None => p.user.clone(),
+        },
+        server: format!("{}:{}", p.host, p.port),
     }
 }
 

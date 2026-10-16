@@ -145,6 +145,18 @@ fn via_gateway(session: Option<&Session>) -> Option<ViaGateway> {
     })
 }
 
+/// The login window of an RDP session (instead of a terminal prompt).
+pub struct RdpLogin {
+    /// `host:port`, shown.
+    pub server: String,
+    pub user: String,
+    pub password: zeroize::Zeroizing<String>,
+    /// The session names no user: the field is editable.
+    pub ask_user: bool,
+    /// A saved password was refused.
+    pub saved_rejected: bool,
+}
+
 /// A TLS certificate that did not verify (FTPS or RDP server).
 pub struct CertPrompt {
     pub fingerprint: String,
@@ -263,6 +275,8 @@ pub struct Tab {
     rdp_builtin: bool,
     /// The built-in RDP session of this tab.
     pub rdp: Option<crate::rdp_view::RdpView>,
+    /// The RDP login window is open.
+    pub rdp_login: Option<RdpLogin>,
     /// An RDP login waiting for its password / the last one (reconnect,
     /// certificate answer).
     pending_rdp: Option<tc_rdp::RdpParams>,
@@ -407,6 +421,7 @@ impl Tab {
             no_rdp_reconnect: env.no_rdp_reconnect,
             rdp_builtin: env.rdp_builtin,
             rdp: None,
+            rdp_login: None,
             pending_rdp: None,
             last_rdp: None,
             area_px: (1024, 768),
@@ -698,6 +713,7 @@ impl Tab {
     pub fn is_alive(&self) -> bool {
         !matches!(self.backend, Backend::None)
             || self.rdp.is_some()
+            || self.rdp_login.is_some()
             || self.line.is_some()
             || self.gateway_tunnel.is_some()
             || self.proxy_forward.is_some()

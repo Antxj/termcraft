@@ -316,6 +316,7 @@ impl TermCraftApp {
         self.passwords_window(ctx, out);
         self.host_key_dialog(ctx);
         self.certificate_dialog(ctx);
+        self.rdp_login_dialog(ctx);
         if let Some(editor) = &mut self.editor {
             editor.credentials = self
                 .core
@@ -678,6 +679,93 @@ impl TermCraftApp {
     /// "Host key validation" for the active tab's pending SSH connection.
     /// FTPS: the server certificate did not verify. Like the host key
     /// dialog: Accept (remember it) / Connect once / Cancel.
+    /// The login window of RDP sessions.
+    pub(super) fn rdp_login_dialog(&mut self, ctx: &egui::Context) {
+        let Some(tab) = self.core.tabs.iter_mut().find(|t| t.rdp_login.is_some()) else {
+            return;
+        };
+        let title = tab.title.clone();
+        let login = tab.rdp_login.as_mut().expect("checked");
+        let mut answer: Option<Option<(String, String)>> = None;
+        egui::Window::new("Remote desktop login")
+            .id(egui::Id::new(("rdp-login", tab.id)))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .min_width(380.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(ui::icon::MONITOR).size(36.0));
+                    ui.vertical(|ui| {
+                        ui.strong(&title);
+                        ui.weak(format!("RDP {}", login.server));
+                    });
+                });
+                if login.saved_rejected {
+                    ui.colored_label(
+                        ui.visuals().warn_fg_color,
+                        "The saved password was refused.",
+                    );
+                }
+                ui.add_space(6.0);
+                let mut submit = false;
+                egui::Grid::new("rdp-login-grid")
+                    .num_columns(2)
+                    .spacing([8.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("User name:");
+                        let user = ui.add_enabled(
+                            login.ask_user,
+                            egui::TextEdit::singleline(&mut login.user)
+                                .hint_text("user or DOMAIN\\user")
+                                .desired_width(240.0),
+                        );
+                        if login.ask_user && login.user.is_empty() && !user.has_focus() {
+                            user.request_focus();
+                        }
+                        ui.end_row();
+                        ui.label("Password:");
+                        let pw = ui.add(
+                            egui::TextEdit::singleline(&mut *login.password)
+                                .password(true)
+                                .desired_width(240.0),
+                        );
+                        if (!login.ask_user || !login.user.is_empty())
+                            && !pw.has_focus()
+                            && !user.has_focus()
+                        {
+                            pw.request_focus();
+                        }
+                        if pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                            submit = true;
+                        }
+                        ui.end_row();
+                    });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let ready = !login.user.trim().is_empty();
+                    if ui
+                        .add_enabled(ready, egui::Button::new("Connect"))
+                        .clicked()
+                        || (submit && ready)
+                    {
+                        answer = Some(Some((
+                            login.user.trim().to_string(),
+                            login.password.to_string(),
+                        )));
+                    }
+                    if ui.button("Cancel").clicked()
+                        || ui.input(|i| i.key_pressed(egui::Key::Escape))
+                    {
+                        answer = Some(None);
+                    }
+                });
+            });
+        if let Some(answer) = answer {
+            tab.answer_rdp_login(answer);
+        }
+    }
+
     pub(super) fn certificate_dialog(&mut self, ctx: &egui::Context) {
         let Some(tab) = self.core.tabs.iter_mut().find(|t| t.cert_prompt.is_some()) else {
             return;

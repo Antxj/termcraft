@@ -124,6 +124,16 @@ impl Snapshot {
                     if answer_keys && tab.cert_prompt.is_some() {
                         tab.answer_certificate(true, false);
                     }
+                    if tab.rdp_login.is_some()
+                        && let Some(pw) = self.password.take()
+                    {
+                        let user = tab
+                            .rdp_login
+                            .as_ref()
+                            .map(|l| l.user.clone())
+                            .unwrap_or_default();
+                        tab.answer_rdp_login(Some((user, pw)));
+                    }
                     if tab.awaiting_secret()
                         && let Some(pw) = self.password.take()
                     {

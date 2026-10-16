@@ -63,13 +63,25 @@ impl Credentials {
     /// `[name]` in the username field logs in with that named credential.
     /// Returns the username to use and an error to show, if any.
     pub fn use_named(&mut self, user: &str, host: &str, port: u16) -> (String, Option<String>) {
+        self.use_named_as("ssh", user, host, port)
+    }
+
+    /// [`Self::use_named`] for another protocol ("rdp" …).
+    pub fn use_named_as(
+        &mut self,
+        protocol: &str,
+        user: &str,
+        host: &str,
+        port: u16,
+    ) -> (String, Option<String>) {
         let Some(name) = user.strip_prefix('[').and_then(|u| u.strip_suffix(']')) else {
             return (user.to_string(), None);
         };
         match self.vault.credential(name) {
             Ok(Some((username, password))) => {
-                self.preset
-                    .insert(Target::ssh(&username, host, port), password);
+                let mut target = Target::ssh(&username, host, port);
+                target.protocol = protocol.to_string();
+                self.preset.insert(target, password);
                 (username, None)
             }
             Ok(None) => (
