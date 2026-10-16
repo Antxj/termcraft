@@ -1145,7 +1145,10 @@ impl TermCraftApp {
                 if transparency > 0 {
                     ui.set_opacity(1.0 - f32::from(transparency) / 100.0);
                 }
-                let output = term_view::show(ui, tab, font_size, true, &opts);
+                let output = match &mut tab.rdp {
+                    Some(view) if view.connected => crate::rdp_view::show(ui, view, true),
+                    _ => term_view::show(ui, tab, font_size, true, &opts),
+                };
                 if let Some(text) = output.paste {
                     tab.paste(&text);
                 }

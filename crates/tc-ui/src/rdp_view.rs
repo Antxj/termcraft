@@ -213,16 +213,45 @@ pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
         return out;
     }
     if generation != view.generation {
-        let f = view.session.frame();
-        let image = egui::ColorImage::from_rgba_unmultiplied(
-            [usize::from(f.width), usize::from(f.height)],
-            &f.rgba,
-        );
-        drop(f);
-        match &mut view.texture {
-            Some(t) => t.set(image, TextureOptions::LINEAR),
-            None => {
-                view.texture = Some(ui.ctx().load_texture("rdp", image, TextureOptions::LINEAR));
+        let mut f = view.session.frame();
+        let dirty = f.take_dirty();
+        let same_size = view
+            .texture
+            .as_ref()
+            .is_some_and(|t| t.size() == [usize::from(f.width), usize::from(f.height)]);
+        match (&mut view.texture, dirty) {
+            // Only what changed.
+            (Some(t), Some((x, y, w, h))) if same_size && w > 0 && h > 0 => {
+                let stride = usize::from(f.width) * 4;
+                let mut pixels = Vec::with_capacity(usize::from(w) * usize::from(h) * 4);
+                for row in usize::from(y)..usize::from(y) + usize::from(h) {
+                    let start = row * stride + usize::from(x) * 4;
+                    pixels.extend_from_slice(&f.rgba[start..start + usize::from(w) * 4]);
+                }
+                drop(f);
+                let part = egui::ColorImage::from_rgba_unmultiplied(
+                    [usize::from(w), usize::from(h)],
+                    &pixels,
+                );
+                t.set_partial(
+                    [usize::from(x), usize::from(y)],
+                    part,
+                    TextureOptions::LINEAR,
+                );
+            }
+            _ => {
+                let image = egui::ColorImage::from_rgba_unmultiplied(
+                    [usize::from(f.width), usize::from(f.height)],
+                    &f.rgba,
+                );
+                drop(f);
+                match &mut view.texture {
+                    Some(t) => t.set(image, TextureOptions::LINEAR),
+                    None => {
+                        view.texture =
+                            Some(ui.ctx().load_texture("rdp", image, TextureOptions::LINEAR));
+                    }
+                }
             }
         }
         view.generation = generation;

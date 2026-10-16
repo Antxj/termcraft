@@ -127,8 +127,27 @@ pub struct Frame {
     pub width: u16,
     pub height: u16,
     pub rgba: Vec<u8>,
-    /// Changes at each update (the app re-uploads its texture then).
+    /// Changes at each update.
     pub generation: u64,
+    /// The part that changed since the app last took it (`x, y, w, h`);
+    /// `None` with a new generation = everything (new size).
+    pub dirty: Option<(u16, u16, u16, u16)>,
+}
+
+impl Frame {
+    /// Take the changed region (the app uploads only that).
+    pub fn take_dirty(&mut self) -> Option<(u16, u16, u16, u16)> {
+        self.dirty.take()
+    }
+}
+
+/// The smallest rectangle holding both (`x, y, w, h`).
+fn union(a: (u16, u16, u16, u16), b: (u16, u16, u16, u16)) -> (u16, u16, u16, u16) {
+    let x = a.0.min(b.0);
+    let y = a.1.min(b.1);
+    let right = (a.0 + a.2).max(b.0 + b.2);
+    let bottom = (a.1 + a.3).max(b.1 + b.3);
+    (x, y, right - x, bottom - y)
 }
 
 /// A running session: events out, input in, the picture shared.
@@ -377,17 +396,47 @@ fn login_error(e: &str) -> String {
 }
 
 /// Copy the decoded picture into the shared frame.
-fn publish(image: &DecodedImage, frame: &Mutex<Frame>) {
+/// Copy the changed region (`x, y, w, h`) of the picture into the shared
+/// frame; a new size copies everything.
+fn publish(image: &DecodedImage, region: (u16, u16, u16, u16), frame: &Mutex<Frame>) {
     let mut f = frame
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    f.width = image.width();
-    f.height = image.height();
-    f.rgba.clear();
-    f.rgba.extend_from_slice(image.data());
-    // The decoder leaves alpha at 0: an opaque desktop.
-    for px in f.rgba.as_chunks_mut::<4>().0 {
-        px[3] = 0xFF;
+    let (w, h) = (image.width(), image.height());
+    let data = image.data();
+    let resized = f.width != w || f.height != h || f.rgba.len() != data.len();
+    let region = if resized {
+        f.width = w;
+        f.height = h;
+        f.rgba.clear();
+        f.rgba.extend_from_slice(data);
+        f.dirty = None;
+        (0, 0, w, h)
+    } else {
+        // Clamp to the picture.
+        let x = region.0.min(w);
+        let y = region.1.min(h);
+        (x, y, region.2.min(w - x), region.3.min(h - y))
+    };
+    let stride = usize::from(w) * 4;
+    let (x, y, rw, rh) = region;
+    for row in usize::from(y)..usize::from(y) + usize::from(rh) {
+        let start = row * stride + usize::from(x) * 4;
+        let end = start + usize::from(rw) * 4;
+        if !resized {
+            f.rgba[start..end].copy_from_slice(&data[start..end]);
+        }
+        // The decoder leaves alpha at 0: an opaque desktop.
+        for px in f.rgba[start..end].as_chunks_mut::<4>().0 {
+            px[3] = 0xFF;
+        }
+    }
+    if !resized {
+        f.dirty = Some(match f.dirty {
+            Some(d) => union(d, region),
+            None if f.generation == 0 => (0, 0, w, h),
+            None => region,
+        });
     }
     f.generation = f.generation.wrapping_add(1);
 }
@@ -563,16 +612,27 @@ async fn run(
                 }
             }
         };
-        let mut changed = false;
+        let mut changed: Option<(u16, u16, u16, u16)> = None;
         for out in outputs {
             match out {
                 ActiveStageOutput::ResponseFrame(bytes) => {
                     writer.write_all(&bytes).await.map_err(io)?;
                 }
-                ActiveStageOutput::GraphicsUpdate(_) => changed = true,
+                ActiveStageOutput::GraphicsUpdate(r) => {
+                    let region = (
+                        r.left,
+                        r.top,
+                        r.right.saturating_sub(r.left) + 1,
+                        r.bottom.saturating_sub(r.top) + 1,
+                    );
+                    changed = Some(match changed {
+                        Some(c) => union(c, region),
+                        None => region,
+                    });
+                }
                 ActiveStageOutput::Terminate(_) => {
-                    if changed {
-                        publish(&image, frame);
+                    if let Some(region) = changed {
+                        publish(&image, region, frame);
                     }
                     return Ok(());
                 }
@@ -622,8 +682,8 @@ async fn run(
                 _ => {}
             }
         }
-        if changed {
-            publish(&image, frame);
+        if let Some(region) = changed {
+            publish(&image, region, frame);
             send(RdpEvent::Frame);
         }
     }
@@ -633,6 +693,29 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn regions_merge_and_copy() {
+        assert_eq!(union((0, 0, 10, 10), (5, 5, 10, 10)), (0, 0, 15, 15));
+        let frame = Mutex::new(Frame::default());
+        let mut image = DecodedImage::new(PixelFormat::RgbA32, 4, 2);
+        publish(&image, (0, 0, 4, 2), &frame);
+        {
+            let mut f = frame.lock().unwrap();
+            assert_eq!((f.width, f.height, f.rgba.len()), (4, 2, 32));
+            assert_eq!(f.take_dirty(), None, "new size: everything");
+            assert!(f.rgba.chunks(4).all(|p| p[3] == 0xFF));
+        }
+        publish(&image, (1, 1, 2, 1), &frame);
+        publish(&image, (3, 0, 1, 1), &frame);
+        assert_eq!(frame.lock().unwrap().take_dirty(), Some((1, 0, 3, 2)));
+        // A region past the edge is clamped.
+        publish(&image, (3, 1, 9, 9), &frame);
+        assert_eq!(frame.lock().unwrap().take_dirty(), Some((3, 1, 1, 1)));
+        image = DecodedImage::new(PixelFormat::RgbA32, 8, 2);
+        publish(&image, (0, 0, 1, 1), &frame);
+        assert_eq!(frame.lock().unwrap().width, 8);
+    }
 
     #[test]
     fn input_becomes_operations() {
