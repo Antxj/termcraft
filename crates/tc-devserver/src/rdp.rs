@@ -38,7 +38,8 @@ pub struct RdpDevServer {
     pub port: u16,
     /// DER of its certificate (to check what the client pins).
     pub certificate: Vec<u8>,
-    /// Input received, one line each (`key 30 down`, `mouse 10,20` …).
+    /// Input received, one line each (`key 30 down`, `mouse 10,20` …),
+    /// and `layout WxH` when the client asks for another desktop size.
     pub input: Arc<Mutex<Vec<String>>>,
 }
 
@@ -124,6 +125,16 @@ impl RdpServerDisplay for Handler {
             config: self.config.clone(),
             sent: false,
         }))
+    }
+
+    fn request_layout(&mut self, layout: ironrdp_displaycontrol::pdu::DisplayControlMonitorLayout) {
+        if let Some(m) = layout.monitors().first() {
+            let (w, h) = m.dimensions();
+            self.input
+                .lock()
+                .expect("lock")
+                .push(format!("layout {w}x{h}"));
+        }
     }
 }
 

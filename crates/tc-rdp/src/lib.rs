@@ -9,9 +9,16 @@
 //! ([`RdpEvent::UntrustedCertificate`]). TLS resumption is off (CredSSP
 //! does not allow it) and no TLS key log is ever written.
 
+mod clipboard;
+
+use clipboard::{ClipEvent, TextClipboard};
+use ironrdp_cliprdr::CliprdrClient;
+use ironrdp_cliprdr::pdu::{ClipboardFormatId, OwnedFormatDataResponse};
 use ironrdp_connector::connection_activation::ConnectionActivationState;
 use ironrdp_connector::{ClientConnector, ConnectionResult, Credentials, DesktopSize};
 use ironrdp_core::WriteBuf;
+use ironrdp_displaycontrol::client::DisplayControlClient;
+use ironrdp_dvc::DrdynvcClient;
 use ironrdp_graphics::image_processing::PixelFormat;
 use ironrdp_input::{Database, MouseButton, MousePosition, Operation, Scancode, WheelRotations};
 use ironrdp_pdu::gcc::KeyboardType;
@@ -47,6 +54,8 @@ pub struct RdpParams {
     /// Connect to this address instead (a tunnel to `host:port`); the
     /// certificate is still the one of `host`.
     pub via: Option<(String, u16)>,
+    /// Share the clipboard (text).
+    pub clipboard: bool,
 }
 
 /// What the session reports to the app.
@@ -61,6 +70,8 @@ pub enum RdpEvent {
     UntrustedCertificate { fingerprint: String, reason: String },
     /// The connection ended: `None` = the server closed the session.
     Closed(Option<String>),
+    /// Text copied on the remote side (for the local clipboard).
+    RemoteClipboard(String),
 }
 
 /// Mouse buttons.
@@ -99,6 +110,14 @@ pub enum RdpInput {
     },
     /// Release every key and button (focus lost).
     ReleaseAll,
+    /// Paste: offer this text as our clipboard, then press Ctrl+V on the
+    /// remote side (without clipboard sharing, the text is typed).
+    Paste(String),
+    /// Ask the server for another desktop size (the window changed).
+    Resize {
+        width: u16,
+        height: u16,
+    },
     Close,
 }
 
@@ -270,6 +289,7 @@ type Upgraded = ironrdp_tokio::TokioFramed<Box<dyn Stream>>;
 
 async fn connect(
     p: &RdpParams,
+    clipboard: Option<tokio::sync::mpsc::UnboundedSender<ClipEvent>>,
     send: &dyn Fn(RdpEvent),
 ) -> Result<Option<(ConnectionResult, Upgraded)>, String> {
     let (address, port) = p
@@ -286,7 +306,14 @@ async fn connect(
     let _ = tcp.set_nodelay(true);
     let client_addr = tcp.local_addr().map_err(|e| e.to_string())?;
     let mut framed = ironrdp_tokio::TokioFramed::new(tcp);
-    let mut connector = ClientConnector::new(connector_config(p), client_addr);
+    let mut connector = ClientConnector::new(connector_config(p), client_addr).with_static_channel(
+        // Display Control: the desktop follows the window size.
+        DrdynvcClient::new().with_dynamic_channel(DisplayControlClient::new(|_| Ok(Vec::new()))),
+    );
+    if let Some(events) = clipboard {
+        connector =
+            connector.with_static_channel(CliprdrClient::new(Box::new(TextClipboard { events })));
+    }
     let should_upgrade = ironrdp_tokio::connect_begin(&mut framed, &mut connector)
         .await
         .map_err(|e| format!("connection: {e}"))?;
@@ -396,7 +423,9 @@ fn operations(input: &RdpInput) -> Vec<Operation> {
             is_vertical: !horizontal,
             rotation_units: delta,
         })],
-        RdpInput::ReleaseAll | RdpInput::Close => Vec::new(),
+        RdpInput::ReleaseAll | RdpInput::Close | RdpInput::Paste(_) | RdpInput::Resize { .. } => {
+            Vec::new()
+        }
     }
 }
 
@@ -406,7 +435,9 @@ async fn run(
     frame: &Mutex<Frame>,
     send: &dyn Fn(RdpEvent),
 ) -> Result<(), String> {
-    let Some((result, framed)) = connect(&params, send).await? else {
+    let (clip_tx, mut clip_rx) = tokio::sync::mpsc::unbounded_channel();
+    let sharing = params.clipboard;
+    let Some((result, framed)) = connect(&params, sharing.then_some(clip_tx), send).await? else {
         // The certificate question went out; the app connects again.
         return Ok(());
     };
@@ -421,23 +452,113 @@ async fn run(
     let mut stage = ActiveStage::new(result);
     let mut database = Database::new();
     let io = |e: std::io::Error| e.to_string();
+    // Our clipboard text, offered to the server on paste.
+    let mut local_text: Option<String> = None;
+    // Ctrl+V for the remote side, sent shortly after the offer.
+    let mut paste_keys: Option<tokio::time::Instant> = None;
+    let err = |e: ironrdp_session::SessionError| e.to_string();
     loop {
         let outputs = tokio::select! {
             pdu = reader.read_pdu() => {
                 let (action, payload) = pdu.map_err(io)?;
-                stage.process(&mut image, action, &payload).map_err(|e| e.to_string())?
+                stage.process(&mut image, action, &payload).map_err(err)?
+            }
+            () = async {
+                match paste_keys {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                paste_keys = None;
+                let ctrl_held = database.is_key_pressed(Scancode::from_u8(false, 0x1D));
+                let mut ops = Vec::new();
+                if !ctrl_held {
+                    ops.push(Operation::KeyPressed(Scancode::from_u8(false, 0x1D)));
+                }
+                ops.push(Operation::KeyPressed(Scancode::from_u8(false, 0x2F)));
+                ops.push(Operation::KeyReleased(Scancode::from_u8(false, 0x2F)));
+                if !ctrl_held {
+                    ops.push(Operation::KeyReleased(Scancode::from_u8(false, 0x1D)));
+                }
+                let events = database.apply(ops);
+                stage.process_fastpath_input(&mut image, &events).map_err(err)?
+            }
+            clip = clip_rx.recv() => {
+                let Some(clip) = clip else { continue };
+                let Some(cliprdr) = stage.get_svc_processor::<CliprdrClient>() else { continue };
+                let messages = match clip {
+                    ClipEvent::Ready => cliprdr.initiate_copy(&clipboard::offered(local_text.as_deref())),
+                    ClipEvent::RemoteText => cliprdr.initiate_paste(ClipboardFormatId::CF_UNICODETEXT),
+                    ClipEvent::DataRequest => cliprdr.submit_format_data(
+                        OwnedFormatDataResponse::new_unicode_string(local_text.as_deref().unwrap_or("")),
+                    ),
+                    ClipEvent::Text(text) => {
+                        send(RdpEvent::RemoteClipboard(text));
+                        continue;
+                    }
+                };
+                let messages = messages.map_err(|e| e.to_string())?;
+                let bytes = stage.process_svc_processor_messages(messages).map_err(err)?;
+                vec![ActiveStageOutput::ResponseFrame(bytes)]
             }
             event = input.recv() => {
                 let Some(event) = event else { break };
                 match event {
-                    RdpInput::Close => stage.graceful_shutdown().map_err(|e| e.to_string())?,
+                    RdpInput::Close => stage.graceful_shutdown().map_err(err)?,
+                    RdpInput::Paste(text) if sharing => {
+                        // Offer the text, then paste it on the remote side.
+                        local_text = Some(text);
+                        paste_keys = Some(tokio::time::Instant::now() + Duration::from_millis(150));
+                        match stage.get_svc_processor::<CliprdrClient>() {
+                            Some(cliprdr) => {
+                                let messages = cliprdr
+                                    .initiate_copy(&clipboard::offered(local_text.as_deref()))
+                                    .map_err(|e| e.to_string())?;
+                                vec![ActiveStageOutput::ResponseFrame(
+                                    stage.process_svc_processor_messages(messages).map_err(err)?,
+                                )]
+                            }
+                            None => Vec::new(),
+                        }
+                    }
+                    RdpInput::Paste(text) => {
+                        // No clipboard channel: type it.
+                        let mut events = Vec::new();
+                        let ctrl = Scancode::from_u8(false, 0x1D);
+                        let ctrl_held = database.is_key_pressed(ctrl);
+                        if ctrl_held {
+                            events.extend(database.apply([Operation::KeyReleased(ctrl)]));
+                        }
+                        for ch in text.chars().filter(|c| *c != '\r') {
+                            let enter = Scancode::from_u8(false, 0x1C);
+                            let ops = if ch == '\n' {
+                                [Operation::KeyPressed(enter), Operation::KeyReleased(enter)]
+                            } else {
+                                [Operation::UnicodeKeyPressed(ch), Operation::UnicodeKeyReleased(ch)]
+                            };
+                            events.extend(database.apply(ops));
+                        }
+                        if ctrl_held {
+                            events.extend(database.apply([Operation::KeyPressed(ctrl)]));
+                        }
+                        stage.process_fastpath_input(&mut image, &events).map_err(err)?
+                    }
+                    RdpInput::Resize { width, height } => {
+                        // Even widths, 200 … 8192 (MS-RDPEDISP).
+                        let w = u32::from(width.clamp(200, 8192)) & !1;
+                        let h = u32::from(height.clamp(200, 8192));
+                        match stage.encode_resize(w, h, None, None) {
+                            Some(bytes) => vec![ActiveStageOutput::ResponseFrame(bytes.map_err(err)?)],
+                            None => Vec::new(),
+                        }
+                    }
                     RdpInput::ReleaseAll => {
                         let events = database.release_all();
-                        stage.process_fastpath_input(&mut image, &events).map_err(|e| e.to_string())?
+                        stage.process_fastpath_input(&mut image, &events).map_err(err)?
                     }
                     other => {
                         let events = database.apply(operations(&other));
-                        stage.process_fastpath_input(&mut image, &events).map_err(|e| e.to_string())?
+                        stage.process_fastpath_input(&mut image, &events).map_err(err)?
                     }
                 }
             }

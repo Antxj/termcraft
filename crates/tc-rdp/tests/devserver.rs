@@ -21,6 +21,7 @@ fn params(port: u16, password: &str, pinned: Option<String>) -> RdpParams {
         pinned,
         keyboard_layout: 0,
         via: None,
+        clipboard: true,
     }
 }
 
@@ -111,4 +112,45 @@ fn wrong_password_is_refused() {
         RdpEvent::Closed(Some(e)) => assert!(!e.is_empty()),
         other => panic!("expected a refusal, got {other:?}"),
     }
+}
+
+fn wait_for_line(server: &tc_devserver::rdp::RdpDevServer, line: &str) {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let got = server.input.lock().unwrap().clone();
+        if got.iter().any(|l| l == line) {
+            return;
+        }
+        assert!(Instant::now() < deadline, "{line:?} not received: {got:?}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn paste_without_sharing_and_resize() {
+    let server = start(RdpDevConfig::default()).unwrap();
+    let pinned = tc_net::ftps::fingerprint(&rustls::pki_types::CertificateDer::from(
+        server.certificate.clone(),
+    ));
+    let mut p = params(server.port, tc_devserver::DEV_PASSWORD, Some(pinned));
+    p.clipboard = false;
+    let s = RdpSession::connect(p, Arc::new(|| {}));
+    assert!(matches!(next(&s), RdpEvent::Connected { .. }));
+
+    // Without clipboard sharing a paste is typed.
+    s.send(RdpInput::Paste(
+        "ok
+"
+        .into(),
+    ));
+    wait_for_line(&server, "unicode 111 down");
+    wait_for_line(&server, "unicode 107 down");
+    wait_for_line(&server, "key 28 down");
+
+    // The window changed: the server is asked for the new size.
+    s.send(RdpInput::Resize {
+        width: 641,
+        height: 480,
+    });
+    wait_for_line(&server, "layout 640x480");
 }

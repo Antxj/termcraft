@@ -6521,6 +6521,7 @@ version = "0.1.5"
 dependencies = [
  "anyhow",
  "async-trait",
+ "ironrdp-displaycontrol",
  "ironrdp-server",
  "rcgen",
  "russh",
@@ -6583,12 +6584,16 @@ name = "tc-rdp"
 version = "0.1.5"
 dependencies = [
  "crossbeam-channel",
+ "ironrdp-cliprdr",
  "ironrdp-connector",
  "ironrdp-core",
+ "ironrdp-displaycontrol",
+ "ironrdp-dvc",
  "ironrdp-graphics",
  "ironrdp-input",
  "ironrdp-pdu",
  "ironrdp-session",
+ "ironrdp-svc",
  "ironrdp-tokio",
  "rustls",
  "tc-devserver",

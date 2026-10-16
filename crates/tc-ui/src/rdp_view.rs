@@ -2,7 +2,10 @@
 //! session's picture, scaled down to fit (never up), and the keyboard /
 //! mouse sent back. Printable text goes as Unicode characters (whatever
 //! the local keyboard layout); other keys, and keys pressed with Ctrl or
-//! Alt, go as PC scancodes. Paste (Ctrl+V) types the local clipboard.
+//! Alt, go as PC scancodes. Ctrl+V pastes the local clipboard on the
+//! remote side (shared as text, else typed); text copied there reaches the
+//! local clipboard. With "Fit to terminal" the remote desktop follows the
+//! tab's size.
 
 use crate::term_view::TermOutput;
 use egui::{Event, Key, Modifiers, Pos2, Rect, TextureHandle, TextureOptions, vec2};
@@ -19,10 +22,17 @@ pub struct RdpView {
     sent: Modifiers,
     pointer: Option<(u16, u16)>,
     had_focus: bool,
+    /// Text copied on the remote side, for the local clipboard.
+    pub remote_clipboard: Option<String>,
+    /// The desktop follows the tab's size ("Fit to terminal").
+    pub follow_window: bool,
+    /// Size last asked of the server, and a new one waiting to settle.
+    requested: (u16, u16),
+    resize: Option<(std::time::Instant, (u16, u16))>,
 }
 
 impl RdpView {
-    pub fn new(session: RdpSession) -> Self {
+    pub fn new(session: RdpSession, follow_window: bool, size: (u16, u16)) -> Self {
         Self {
             session,
             connected: false,
@@ -31,7 +41,32 @@ impl RdpView {
             sent: Modifiers::default(),
             pointer: None,
             had_focus: false,
+            remote_clipboard: None,
+            follow_window,
+            requested: size,
+            resize: None,
         }
+    }
+
+    /// The tab is now `size` pixels: ask the server for it once the size
+    /// has not changed for a moment (a window drag sends many).
+    fn follow(&mut self, size: (u16, u16), now: std::time::Instant) -> Option<(u16, u16)> {
+        const SETTLE: std::time::Duration = std::time::Duration::from_millis(600);
+        if !self.follow_window || size == self.requested {
+            self.resize = None;
+            return None;
+        }
+        match self.resize {
+            Some((since, wanted)) if wanted == size => {
+                if now.duration_since(since) >= SETTLE {
+                    self.resize = None;
+                    self.requested = size;
+                    return Some(size);
+                }
+            }
+            _ => self.resize = Some((now, size)),
+        }
+        None
     }
 }
 
@@ -146,6 +181,20 @@ pub fn remote_pos(image: Rect, width: u16, height: u16, pos: Pos2) -> (u16, u16)
 pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
     let mut out = TermOutput::default();
     let area = ui.available_rect_before_wrap();
+    if let Some(text) = view.remote_clipboard.take() {
+        ui.ctx().copy_text(text);
+    }
+    let size = (
+        area.width().max(200.0) as u16,
+        area.height().max(200.0) as u16,
+    );
+    if let Some((width, height)) = view.follow(size, std::time::Instant::now()) {
+        view.session.send(RdpInput::Resize { width, height });
+    }
+    if view.resize.is_some() {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(200));
+    }
     let response = ui.allocate_rect(area, egui::Sense::click_and_drag());
     ui.painter().rect_filled(area, 0.0, egui::Color32::BLACK);
 
@@ -324,24 +373,8 @@ fn keyboard(view: &mut RdpView, events: &[Event], mods: Modifiers, inputs: &mut 
                 key(inputs, code, true);
                 key(inputs, code, false);
             }
-            // Ctrl+V: type the local clipboard (Ctrl released meanwhile).
-            Event::Paste(text) => {
-                if view.sent.ctrl {
-                    key(inputs, CTRL, false);
-                }
-                for ch in text.chars().filter(|c| *c != '\r') {
-                    if ch == '\n' {
-                        key(inputs, 0x1C, true);
-                        key(inputs, 0x1C, false);
-                    } else {
-                        inputs.push(RdpInput::Char { ch, down: true });
-                        inputs.push(RdpInput::Char { ch, down: false });
-                    }
-                }
-                if view.sent.ctrl {
-                    key(inputs, CTRL, true);
-                }
-            }
+            // Ctrl+V: the local clipboard, pasted on the remote side.
+            Event::Paste(text) => inputs.push(RdpInput::Paste(text.clone())),
             _ => {}
         }
     }
@@ -350,6 +383,37 @@ fn keyboard(view: &mut RdpView, events: &[Event], mods: Modifiers, inputs: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_follows_the_tab_once_settled() {
+        let session = RdpSession::connect(
+            tc_rdp::RdpParams {
+                host: "127.0.0.1".into(),
+                port: 1,
+                user: String::new(),
+                domain: None,
+                password: String::new().into(),
+                width: 800,
+                height: 600,
+                pinned: None,
+                keyboard_layout: 0,
+                via: None,
+                clipboard: false,
+            },
+            std::sync::Arc::new(|| {}),
+        );
+        let mut view = RdpView::new(session, true, (800, 600));
+        let t0 = std::time::Instant::now();
+        let ms = |n| t0 + std::time::Duration::from_millis(n);
+        assert_eq!(view.follow((800, 600), t0), None, "same size");
+        assert_eq!(view.follow((900, 600), ms(0)), None);
+        assert_eq!(view.follow((1000, 600), ms(300)), None, "still dragging");
+        assert_eq!(view.follow((1000, 600), ms(700)), None, "settling");
+        assert_eq!(view.follow((1000, 600), ms(950)), Some((1000, 600)));
+        assert_eq!(view.follow((1000, 600), ms(2000)), None, "asked once");
+        view.follow_window = false;
+        assert_eq!(view.follow((500, 400), ms(3000)), None);
+    }
 
     #[test]
     fn scancodes() {
@@ -387,10 +451,11 @@ mod tests {
                 pinned: None,
                 keyboard_layout: 0,
                 via: None,
+                clipboard: false,
             },
             std::sync::Arc::new(|| {}),
         );
-        let mut view = RdpView::new(session);
+        let mut view = RdpView::new(session, false, (200, 200));
         let mut inputs = Vec::new();
         let events = [
             Event::Text("é".into()),

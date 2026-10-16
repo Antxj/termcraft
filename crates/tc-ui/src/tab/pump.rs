@@ -46,6 +46,11 @@ impl Tab {
                     }
                 }
                 tc_rdp::RdpEvent::Frame => {}
+                tc_rdp::RdpEvent::RemoteClipboard(text) => {
+                    if let Some(v) = &mut self.rdp {
+                        v.remote_clipboard = Some(text);
+                    }
+                }
                 tc_rdp::RdpEvent::UntrustedCertificate {
                     fingerprint,
                     reason,

@@ -853,6 +853,8 @@ impl Tab {
             height,
             keyboard_layout: 0,
             via,
+            // 3_20 "Share local / remote clipboards".
+            clipboard: self.rdp_options().clipboard,
         }
     }
 
@@ -865,15 +867,11 @@ impl Tab {
             "\x1b[90mConnecting to {}:{} (RDP) …\x1b[0m",
             params.host, params.port
         ));
-        if self.rdp_options().clipboard {
-            self.message(
-                "\x1b[90mThe built-in RDP client does not share the clipboard yet; \
-                 Ctrl+V types the local clipboard.\x1b[0m",
-            );
-        }
         self.last_rdp = Some(params.clone());
+        let follow = matches!(self.rdp_options().size, crate::external::RdpSize::Window);
+        let size = (params.width, params.height);
         let session = tc_rdp::RdpSession::connect(params, self.repaint.clone());
-        self.rdp = Some(crate::rdp_view::RdpView::new(session));
+        self.rdp = Some(crate::rdp_view::RdpView::new(session, follow, size));
     }
 
     pub(super) fn pending_login(&mut self, secret: String) -> Option<String> {
