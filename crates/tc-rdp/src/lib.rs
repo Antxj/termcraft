@@ -505,6 +505,8 @@ async fn run(
     let mut local_text: Option<String> = None;
     // Ctrl+V for the remote side, sent shortly after the offer.
     let mut paste_keys: Option<tokio::time::Instant> = None;
+    // A size asked before the Display Control channel was open.
+    let mut pending_resize: Option<(u32, u32)> = None;
     let err = |e: ironrdp_session::SessionError| e.to_string();
     loop {
         let outputs = tokio::select! {
@@ -597,8 +599,16 @@ async fn run(
                         let w = u32::from(width.clamp(200, 8192)) & !1;
                         let h = u32::from(height.clamp(200, 8192));
                         match stage.encode_resize(w, h, None, None) {
-                            Some(bytes) => vec![ActiveStageOutput::ResponseFrame(bytes.map_err(err)?)],
-                            None => Vec::new(),
+                            Some(bytes) => {
+                                pending_resize = None;
+                                vec![ActiveStageOutput::ResponseFrame(bytes.map_err(err)?)]
+                            }
+                            // The Display Control channel is not open yet:
+                            // asked again once it is.
+                            None => {
+                                pending_resize = Some((w, h));
+                                Vec::new()
+                            }
                         }
                     }
                     RdpInput::ReleaseAll => {
@@ -685,6 +695,12 @@ async fn run(
         if let Some(region) = changed {
             publish(&image, region, frame);
             send(RdpEvent::Frame);
+        }
+        if let Some((w, h)) = pending_resize
+            && let Some(bytes) = stage.encode_resize(w, h, None, None)
+        {
+            pending_resize = None;
+            writer.write_all(&bytes.map_err(err)?).await.map_err(io)?;
         }
     }
     Ok(())

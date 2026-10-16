@@ -26,6 +26,8 @@ pub struct RdpView {
     pub remote_clipboard: Option<String>,
     /// The desktop follows the tab's size ("Fit to terminal").
     pub follow_window: bool,
+    /// 3_27 "Autoscale": the picture fills the tab (also scaled up).
+    pub autoscale: bool,
     /// Size last asked of the server, and a new one waiting to settle.
     requested: (u16, u16),
     resize: Option<(std::time::Instant, (u16, u16))>,
@@ -43,6 +45,7 @@ impl RdpView {
             had_focus: false,
             remote_clipboard: None,
             follow_window,
+            autoscale: true,
             requested: size,
             resize: None,
         }
@@ -176,10 +179,12 @@ fn types_text(key: Key) -> bool {
     )
 }
 
-/// The image rectangle: centered, scaled down to fit `area`, never up.
-pub fn fit(area: Rect, width: u16, height: u16) -> Rect {
+/// The image rectangle: centered and scaled to fit `area` ("Autoscale"
+/// also scales it up; else it is only scaled down).
+pub fn fit(area: Rect, width: u16, height: u16, upscale: bool) -> Rect {
     let (w, h) = (f32::from(width.max(1)), f32::from(height.max(1)));
-    let scale = (area.width() / w).min(area.height() / h).min(1.0);
+    let scale = (area.width() / w).min(area.height() / h);
+    let scale = if upscale { scale } else { scale.min(1.0) };
     Rect::from_center_size(area.center(), vec2(w * scale, h * scale))
 }
 
@@ -269,7 +274,7 @@ pub fn show(ui: &mut egui::Ui, view: &mut RdpView, active: bool) -> TermOutput {
         }
         view.generation = generation;
     }
-    let image = fit(area, width, height);
+    let image = fit(area, width, height, view.autoscale);
     if let Some(t) = &view.texture {
         ui.painter().image(
             t.id(),
@@ -468,14 +473,16 @@ mod tests {
     #[test]
     fn picture_fits_and_maps_back() {
         let area = Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0));
-        let big = fit(area, 1600, 1200);
+        let big = fit(area, 1600, 1200, false);
         assert_eq!(big.size(), vec2(800.0, 600.0));
         assert_eq!(
             remote_pos(big, 1600, 1200, Pos2::new(400.0, 300.0)),
             (800, 600)
         );
-        let small = fit(area, 400, 300);
-        assert_eq!(small.size(), vec2(400.0, 300.0), "never scaled up");
+        let small = fit(area, 400, 300, false);
+        assert_eq!(small.size(), vec2(400.0, 300.0), "not scaled up");
+        let filled = fit(area, 400, 300, true);
+        assert_eq!(filled.size(), vec2(800.0, 600.0), "Autoscale fills the tab");
         assert_eq!(remote_pos(small, 400, 300, Pos2::new(0.0, 0.0)), (0, 0));
     }
 

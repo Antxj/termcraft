@@ -912,16 +912,24 @@ impl Tab {
         self.known_hosts.with_file_name("rdp_certificates")
     }
 
-    pub(super) fn start_rdp(&mut self, params: tc_rdp::RdpParams) {
+    pub(super) fn start_rdp(&mut self, mut params: tc_rdp::RdpParams) {
+        let options = self.rdp_options();
+        // "Fit to terminal": the tab's size now (it was not drawn yet when
+        // the session was prepared).
+        if matches!(options.size, crate::external::RdpSize::Window) {
+            (params.width, params.height) = self.area_px;
+        }
         self.message(&format!(
             "\x1b[90mConnecting to {}:{} (RDP) …\x1b[0m",
             params.host, params.port
         ));
         self.last_rdp = Some(params.clone());
-        let follow = matches!(self.rdp_options().size, crate::external::RdpSize::Window);
+        let follow = matches!(options.size, crate::external::RdpSize::Window);
         let size = (params.width, params.height);
         let session = tc_rdp::RdpSession::connect(params, self.repaint.clone());
-        self.rdp = Some(crate::rdp_view::RdpView::new(session, follow, size));
+        let mut view = crate::rdp_view::RdpView::new(session, follow, size);
+        view.autoscale = options.autoscale;
+        self.rdp = Some(view);
     }
 
     pub(super) fn pending_login(&mut self, secret: String) -> Option<String> {
