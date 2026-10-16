@@ -19,6 +19,8 @@ pub struct TabView {
     pub activity: bool,
     /// Shown in its own window.
     pub detached: bool,
+    /// A remote desktop (built-in RDP) is shown.
+    pub rdp: bool,
 }
 
 /// Colours offered by "Set tab color".
@@ -351,6 +353,15 @@ fn tab_menu(
         Some(Action::Run(Command::TabDuplicate { tab: Some(tab.id) })),
         out,
     );
+    if tab.rdp {
+        // The local system keeps Ctrl+Alt+Del for itself.
+        item(
+            ui,
+            "Send Ctrl+Alt+Del",
+            Some(Action::RdpCtrlAltDel(tab.id)),
+            out,
+        );
+    }
     item(
         ui,
         "Close tab",

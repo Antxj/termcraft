@@ -825,6 +825,20 @@ impl TermCraftApp {
                 return self.editor = Some(SessionEditor::new_of_type(index).with_presets(presets));
             }
             Action::ShowHome => return self.core.active = None,
+            Action::RdpCtrlAltDel(id) => {
+                if let Some(view) = self
+                    .core
+                    .tabs
+                    .iter()
+                    .find(|t| t.id == id)
+                    .and_then(|t| t.rdp.as_ref())
+                {
+                    for input in crate::rdp_view::ctrl_alt_del() {
+                        view.session.send(input);
+                    }
+                }
+                return;
+            }
             Action::EditPresets => {
                 let presets = &self.core.settings.session_presets;
                 return self.editor = Some(SessionEditor::presets_editor(presets));
@@ -1612,6 +1626,7 @@ impl eframe::App for TermCraftApp {
                 pinned: t.pinned,
                 activity: t.activity,
                 detached: t.detached,
+                rdp: t.rdp.as_ref().is_some_and(|v| v.connected),
             })
             .collect();
         let font_size = self.core.settings.terminal.font_size;

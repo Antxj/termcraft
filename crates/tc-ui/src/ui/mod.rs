@@ -68,6 +68,8 @@ pub enum Action {
     ImportCsv,
     /// The Home tab (no terminal tab active).
     ShowHome,
+    /// Ctrl+Alt+Del to the remote desktop of this tab.
+    RdpCtrlAltDel(u64),
     /// Settings › "Edit session presets" (the editor in preset mode).
     EditPresets,
     /// Keep this preset for its session type / drop the preset of a type.

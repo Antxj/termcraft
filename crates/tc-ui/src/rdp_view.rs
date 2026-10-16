@@ -156,6 +156,19 @@ pub fn scancode(key: Key) -> Option<u16> {
     })
 }
 
+/// Ctrl+Alt+Del as key presses.
+pub fn ctrl_alt_del() -> Vec<RdpInput> {
+    let k = |scancode, down| RdpInput::Key { scancode, down };
+    vec![
+        k(CTRL, true),
+        k(ALT, true),
+        k(0xE053, true),
+        k(0xE053, false),
+        k(ALT, false),
+        k(CTRL, false),
+    ]
+}
+
 /// Keys that type a character: sent as text unless Ctrl / Alt is held.
 fn types_text(key: Key) -> bool {
     scancode(key).is_some_and(
