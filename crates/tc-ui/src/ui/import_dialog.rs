@@ -58,6 +58,7 @@ impl ImportDialog {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 if self.found {
                     ui.strong("TermCraft found MobaXterm settings on this computer.");
                     ui.label(
@@ -94,9 +95,9 @@ impl ImportDialog {
                 ui.add_space(4.0);
                 let ini = is_ini(&path);
                 let something = !ini || self.sessions || self.settings || self.host_keys;
-                if ui
-                    .add_enabled(!path.is_empty() && something, egui::Button::new("Import"))
-                    .clicked()
+                let ready = !path.is_empty() && something;
+                if ui.add_enabled(ready, egui::Button::new("Import")).clicked()
+                    || (ready && enter.pressed(ui))
                 {
                     request = Some(Request {
                         path,

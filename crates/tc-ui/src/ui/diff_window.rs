@@ -89,12 +89,15 @@ AllowUsers ops
             .default_size([900.0, 560.0])
             .resizable(true)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 file_field(ui, "First file: ", &mut self.left);
                 file_field(ui, "Second file:", &mut self.right);
+                let entered = enter.pressed(ui);
                 ui.horizontal(|ui| {
                     if ui
                         .button(format!("{}  Compare", icon::ARROWS_LEFT_RIGHT))
                         .clicked()
+                        || entered
                     {
                         self.compare();
                     }

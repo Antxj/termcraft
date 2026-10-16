@@ -93,6 +93,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool, t: &mut TerminalSettings) -> b
         .resizable(false)
         .default_width(700.0)
         .show(ctx, |ui| {
+            let enter = crate::ui::EnterWatch::start(ui);
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(361.0);
@@ -139,6 +140,7 @@ pub fn show(ctx: &egui::Context, open: &mut bool, t: &mut TerminalSettings) -> b
                 if ui
                     .add(egui::Button::new("OK").min_size(egui::vec2(82.0, 30.0)))
                     .clicked()
+                    || enter.pressed(ui)
                 {
                     close = true;
                 }

@@ -666,6 +666,7 @@ impl PasswordsUi {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .default_width(560.0)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(icon::SHIELD_CHECK).size(64.0));
                     ui.vertical(|ui| {
@@ -743,7 +744,7 @@ impl PasswordsUi {
                 });
                 ui.horizontal(|ui| {
                     ui.add_space(160.0);
-                    if ui.button("OK").clicked() {
+                    if ui.button("OK").clicked() || enter.pressed(ui) {
                         answer = Some(true);
                     }
                     if ui.button("Cancel").clicked() {
@@ -815,6 +816,7 @@ impl PasswordsUi {
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 egui::Grid::new("credential-fields")
                     .num_columns(2)
                     .spacing([8.0, 6.0])
@@ -833,7 +835,7 @@ impl PasswordsUi {
                     ui.colored_label(ui.visuals().error_fg_color, err);
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("OK").clicked() {
+                    if ui.button("OK").clicked() || enter.pressed(ui) {
                         answer = Some(true);
                     }
                     if ui.button("Cancel").clicked() {

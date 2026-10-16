@@ -546,6 +546,7 @@ impl SessionEditor {
             .resizable(false)
             .fixed_size([WIDTH, HEIGHT])
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 compact(ui);
                 let (area, _) = ui.allocate_exact_size(vec2(WIDTH, HEIGHT), egui::Sense::hover());
                 let o = area.min;
@@ -635,7 +636,7 @@ impl SessionEditor {
                         self.startup.clear();
                     }
                 }
-                if ui.put(at(304.0), egui::Button::new("OK")).clicked() {
+                if ui.put(at(304.0), egui::Button::new("OK")).clicked() || enter.pressed(ui) {
                     match self.build() {
                         Ok(session) if self.preset_mode => {
                             out.push(Action::SavePreset(Box::new(session)));
@@ -688,6 +689,7 @@ impl SessionEditor {
             .fixed_size(size)
             .order(egui::Order::Foreground)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 compact(ui);
                 let (area, _) = ui.allocate_exact_size(size, egui::Sense::hover());
                 // The reference's banner strip on the left.
@@ -702,6 +704,9 @@ impl SessionEditor {
                     ui.visuals().weak_text_color(),
                 );
                 self.draw_page(ui, page, area.min, name, presses);
+                if enter.pressed(ui) {
+                    presses.push(Press::CloseSubDialog);
+                }
             });
         if !open {
             self.sub_dialog = None;

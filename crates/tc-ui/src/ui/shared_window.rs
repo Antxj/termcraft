@@ -37,10 +37,11 @@ impl SharedWindow {
             .resizable(false)
             .default_width(520.0)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 ui.heading("Shared sessions locations");
                 ui.add_space(6.0);
                 if self.editing.is_some() {
-                    self.edit_page(ui);
+                    self.edit_page(ui, &enter);
                 } else {
                     self.list_page(ui);
                 }
@@ -136,7 +137,7 @@ impl SharedWindow {
         });
     }
 
-    fn edit_page(&mut self, ui: &mut egui::Ui) {
+    fn edit_page(&mut self, ui: &mut egui::Ui, enter: &crate::ui::EnterWatch) {
         let Some((_, entry)) = &mut self.editing else {
             return;
         };
@@ -182,7 +183,9 @@ impl SharedWindow {
                 done = Some(false);
             }
             let valid = !entry.location.trim().is_empty();
-            if ui.add_enabled(valid, egui::Button::new("Save")).clicked() {
+            if ui.add_enabled(valid, egui::Button::new("Save")).clicked()
+                || (valid && enter.pressed(ui))
+            {
                 done = Some(true);
             }
         });

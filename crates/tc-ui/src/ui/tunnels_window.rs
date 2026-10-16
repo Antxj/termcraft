@@ -198,6 +198,7 @@ impl TunnelEditor {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 ui.horizontal(|ui| {
                     let k = &mut self.tunnel.kind;
                     ui.radio_value(k, TunnelKind::Local, "Local port forwarding");
@@ -249,7 +250,7 @@ impl TunnelEditor {
                     ui.colored_label(ui.visuals().error_fg_color, e);
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
+                    if ui.button("Save").clicked() || enter.pressed(ui) {
                         match self.build() {
                             Ok(tunnel) => {
                                 out.push(Action::Run(if self.is_new {

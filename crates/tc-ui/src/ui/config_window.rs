@@ -114,6 +114,7 @@ pub fn show(
         .resizable(false)
         .fixed_size([WIDTH, HEIGHT])
         .show(ctx, |ui| {
+            let enter = crate::ui::EnterWatch::start(ui);
             compact(ui);
             let (area, _) = ui.allocate_exact_size(vec2(WIDTH, HEIGHT), egui::Sense::hover());
             let o = area.min.to_vec2();
@@ -167,7 +168,7 @@ pub fn show(
                 ),
             }
             let ok = Rect::from_min_size(area.min + vec2(285.0, 468.0), vec2(121.0, 34.0));
-            if ui.put(ok, egui::Button::new("OK")).clicked() {
+            if ui.put(ok, egui::Button::new("OK")).clicked() || enter.pressed(ui) {
                 close = true;
             }
         });
@@ -1253,6 +1254,7 @@ fn sub_dialog(ctx: &egui::Context, state: &mut ConfigState, s: &mut Settings) {
         .fixed_size(size)
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
+            let enter = crate::ui::EnterWatch::start(ui);
             compact(ui);
             let (area, _) = ui.allocate_exact_size(size, egui::Sense::hover());
             let strip = Rect::from_min_size(area.min, vec2(89.0, size.y));
@@ -1270,6 +1272,9 @@ fn sub_dialog(ctx: &egui::Context, state: &mut ConfigState, s: &mut Settings) {
                     continue;
                 }
                 default_control(ui, name, c, rect, s);
+            }
+            if enter.pressed(ui) {
+                close = true;
             }
         });
     if !open || close {

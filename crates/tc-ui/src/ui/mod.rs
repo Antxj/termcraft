@@ -207,3 +207,87 @@ pub fn header(ui: &mut egui::Ui, label: &str) {
 pub fn session_icon(session: &tc_core::Session) -> &'static str {
     session_icons::glyph(session)
 }
+
+/// Enter in a single-line field of a window acts like the window's
+/// default button: `let enter = EnterWatch::start(ui);` first in the
+/// window's contents, then `enter.pressed(ui)` next to that button. A
+/// single-line field gives the focus up on Enter; terminals and multi-line
+/// fields keep it, so they never trigger it.
+pub struct EnterWatch(bool);
+
+impl EnterWatch {
+    pub fn start(ui: &egui::Ui) -> Self {
+        Self(ui.memory(|m| m.focused().is_some()))
+    }
+
+    pub fn pressed(&self, ui: &egui::Ui) -> bool {
+        self.0
+            && ui.memory(|m| m.focused().is_none())
+            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+    }
+}
+
+#[cfg(test)]
+mod enter_tests {
+    use super::EnterWatch;
+
+    fn enter_key() -> egui::Event {
+        egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }
+    }
+
+    /// One frame with a single-line (or multi-line) field; true if the
+    /// window's default button would act.
+    fn frame(ctx: &egui::Context, events: Vec<egui::Event>, multiline: bool, focus: bool) -> bool {
+        let mut pressed = false;
+        let mut text = String::from("abc");
+        let input = egui::RawInput {
+            events,
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(input, |ui| {
+            let enter = EnterWatch::start(ui);
+            let edit = if multiline {
+                egui::TextEdit::multiline(&mut text)
+            } else {
+                egui::TextEdit::singleline(&mut text)
+            };
+            let r = ui.add(edit.id_salt("field"));
+            if focus {
+                r.request_focus();
+            }
+            pressed = enter.pressed(ui);
+        });
+        output.textures_delta.clear();
+        pressed
+    }
+
+    #[test]
+    fn enter_in_a_single_line_field_submits() {
+        let ctx = egui::Context::default();
+        assert!(!frame(&ctx, Vec::new(), false, true), "no key");
+        assert!(
+            frame(&ctx, vec![enter_key()], false, false),
+            "Enter in the field"
+        );
+        assert!(
+            !frame(&ctx, vec![enter_key()], false, false),
+            "the field had no focus"
+        );
+    }
+
+    #[test]
+    fn enter_in_a_multi_line_field_does_not() {
+        let ctx = egui::Context::default();
+        assert!(!frame(&ctx, Vec::new(), true, true));
+        assert!(
+            !frame(&ctx, vec![enter_key()], true, false),
+            "a new line, not OK"
+        );
+    }
+}

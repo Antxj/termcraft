@@ -39,6 +39,7 @@ impl JumpHostsDialog {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .default_width(727.0)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 ui.vertical_centered(|ui| {
                     ui.heading("Define one or several SSH jump hosts");
                     ui.label(
@@ -73,6 +74,7 @@ impl JumpHostsDialog {
                     if ui
                         .add(egui::Button::new("OK").min_size(egui::vec2(89.0, 30.0)))
                         .clicked()
+                        || enter.pressed(ui)
                     {
                         outcome = Outcome::Done(std::mem::take(&mut self.rows));
                     }

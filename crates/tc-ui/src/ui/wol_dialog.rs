@@ -37,6 +37,7 @@ impl WolDialog {
             .collapsible(false)
             .resizable(false)
             .show(ctx, |ui| {
+                let enter = crate::ui::EnterWatch::start(ui);
                 egui::Grid::new("wol").num_columns(2).show(ui, |ui| {
                     ui.label("MAC address:");
                     ui.add(
@@ -57,7 +58,7 @@ impl WolDialog {
                     let send = ui
                         .add_enabled(valid, egui::Button::new("Wake up"))
                         .on_disabled_hover_text("Type the MAC address of the computer");
-                    if send.clicked() {
+                    if send.clicked() || (valid && enter.pressed(ui)) {
                         outcome = Outcome::Send(Command::WakeOnLan {
                             mac: self.mac.trim().to_string(),
                             address: Some(self.address.trim().to_string()),
