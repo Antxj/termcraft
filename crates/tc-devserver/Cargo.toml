@@ -23,7 +23,7 @@ ironrdp-server = { version = "0.9", default-features = false, optional = true }
 async-trait = { version = "0.1", optional = true }
 ironrdp-displaycontrol = { version = "0.4", optional = true }
 rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"], optional = true }
-x509-cert = { version = "0.2", default-features = false, features = ["std"], optional = true }
+x509-cert = { version = "0.3", default-features = false, features = ["std"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
 
 [features]
