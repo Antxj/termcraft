@@ -13,7 +13,7 @@ ironrdp-session = "0.7"
 ironrdp-tokio = { version = "0.7", default-features = false }
 ironrdp-pdu = "0.6"
 ironrdp-core = "0.1"
-ironrdp-graphics = "0.6"
+ironrdp-graphics = "0.9"
 ironrdp-input = "0.4"
 ironrdp-cliprdr = "0.4"
 ironrdp-dvc = "0.4"
