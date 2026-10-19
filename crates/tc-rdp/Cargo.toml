@@ -16,7 +16,7 @@ ironrdp-core = "0.1"
 ironrdp-graphics = "0.6"
 ironrdp-input = "0.4"
 ironrdp-cliprdr = "0.4"
-ironrdp-dvc = "0.4"
+ironrdp-dvc = "0.8"
 ironrdp-displaycontrol = "0.4"
 ironrdp-svc = "0.5"
 tokio = { version = "1", features = ["rt", "net", "io-util", "sync", "time", "macros"] }
